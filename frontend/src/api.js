@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const BASE = 'http://localhost:8000/api'
+const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api'
 
 const api = axios.create({ baseURL: BASE })
 
@@ -129,4 +129,13 @@ export const collectionsApi = {
   getItems:   (id)                     => api.get(`/collections/${id}/items`),
   addItem:    (id, discovered_job_id)  => api.post(`/collections/${id}/items`, { discovered_job_id }),
   removeItem: (id, job_id)             => api.delete(`/collections/${id}/items/${job_id}`),
+}
+
+export const eventsApi = {
+  getAll: (params) => api.get('/events', { params }),
+}
+
+export const newsApi = {
+  getAll:  (params) => api.get('/news', { params }),
+  refresh: ()       => api.post('/news/refresh'),
 }

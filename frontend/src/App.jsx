@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, Briefcase, Search, Zap, User, LogOut, CalendarDays, GraduationCap,
+  LayoutDashboard, Briefcase, Search, Zap, User, LogOut, CalendarDays, GraduationCap, MapPin, Newspaper,
 } from 'lucide-react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Dashboard    from './pages/Dashboard'
@@ -10,6 +10,8 @@ import Calendar     from './pages/Calendar'
 import Coach        from './pages/Coach'
 import Networking   from './pages/Networking'
 import Profile      from './pages/Profile'
+import Events       from './pages/Events'
+import News         from './pages/News'
 import Login        from './pages/Login'
 import Register     from './pages/Register'
 
@@ -18,7 +20,9 @@ const NAV_ITEMS = [
   { to: '/tracker',     label: 'Job Tracker',   icon: Briefcase },
   { to: '/discovery',   label: 'Job Discovery', icon: Search },
   { to: '/calendar',    label: 'Calendar',      icon: CalendarDays },
+  { to: '/events',      label: 'Events',        icon: MapPin },
   { to: '/coach',       label: 'Coach',         icon: GraduationCap },
+  { to: '/news',        label: 'News',          icon: Newspaper },
 ]
 
 function Sidebar() {
@@ -153,8 +157,10 @@ function AppRoutes() {
             <Route path="/tracker"     element={<JobTracker />} />
             <Route path="/discovery"   element={<JobDiscovery />} />
             <Route path="/calendar"    element={<Calendar />} />
+            <Route path="/events"      element={<Events />} />
             <Route path="/networking"  element={<Networking />} />
             <Route path="/coach"       element={<Coach />} />
+            <Route path="/news"        element={<News />} />
             <Route path="/profile"     element={<Profile />} />
           </Routes>
         </ProtectedLayout>

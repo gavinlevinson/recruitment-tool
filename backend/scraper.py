@@ -949,81 +949,6 @@ async def scrape_wellfound() -> List[Dict]:
 
 
 # ─────────────────────────────────────────────
-# SOURCE: Handshake (early career / campus recruiting)
-# ─────────────────────────────────────────────
-async def scrape_handshake() -> List[Dict]:
-    """
-    Handshake early career job listings — scrapes public job search pages.
-    Returns entry-level ops/strategy/growth roles matching the profile.
-    """
-    jobs = []
-    # Handshake public job search pages (no auth required for these listing pages)
-    search_urls = [
-        "https://joinhandshake.com/job-listings/?category=Business+%26+Management&location=New+York+City%2C+NY",
-        "https://joinhandshake.com/job-listings/?category=Business+%26+Management&location=San+Francisco%2C+CA",
-        "https://joinhandshake.com/job-listings/?query=operations+strategy+analyst&location=New+York+City%2C+NY",
-        "https://joinhandshake.com/job-listings/?query=chief+of+staff+associate&location=New+York+City%2C+NY",
-    ]
-    try:
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
-            for url in search_urls:
-                try:
-                    resp = await client.get(url)
-                    if resp.status_code != 200:
-                        continue
-                    html = resp.text
-                    # Try JSON-LD structured data
-                    for ld_str in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.DOTALL):
-                        try:
-                            data = json.loads(ld_str)
-                            items = data if isinstance(data, list) else [data]
-                            for item in items:
-                                if item.get("@type") == "JobPosting":
-                                    role = item.get("title", "")
-                                    company = item.get("hiringOrganization", {}).get("name", "")
-                                    loc_obj = item.get("jobLocation", {})
-                                    location = ""
-                                    if isinstance(loc_obj, dict):
-                                        addr = loc_obj.get("address", {})
-                                        location = addr.get("addressLocality", "") if isinstance(addr, dict) else ""
-                                    desc = re.sub(r"<[^>]+>", " ", item.get("description", "") or "")
-                                    job_url = item.get("url", url)
-                                    posted = item.get("datePosted", "")
-                                    if company and role:
-                                        score, _ = score_job(company, role, location, desc)
-                                        if score >= 30:
-                                            jobs.append(make_job(company, role, location, job_url, "Handshake", desc, posted))
-                        except Exception:
-                            pass
-                    # Try Next.js __NEXT_DATA__
-                    nd = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
-                    if nd:
-                        try:
-                            nd_data = json.loads(nd.group(1))
-                            postings = (nd_data.get("props", {}).get("pageProps", {})
-                                        .get("jobPostings", nd_data.get("props", {})
-                                             .get("pageProps", {}).get("jobs", [])))
-                            for p in (postings or []):
-                                role = p.get("title", "") or p.get("job_title", "")
-                                company = (p.get("employer", {}) or {}).get("name", "") or p.get("company", "")
-                                location = p.get("location", "") or p.get("city", "")
-                                job_url = p.get("url", "") or p.get("job_url", "")
-                                desc = p.get("description", "") or ""
-                                if company and role:
-                                    score, _ = score_job(company, role, location, desc)
-                                    if score >= 30:
-                                        jobs.append(make_job(company, role, location, job_url, "Handshake", desc))
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-    except Exception as e:
-        print(f"[Handshake] Error: {e}")
-    print(f"[Handshake] {len(jobs)} jobs found")
-    return jobs
-
-
-# ─────────────────────────────────────────────
 # SOURCE: YC Work at a Startup
 # ─────────────────────────────────────────────
 async def scrape_yc_startup_jobs() -> List[Dict]:
@@ -1072,201 +997,102 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
 
 
 # ─────────────────────────────────────────────
-# SOURCE: Lenny's Newsletter Job Board (Pallet)
+# SOURCE: Himalayas (remote startup jobs)
 # ─────────────────────────────────────────────
-async def scrape_lennys_jobs() -> List[Dict]:
+async def scrape_himalayas() -> List[Dict]:
     """
-    Lenny's Newsletter job board — PM, growth, and ops roles at top tech companies.
-    Powered by Pallet; scrapes public listings page.
+    Himalayas — startup & remote job board with a public REST API.
+    Searches ops, strategy, growth, and business roles. No auth required.
     """
     jobs = []
-    board_urls = [
-        "https://jobs.lennysnewsletter.com/jobs",
-        "https://jobs.lennysnewsletter.com",
+    queries = [
+        "operations", "strategy", "chief of staff", "business development",
+        "growth", "product operations", "go to market",
     ]
-    api_attempts = [
-        "https://jobs.lennysnewsletter.com/api/postings",
-        "https://pallet.xyz/api/v1/job-board/lennysnewsletter/jobs",
-        "https://api.pallet.com/v2/job-board/lennysnewsletter/jobs",
-    ]
+    seen = set()
     try:
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers={
-            **HEADERS,
-            "Accept": "application/json, text/html, */*",
-        }) as client:
-            # Try JSON API endpoints first
-            for api_url in api_attempts:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            for q in queries:
                 try:
-                    r = await client.get(api_url, headers={"Accept": "application/json"})
-                    if r.status_code == 200 and "application/json" in r.headers.get("content-type", ""):
-                        data = r.json()
-                        items = data if isinstance(data, list) else data.get("jobs", data.get("postings", data.get("data", [])))
-                        for item in (items or []):
-                            role    = item.get("title", "") or item.get("role", "")
-                            company = (item.get("company", {}) or {}).get("name", "") or item.get("company_name", "")
-                            location = item.get("location", "") or ""
-                            desc    = re.sub(r"<[^>]+>", " ", item.get("description", "") or "")
-                            job_url = item.get("url", "") or item.get("apply_url", "")
-                            if company and role:
+                    resp = await client.get(
+                        "https://himalayas.app/api/jobs",
+                        params={"search": q, "limit": 50},
+                        timeout=12.0,
+                    )
+                    if resp.status_code != 200:
+                        continue
+                    data = resp.json()
+                    for job in data.get("jobs", []):
+                        role    = job.get("title", "")
+                        company = (job.get("company") or {}).get("name", "") or job.get("companyName", "")
+                        locs    = job.get("locationRestrictions") or []
+                        location = locs[0] if locs else "Remote"
+                        url     = job.get("url", "") or job.get("applicationUrl", "")
+                        desc    = re.sub(r"<[^>]+>", " ", job.get("description", "") or "")
+                        if company and role:
+                            key = f"{company.lower()}|{role.lower()}"
+                            if key not in seen:
+                                seen.add(key)
                                 score, _ = score_job(company, role, location, desc)
                                 if score >= 28:
-                                    jobs.append(make_job(company, role, location, job_url, "Lenny's Newsletter", desc))
-                        if jobs:
-                            break
+                                    jobs.append(make_job(company, role, location, url, "Himalayas", desc))
                 except Exception:
                     pass
-
-            # Fall back to HTML scraping if API didn't work
-            if not jobs:
-                for page_url in board_urls:
-                    try:
-                        resp = await client.get(page_url)
-                        if resp.status_code != 200:
-                            continue
-                        html = resp.text
-                        # JSON-LD
-                        for ld_str in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.DOTALL):
-                            try:
-                                data = json.loads(ld_str)
-                                items = data if isinstance(data, list) else [data]
-                                for item in items:
-                                    if item.get("@type") == "JobPosting":
-                                        role = item.get("title", "")
-                                        company = (item.get("hiringOrganization") or {}).get("name", "")
-                                        loc = item.get("jobLocation", {})
-                                        location = (loc.get("address", {}) or {}).get("addressLocality", "") if isinstance(loc, dict) else ""
-                                        desc = re.sub(r"<[^>]+>", " ", item.get("description", "") or "")
-                                        job_url = item.get("url", page_url)
-                                        if company and role:
-                                            score, _ = score_job(company, role, location, desc)
-                                            if score >= 28:
-                                                jobs.append(make_job(company, role, location, job_url, "Lenny's Newsletter", desc))
-                            except Exception:
-                                pass
-                        # Next.js data
-                        nd = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
-                        if nd:
-                            try:
-                                nd_data = json.loads(nd.group(1))
-                                pp = nd_data.get("props", {}).get("pageProps", {})
-                                for key in ("jobs", "postings", "jobPostings", "listings"):
-                                    items = pp.get(key, [])
-                                    if items:
-                                        for item in items:
-                                            role = item.get("title", "") or item.get("role", "")
-                                            company = (item.get("company") or {}).get("name", "") or item.get("company_name", "")
-                                            location = item.get("location", "")
-                                            desc = re.sub(r"<[^>]+>", " ", item.get("description", "") or "")
-                                            job_url = item.get("url", "") or item.get("apply_url", "")
-                                            if company and role:
-                                                score, _ = score_job(company, role, location, desc)
-                                                if score >= 28:
-                                                    jobs.append(make_job(company, role, location, job_url, "Lenny's Newsletter", desc))
-                                        break
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
     except Exception as e:
-        print(f"[Lenny's] Error: {e}")
-    print(f"[Lenny's Newsletter] {len(jobs)} jobs found")
+        print(f"[Himalayas] Error: {e}")
+    print(f"[Himalayas] {len(jobs)} jobs found")
     return jobs
 
 
 # ─────────────────────────────────────────────
-# SOURCE: Built In NYC + Built In SF
+# SOURCE: We Work Remotely (RSS)
 # ─────────────────────────────────────────────
-async def scrape_builtin() -> List[Dict]:
+async def scrape_weworkremotely() -> List[Dict]:
     """
-    Built In — curated tech job boards for NYC and SF.
-    Targets operations, strategy, growth, and business roles.
+    We Work Remotely — RSS feeds for business/management and product roles.
+    Completely public, no auth required.
     """
     jobs = []
-    # Built In uses an Algolia-backed search API
-    search_configs = [
-        {"city": "new-york-city", "label": "New York City, NY"},
-        {"city": "san-francisco",  "label": "San Francisco, CA"},
+    feeds = [
+        "https://weworkremotely.com/categories/remote-business-management-jobs.rss",
+        "https://weworkremotely.com/categories/remote-product-jobs.rss",
     ]
-    role_queries = [
-        "operations", "strategy", "business development",
-        "chief of staff", "growth", "product operations",
-    ]
-    try:
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
-            for cfg in search_configs:
-                city = cfg["city"]
-                city_label = cfg["label"]
-                for q in role_queries:
-                    try:
-                        # Built In's public search endpoint
-                        resp = await client.get(
-                            f"https://builtin.com/jobs",
-                            params={"search": q, "city": city, "experience": "entry-level"},
-                            timeout=12.0,
-                        )
-                        if resp.status_code != 200:
-                            continue
-                        html = resp.text
-                        # JSON-LD
-                        for ld_str in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.DOTALL):
-                            try:
-                                data = json.loads(ld_str)
-                                items = data if isinstance(data, list) else [data]
-                                for item in items:
-                                    if item.get("@type") == "JobPosting":
-                                        role = item.get("title", "")
-                                        org = item.get("hiringOrganization", {})
-                                        company = org.get("name", "") if isinstance(org, dict) else ""
-                                        loc = item.get("jobLocation", {})
-                                        location = ""
-                                        if isinstance(loc, dict):
-                                            addr = loc.get("address", {})
-                                            location = addr.get("addressLocality", "") if isinstance(addr, dict) else ""
-                                        location = location or city_label
-                                        desc = re.sub(r"<[^>]+>", " ", item.get("description", "") or "")
-                                        job_url = item.get("url", "")
-                                        if company and role:
-                                            score, _ = score_job(company, role, location, desc)
-                                            if score >= 28:
-                                                jobs.append(make_job(company, role, location, job_url, f"Built In {'NYC' if 'new-york' in city else 'SF'}", desc))
-                            except Exception:
-                                pass
-                        # Next.js __NEXT_DATA__
-                        nd = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
-                        if nd:
-                            try:
-                                nd_data = json.loads(nd.group(1))
-                                pp = nd_data.get("props", {}).get("pageProps", {})
-                                for key in ("jobs", "jobListings", "searchResults"):
-                                    listing = pp.get(key, [])
-                                    if listing:
-                                        for item in listing:
-                                            role = item.get("title", "")
-                                            company = (item.get("company") or {}).get("name", "") or item.get("companyName", "")
-                                            location = item.get("builtinCityTitle", "") or city_label
-                                            desc = re.sub(r"<[^>]+>", " ", item.get("description", "") or "")
-                                            job_url = "https://builtin.com" + (item.get("url", "") or "")
-                                            if company and role:
-                                                score, _ = score_job(company, role, location, desc)
-                                                if score >= 28:
-                                                    jobs.append(make_job(company, role, location, job_url, f"Built In {'NYC' if 'new-york' in city else 'SF'}", desc))
-                                        break
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-    except Exception as e:
-        print(f"[Built In] Error: {e}")
-    # Deduplicate within this source
     seen = set()
-    unique = []
-    for j in jobs:
-        key = f"{j['company'].lower()}|{j['role'].lower()}"
-        if key not in seen:
-            seen.add(key)
-            unique.append(j)
-    print(f"[Built In] {len(unique)} jobs found")
-    return unique
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers=HEADERS) as client:
+            for feed_url in feeds:
+                try:
+                    resp = await client.get(feed_url)
+                    if resp.status_code != 200:
+                        continue
+                    xml = resp.text
+                    for item_xml in re.findall(r'<item>(.*?)</item>', xml, re.DOTALL):
+                        title_m = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>', item_xml)
+                        link_m  = re.search(r'<link>(https?://[^\s<]+)', item_xml)
+                        desc_m  = re.search(r'<description><!\[CDATA\[(.*?)\]\]></description>', item_xml, re.DOTALL)
+                        if not title_m:
+                            continue
+                        full_title = title_m.group(1).strip()
+                        # Format: "Company: Role Title"
+                        if ': ' in full_title:
+                            company, role = full_title.split(': ', 1)
+                        else:
+                            company, role = "", full_title
+                        url  = link_m.group(1).strip() if link_m else ""
+                        desc = re.sub(r'<[^>]+>', ' ', desc_m.group(1) if desc_m else "")
+                        if company and role:
+                            key = f"{company.lower()}|{role.lower()}"
+                            if key not in seen:
+                                seen.add(key)
+                                score, _ = score_job(company, role, "Remote", desc)
+                                if score >= 28:
+                                    jobs.append(make_job(company, role, "Remote", url, "We Work Remotely", desc))
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"[WWR] Error: {e}")
+    print(f"[We Work Remotely] {len(jobs)} jobs found")
+    return jobs
 
 
 # ─────────────────────────────────────────────
@@ -1418,109 +1244,6 @@ async def scrape_vc_boards() -> List[Dict]:
         for r in results:
             jobs.extend(r)
 
-    # ── Direct VC job board pages ─────────────────────────────────────────────
-    vc_boards = [
-        {
-            "name": "a16z Talent",
-            "urls": ["https://talent.a16z.com/jobs", "https://talent.a16z.com"],
-            "source": "a16z Talent",
-        },
-        {
-            "name": "First Round Capital",
-            "urls": ["https://firstround.com/jobs/", "https://jobs.firstround.com/jobs"],
-            "source": "First Round Capital",
-        },
-        {
-            "name": "Sequoia",
-            "urls": ["https://jobs.sequoiacap.com/jobs", "https://sequoiacap.com/jobs"],
-            "source": "Sequoia Jobs",
-        },
-        {
-            "name": "Greylock",
-            "urls": ["https://greylock.com/careers/jobs", "https://jobs.greylock.com"],
-            "source": "Greylock Jobs",
-        },
-        {
-            "name": "General Catalyst",
-            "urls": ["https://jobs.generalcatalyst.com/jobs", "https://generalcatalyst.com/portfolio/jobs"],
-            "source": "General Catalyst Jobs",
-        },
-        {
-            "name": "Insight Partners",
-            "urls": ["https://jobs.insightpartners.com/jobs", "https://insightpartners.com/companies/jobs"],
-            "source": "Insight Partners Jobs",
-        },
-        {
-            "name": "Bessemer",
-            "urls": ["https://bvp.com/portfolio/jobs", "https://jobs.bvp.com"],
-            "source": "Bessemer Jobs",
-        },
-    ]
-
-    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
-        for board in vc_boards:
-            source_label = board["source"]
-            for url in board["urls"]:
-                try:
-                    resp = await client.get(url, timeout=12.0)
-                    if resp.status_code != 200:
-                        continue
-                    html = resp.text
-                    found = []
-                    # JSON-LD
-                    for ld_str in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.DOTALL):
-                        try:
-                            data = json.loads(ld_str)
-                            items = data if isinstance(data, list) else [data]
-                            for item in items:
-                                if item.get("@type") == "JobPosting":
-                                    role = item.get("title", "")
-                                    org = item.get("hiringOrganization", {})
-                                    company = org.get("name", "") if isinstance(org, dict) else ""
-                                    loc = item.get("jobLocation", {})
-                                    location = ""
-                                    if isinstance(loc, dict):
-                                        addr = loc.get("address", {})
-                                        location = addr.get("addressLocality", "") if isinstance(addr, dict) else ""
-                                    desc = re.sub(r"<[^>]+>", " ", item.get("description", "") or "")
-                                    job_url = item.get("url", url)
-                                    if company and role:
-                                        score, _ = score_job(company, role, location, desc)
-                                        if score >= 28:
-                                            found.append(make_job(company, role, location, job_url, source_label, desc))
-                        except Exception:
-                            pass
-                    # Next.js __NEXT_DATA__
-                    nd = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
-                    if nd:
-                        try:
-                            nd_data = json.loads(nd.group(1))
-                            pp = nd_data.get("props", {}).get("pageProps", {})
-                            for key in ("jobs", "jobListings", "postings", "jobPostings", "results", "opportunities"):
-                                listing = pp.get(key, [])
-                                if listing:
-                                    for item in listing:
-                                        role = item.get("title", "") or item.get("name", "")
-                                        company = (item.get("company") or {}).get("name", "") \
-                                                  or item.get("company_name", "") or item.get("companyName", "")
-                                        location = item.get("location", "") or item.get("city", "")
-                                        desc = re.sub(r"<[^>]+>", " ", item.get("description", "") or "")
-                                        job_url = item.get("url", "") or item.get("apply_url", "") or item.get("absolute_url", "")
-                                        if not job_url.startswith("http"):
-                                            job_url = url + job_url if job_url else url
-                                        if company and role:
-                                            score, _ = score_job(company, role, location, desc)
-                                            if score >= 28:
-                                                found.append(make_job(company, role, location, job_url, source_label, desc))
-                                    break
-                        except Exception:
-                            pass
-                    jobs.extend(found)
-                    if found:
-                        break  # Got results from this URL, skip fallback
-                except Exception:
-                    pass
-
     print(f"[VC Boards] {len(jobs)} jobs found")
     return jobs
 
@@ -1611,10 +1334,9 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_ashby(),
         scrape_workable(),
         scrape_wellfound(),
-        scrape_handshake(),
         scrape_yc_startup_jobs(),
-        scrape_lennys_jobs(),
-        scrape_builtin(),
+        scrape_himalayas(),
+        scrape_weworkremotely(),
         scrape_vc_boards(),
         return_exceptions=True,
     )

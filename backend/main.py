@@ -43,8 +43,9 @@ _load_dotenv()
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
-UPLOADS_DIR = pathlib.Path(__file__).parent / "uploads"
-UPLOADS_DIR.mkdir(exist_ok=True)
+# Use UPLOADS_DIR env var in production (Railway volume), fall back to local
+UPLOADS_DIR = pathlib.Path(os.environ.get("UPLOADS_DIR", str(pathlib.Path(__file__).parent / "uploads")))
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="RecruitIQ API")
 
@@ -54,9 +55,15 @@ _last_scrape_triggered: Optional[str] = None
 # In-memory cache for company summaries: company_name (lowercase) → summary string
 _company_summary_cache: dict = {}
 
+# CORS — allow localhost for dev + Vercel URL for production
+_frontend_url = os.environ.get("FRONTEND_URL", "")
+_allow_origins = ["http://localhost:5173", "http://localhost:3000"]
+if _frontend_url:
+    _allow_origins.append(_frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=_allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -945,10 +952,9 @@ def get_discovered_jobs(
         'indeed':     ['indeed'],
         'handshake':  ['handshake'],
         'yc_jobs':    ['yc work', 'workatastartup', 'yc startup'],
-        'lennys':     ["lenny's", 'lennys', "lenny"],
-        'builtin':    ['built in'],
-        'vc_boards':  ['vc portfolio', 'a16z', 'sequoia', 'greylock', 'general catalyst',
-                       'insight partners', 'bessemer', 'first round'],
+        'himalayas':  ['himalayas'],
+        'wwr':        ['we work remotely', 'weworkremotely'],
+        'vc_boards':  ['vc portfolio'],
     }
     if current_user:
         user_prefs = db.query(UserPreferences).filter(UserPreferences.user_id == current_user.id).first()
@@ -2581,3 +2587,303 @@ Return ONLY the JSON."""
 
     result = await _call_claude_json_async(prompt, max_tokens=1800)
     return result
+
+
+# ─────────────────────────────────────────────
+# EVENTS
+# ─────────────────────────────────────────────
+
+# In-memory cache for events
+_events_cache: dict = {"data": [], "fetched_at": None}
+
+@app.get("/api/events")
+async def get_events(location: str = "all", event_type: str = "all"):
+    import time as _time
+    from datetime import datetime as _dt, timezone as _tz
+
+    # Return cache if fresh (2 hours)
+    cache_age = (_time.time() - _events_cache["fetched_at"]) if _events_cache["fetched_at"] else 999
+    if cache_age < 7200 and _events_cache["data"]:
+        data = _events_cache["data"]
+    else:
+        data = await _fetch_events()
+        _events_cache["data"] = data
+        _events_cache["fetched_at"] = _time.time()
+
+    # Filter
+    results = data
+    if location != "all":
+        loc_lower = location.lower()
+        results = [e for e in results if loc_lower in (e.get("location") or "").lower() or loc_lower in (e.get("city") or "").lower()]
+    if event_type != "all":
+        results = [e for e in results if event_type.lower() in (e.get("event_type") or "").lower()]
+
+    return {"events": results, "total": len(results)}
+
+
+async def _fetch_events() -> list:
+    """Fetch recruitment events from Eventbrite and other free sources."""
+    import re as _re
+    events = []
+    eventbrite_key = os.getenv("EVENTBRITE_API_KEY", "")
+
+    # ── Eventbrite API ─────────────────────────────────────────────────────────
+    if eventbrite_key:
+        queries = [
+            {"q": "tech networking career", "location": "New York City, NY"},
+            {"q": "startup recruiting career fair", "location": "New York City, NY"},
+            {"q": "tech networking career", "location": "San Francisco, CA"},
+            {"q": "startup recruiting career fair", "location": "San Francisco, CA"},
+            {"q": "AI tech networking", "location": "New York City, NY"},
+            {"q": "AI tech networking", "location": "San Francisco, CA"},
+        ]
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                for q_params in queries:
+                    try:
+                        resp = await client.get(
+                            "https://www.eventbriteapi.com/v3/events/search/",
+                            params={
+                                "q": q_params["q"],
+                                "location.address": q_params["location"],
+                                "location.within": "25mi",
+                                "sort_by": "date",
+                                "expand": "organizer,venue",
+                                "start_date.range_start": _get_now_iso(),
+                                "token": eventbrite_key,
+                            },
+                            timeout=12.0,
+                        )
+                        if resp.status_code != 200:
+                            continue
+                        for ev in resp.json().get("events", []):
+                            name = ev.get("name", {}).get("text", "")
+                            desc = _re.sub(r"<[^>]+>", " ", ev.get("description", {}).get("html", "") or "")[:400]
+                            start = ev.get("start", {}).get("local", "")
+                            end   = ev.get("end", {}).get("local", "")
+                            url   = ev.get("url", "")
+                            is_free = ev.get("is_free", False)
+                            capacity = ev.get("capacity")
+                            venue = ev.get("venue") or {}
+                            venue_name = venue.get("name", "")
+                            address = (venue.get("address") or {})
+                            city = address.get("city", "")
+                            full_addr = address.get("localized_address_display", venue_name)
+                            organizer = (ev.get("organizer") or {}).get("name", "")
+                            is_online = ev.get("online_event", False)
+
+                            if not name or not start:
+                                continue
+
+                            # Classify event type
+                            name_lower = name.lower() + " " + desc.lower()
+                            if any(w in name_lower for w in ["career fair", "job fair", "hiring fair", "recruiting fair"]):
+                                etype = "Career Fair"
+                            elif any(w in name_lower for w in ["workshop", "bootcamp", "training", "seminar"]):
+                                etype = "Workshop"
+                            elif any(w in name_lower for w in ["conference", "summit", "forum", "expo"]):
+                                etype = "Conference"
+                            elif any(w in name_lower for w in ["info session", "information session", "office hour"]):
+                                etype = "Info Session"
+                            else:
+                                etype = "Networking"
+
+                            events.append({
+                                "id": ev.get("id", ""),
+                                "title": name,
+                                "description": desc,
+                                "start_date": start,
+                                "end_date": end,
+                                "url": url,
+                                "is_free": is_free,
+                                "capacity": capacity,
+                                "venue": full_addr or ("Online" if is_online else ""),
+                                "city": city or ("Virtual" if is_online else ""),
+                                "organizer": organizer,
+                                "event_type": etype,
+                                "source": "Eventbrite",
+                                "is_online": is_online,
+                            })
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"[Events/Eventbrite] Error: {e}")
+
+    # Deduplicate by title+date
+    seen = set()
+    unique = []
+    for e in events:
+        key = f"{e['title'].lower().strip()}|{e['start_date'][:10]}"
+        if key not in seen:
+            seen.add(key)
+            unique.append(e)
+
+    unique.sort(key=lambda x: x.get("start_date", ""))
+    print(f"[Events] {len(unique)} events found")
+    return unique
+
+
+def _get_now_iso():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ── News endpoints ─────────────────────────────────────────────────────────────
+
+# In-memory cache for news
+_news_cache: dict = {"data": [], "fetched_at": None}
+
+@app.get("/api/news")
+async def get_news(topic: str = "all"):
+    import time as _time
+
+    cache_age = (_time.time() - _news_cache["fetched_at"]) if _news_cache["fetched_at"] else 999
+    if cache_age < 7200 and _news_cache["data"]:
+        articles = _news_cache["data"]
+    else:
+        articles = await _fetch_news()
+        _news_cache["data"] = articles
+        _news_cache["fetched_at"] = _time.time()
+
+    if topic != "all":
+        articles = [a for a in articles if topic.lower() in (a.get("topics") or [])]
+
+    return {"articles": articles, "total": len(articles)}
+
+
+@app.post("/api/news/refresh")
+async def refresh_news():
+    _news_cache["fetched_at"] = None
+    articles = await _fetch_news()
+    _news_cache["data"] = articles
+    import time as _time
+    _news_cache["fetched_at"] = _time.time()
+    return {"articles": articles, "total": len(articles)}
+
+
+async def _fetch_news() -> list:
+    """Fetch AI and startup news from public RSS feeds. No API keys required."""
+    import xml.etree.ElementTree as ET
+    import email.utils as _eutils
+    from datetime import datetime as _dt
+
+    feeds = [
+        {"url": "https://techcrunch.com/category/artificial-intelligence/feed/", "source": "TechCrunch", "color": "bg-green-100 text-green-700"},
+        {"url": "https://techcrunch.com/category/startups/feed/", "source": "TechCrunch Startups", "color": "bg-green-100 text-green-700"},
+        {"url": "https://venturebeat.com/ai/feed/", "source": "VentureBeat", "color": "bg-blue-100 text-blue-700"},
+        {"url": "https://www.theverge.com/rss/index.xml", "source": "The Verge", "color": "bg-purple-100 text-purple-700"},
+        {"url": "https://www.wired.com/feed/tag/ai/latest/rss", "source": "Wired", "color": "bg-red-100 text-red-700"},
+        {"url": "https://www.technologyreview.com/feed/", "source": "MIT Tech Review", "color": "bg-slate-100 text-slate-700"},
+        {"url": "https://feeds.feedburner.com/TechCrunch/", "source": "TechCrunch", "color": "bg-green-100 text-green-700"},
+    ]
+
+    articles = []
+
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers={
+        "User-Agent": "Mozilla/5.0 (compatible; RecruitIQ/1.0; +https://recruitiq.app)",
+        "Accept": "application/rss+xml, application/xml, text/xml, */*",
+    }) as client:
+        for feed in feeds:
+            try:
+                resp = await client.get(feed["url"], timeout=10.0)
+                if resp.status_code != 200:
+                    continue
+
+                try:
+                    root = ET.fromstring(resp.text)
+                except ET.ParseError:
+                    continue
+
+                # Handle both RSS and Atom
+                ns = {"atom": "http://www.w3.org/2005/Atom"}
+
+                # RSS items
+                items = root.findall(".//item")
+                if not items:
+                    items = root.findall(".//atom:entry", ns)
+
+                for item in items[:15]:
+                    def get_text(tag, fallback=""):
+                        el = item.find(tag) or item.find(f"atom:{tag}", ns)
+                        if el is None: return fallback
+                        return (el.text or "").strip()
+
+                    title = get_text("title")
+                    link  = get_text("link")
+                    if not link:
+                        link_el = item.find("atom:link", ns)
+                        if link_el is not None:
+                            link = link_el.get("href", "")
+                    pub_date = get_text("pubDate") or get_text("published") or get_text("updated")
+                    desc = get_text("description") or get_text("summary") or get_text("content")
+                    desc = __import__('re').sub(r'<[^>]+>', ' ', desc)[:300].strip()
+
+                    # Try to get image
+                    image = ""
+                    media_content = item.find("{http://search.yahoo.com/mrss/}content")
+                    if media_content is not None:
+                        image = media_content.get("url", "")
+                    if not image:
+                        enclosure = item.find("enclosure")
+                        if enclosure is not None and "image" in (enclosure.get("type", "")):
+                            image = enclosure.get("url", "")
+
+                    # Parse date
+                    parsed_date = ""
+                    if pub_date:
+                        try:
+                            parsed_date = str(_eutils.parsedate_to_datetime(pub_date).isoformat())
+                        except Exception:
+                            try:
+                                for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
+                                    try:
+                                        parsed_date = _dt.strptime(pub_date[:19], fmt[:len(pub_date[:19])]).isoformat()
+                                        break
+                                    except ValueError:
+                                        pass
+                            except Exception:
+                                pass
+
+                    if not title or not link:
+                        continue
+
+                    # Auto-tag topics
+                    text = (title + " " + desc).lower()
+                    topics = []
+                    if any(w in text for w in ["fund", "raise", "series", "valuation", "ipo", "acquisition", "acquire", "unicorn"]):
+                        topics.append("funding")
+                    if any(w in text for w in ["hire", "hiring", "layoff", "laid off", "job", "talent", "workforce", "headcount"]):
+                        topics.append("hiring")
+                    if any(w in text for w in ["gpt", "llm", "model", "openai", "anthropic", "gemini", "claude", "research", "paper", "benchmark"]):
+                        topics.append("ai_research")
+                    if any(w in text for w in ["regulation", "law", "congress", "policy", "ban", "rule", "compliance", "legal", "eu ai act"]):
+                        topics.append("policy")
+                    if any(w in text for w in ["product", "launch", "release", "feature", "update", "announce", "ship"]):
+                        topics.append("products")
+                    if not topics:
+                        topics.append("ai_research")
+
+                    articles.append({
+                        "title": title,
+                        "url": link,
+                        "source": feed["source"],
+                        "source_color": feed["color"],
+                        "description": desc,
+                        "image": image,
+                        "published_at": parsed_date,
+                        "topics": topics,
+                    })
+            except Exception as e:
+                print(f"[News] Feed error {feed['source']}: {e}")
+
+    # Sort by date descending, deduplicate by title
+    seen_titles = set()
+    unique = []
+    for a in sorted(articles, key=lambda x: x.get("published_at", ""), reverse=True):
+        key = a["title"].lower().strip()[:80]
+        if key not in seen_titles:
+            seen_titles.add(key)
+            unique.append(a)
+
+    print(f"[News] {len(unique)} articles fetched")
+    return unique[:80]
