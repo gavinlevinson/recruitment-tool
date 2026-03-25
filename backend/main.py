@@ -2593,65 +2593,76 @@ Return ONLY the JSON."""
 # EVENTS
 # ─────────────────────────────────────────────
 
-# In-memory cache for events
-_events_cache: dict = {"data": [], "fetched_at": None}
+# In-memory cache for events — keyed by location string so each city is cached separately
+_events_cache: dict = {}   # { location_key: {"data": [], "fetched_at": float} }
 
 @app.get("/api/events")
 async def get_events(location: str = "all", event_type: str = "all"):
     import time as _time
-    from datetime import datetime as _dt, timezone as _tz
 
-    # Return cache if fresh (2 hours)
-    cache_age = (_time.time() - _events_cache["fetched_at"]) if _events_cache["fetched_at"] else 999
-    if cache_age < 7200 and _events_cache["data"]:
-        data = _events_cache["data"]
+    eventbrite_key = os.getenv("EVENTBRITE_API_KEY", "")
+    if not eventbrite_key:
+        raise HTTPException(status_code=503, detail="EVENTBRITE_API_KEY not configured")
+
+    loc_key = (location or "all").strip().lower()
+
+    # Return cached data for this location if fresh (2 hours)
+    entry = _events_cache.get(loc_key)
+    cache_age = (_time.time() - entry["fetched_at"]) if entry and entry.get("fetched_at") else 999
+    if cache_age < 7200 and entry and entry.get("data"):
+        data = entry["data"]
     else:
-        data = await _fetch_events()
-        _events_cache["data"] = data
-        _events_cache["fetched_at"] = _time.time()
+        data = await _fetch_events(location)
+        _events_cache[loc_key] = {"data": data, "fetched_at": _time.time()}
 
-    # Filter
+    # Apply event type filter
     results = data
-    if location != "all":
-        loc_lower = location.lower()
-        results = [e for e in results if loc_lower in (e.get("location") or "").lower() or loc_lower in (e.get("city") or "").lower()]
     if event_type != "all":
         results = [e for e in results if event_type.lower() in (e.get("event_type") or "").lower()]
 
     return {"events": results, "total": len(results)}
 
 
-async def _fetch_events() -> list:
-    """Fetch recruitment events from Eventbrite and other free sources."""
+async def _fetch_events(location: str = "all") -> list:
+    """Fetch recruitment events from Eventbrite for the given location."""
     import re as _re
     events = []
     eventbrite_key = os.getenv("EVENTBRITE_API_KEY", "")
 
     # ── Eventbrite API ─────────────────────────────────────────────────────────
     if eventbrite_key:
-        queries = [
-            {"q": "tech networking career", "location": "New York City, NY"},
-            {"q": "startup recruiting career fair", "location": "New York City, NY"},
-            {"q": "tech networking career", "location": "San Francisco, CA"},
-            {"q": "startup recruiting career fair", "location": "San Francisco, CA"},
-            {"q": "AI tech networking", "location": "New York City, NY"},
-            {"q": "AI tech networking", "location": "San Francisco, CA"},
+        # Build query list based on location
+        loc_str = location.strip() if location and location.lower() not in ("all", "") else None
+        search_terms = [
+            "tech networking career",
+            "startup recruiting career fair",
+            "AI tech hiring",
         ]
+        if loc_str:
+            queries = [{"q": q, "location": loc_str} for q in search_terms]
+        else:
+            # No specific location — search broadly (virtual + general)
+            queries = [{"q": q, "location": "Online"} for q in search_terms]
+
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
                 for q_params in queries:
                     try:
+                        params = {
+                            "q": q_params["q"],
+                            "sort_by": "date",
+                            "expand": "organizer,venue",
+                            "start_date.range_start": _get_now_iso(),
+                            "token": eventbrite_key,
+                        }
+                        if q_params["location"].lower() == "online":
+                            params["online_event"] = "true"
+                        else:
+                            params["location.address"] = q_params["location"]
+                            params["location.within"] = "25mi"
                         resp = await client.get(
                             "https://www.eventbriteapi.com/v3/events/search/",
-                            params={
-                                "q": q_params["q"],
-                                "location.address": q_params["location"],
-                                "location.within": "25mi",
-                                "sort_by": "date",
-                                "expand": "organizer,venue",
-                                "start_date.range_start": _get_now_iso(),
-                                "token": eventbrite_key,
-                            },
+                            params=params,
                             timeout=12.0,
                         )
                         if resp.status_code != 200:
@@ -2768,14 +2779,39 @@ async def _fetch_news() -> list:
     from datetime import datetime as _dt
 
     feeds = [
-        {"url": "https://techcrunch.com/category/artificial-intelligence/feed/", "source": "TechCrunch", "color": "bg-green-100 text-green-700"},
-        {"url": "https://techcrunch.com/category/startups/feed/", "source": "TechCrunch Startups", "color": "bg-green-100 text-green-700"},
-        {"url": "https://venturebeat.com/ai/feed/", "source": "VentureBeat", "color": "bg-blue-100 text-blue-700"},
-        {"url": "https://www.theverge.com/rss/index.xml", "source": "The Verge", "color": "bg-purple-100 text-purple-700"},
-        {"url": "https://www.wired.com/feed/tag/ai/latest/rss", "source": "Wired", "color": "bg-red-100 text-red-700"},
-        {"url": "https://www.technologyreview.com/feed/", "source": "MIT Tech Review", "color": "bg-slate-100 text-slate-700"},
-        {"url": "https://feeds.feedburner.com/TechCrunch/", "source": "TechCrunch", "color": "bg-green-100 text-green-700"},
+        # AI & ML focused
+        {"url": "https://techcrunch.com/category/artificial-intelligence/feed/", "source": "TechCrunch AI", "color": "bg-green-100 text-green-700"},
+        {"url": "https://venturebeat.com/ai/feed/",                               "source": "VentureBeat",   "color": "bg-blue-100 text-blue-700"},
+        {"url": "https://www.technologyreview.com/feed/",                         "source": "MIT Tech Review","color": "bg-slate-100 text-slate-700"},
+        {"url": "https://www.wired.com/feed/tag/ai/latest/rss",                   "source": "Wired AI",      "color": "bg-red-100 text-red-700"},
+        {"url": "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml", "source": "The Verge",  "color": "bg-purple-100 text-purple-700"},
+        # Startups & VC
+        {"url": "https://techcrunch.com/category/startups/feed/",                 "source": "TechCrunch",    "color": "bg-green-100 text-green-700"},
+        {"url": "https://a16z.com/feed/",                                         "source": "a16z",          "color": "bg-indigo-100 text-indigo-700"},
+        {"url": "https://review.firstround.com/rss",                              "source": "First Round",   "color": "bg-orange-100 text-orange-700"},
+        {"url": "https://www.ycombinator.com/blog/rss.xml",                       "source": "Y Combinator",  "color": "bg-amber-100 text-amber-700"},
+        # Business & markets
+        {"url": "https://feeds.reuters.com/reuters/technologyNews",               "source": "Reuters Tech",  "color": "bg-sky-100 text-sky-700"},
+        {"url": "https://feeds.arstechnica.com/arstechnica/technology-lab",       "source": "Ars Technica",  "color": "bg-rose-100 text-rose-700"},
+        {"url": "https://www.businessinsider.com/tech/rss",                       "source": "Business Insider","color": "bg-teal-100 text-teal-700"},
     ]
+
+    # Keywords that indicate an article is relevant to AI/startups/careers
+    RELEVANT_KEYWORDS = {
+        "ai", "artificial intelligence", "machine learning", "startup", "venture", "funding",
+        "series a", "series b", "seed round", "ipo", "acquisition", "llm", "openai", "anthropic",
+        "google", "microsoft", "meta", "amazon", "nvidia", "hiring", "layoff", "tech job",
+        "saas", "foundation model", "generative", "gpt", "claude", "gemini", "agent",
+        "robotics", "automation", "fintech", "biotech", "climate tech", "founder", "ceo",
+        "valuation", "unicorn", "product launch", "enterprise", "regulation", "policy",
+    }
+    # Keywords that indicate an article is NOT relevant (gaming, sports, entertainment, etc.)
+    IRRELEVANT_KEYWORDS = {
+        "nintendo", "playstation", "xbox", "gaming", "fortnite", "minecraft", "pokemon",
+        "nba", "nfl", "mlb", "nhl", "soccer", "football", "basketball", "sports",
+        "movie", "film", "netflix", "hulu", "disney", "streaming show", "celebrity",
+        "recipe", "fashion", "beauty", "makeup", "skincare",
+    }
 
     articles = []
 
@@ -2803,9 +2839,12 @@ async def _fetch_news() -> list:
                     items = root.findall(".//atom:entry", ns)
 
                 for item in items[:15]:
-                    def get_text(tag, fallback=""):
-                        el = item.find(tag) or item.find(f"atom:{tag}", ns)
-                        if el is None: return fallback
+                    def get_text(tag, fallback="", _item=item):
+                        el = _item.find(tag)
+                        if el is None:
+                            el = _item.find(f"atom:{tag}", ns)
+                        if el is None:
+                            return fallback
                         return (el.text or "").strip()
 
                     title = get_text("title")
@@ -2847,8 +2886,12 @@ async def _fetch_news() -> list:
                     if not title or not link:
                         continue
 
-                    # Auto-tag topics
+                    # Filter irrelevant / off-topic articles
                     text = (title + " " + desc).lower()
+                    if any(w in text for w in IRRELEVANT_KEYWORDS):
+                        continue
+
+                    # Auto-tag topics
                     topics = []
                     if any(w in text for w in ["fund", "raise", "series", "valuation", "ipo", "acquisition", "acquire", "unicorn"]):
                         topics.append("funding")
@@ -2887,3 +2930,202 @@ async def _fetch_news() -> list:
 
     print(f"[News] {len(unique)} articles fetched")
     return unique[:80]
+
+
+# ── Nylas Gmail Integration ────────────────────────────────────────────────────
+#
+# Flow:
+#   1. GET  /api/nylas/auth-url  → returns a URL the user visits to grant Gmail access
+#   2. GET  /api/nylas/callback  → Nylas redirects here; we exchange code → grant_id
+#   3. GET  /api/nylas/status    → returns { connected: bool, email: str|null }
+#   4. POST /api/nylas/send      → send an email via Nylas (requires connected)
+#   5. GET  /api/nylas/threads   → recent email threads (for reply detection)
+#   6. DELETE /api/nylas/disconnect → revoke and clear grant_id
+#
+# Required .env vars:
+#   NYLAS_CLIENT_ID=...
+#   NYLAS_API_KEY=...       (your Nylas v3 API key / secret)
+#   NYLAS_REDIRECT_URI=http://localhost:8000/api/nylas/callback
+#   FRONTEND_URL=http://localhost:5173
+
+NYLAS_CLIENT_ID    = os.getenv("NYLAS_CLIENT_ID", "")
+NYLAS_API_KEY      = os.getenv("NYLAS_API_KEY", "")
+NYLAS_REDIRECT_URI = os.getenv("NYLAS_REDIRECT_URI", "http://localhost:8000/api/nylas/callback")
+FRONTEND_URL       = os.getenv("FRONTEND_URL", "http://localhost:5173")
+NYLAS_API_BASE     = "https://api.us.nylas.com"
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+async def _nylas_get(path: str, grant_id: str) -> dict:
+    """Make a Nylas v3 GET request authenticated with the user's grant."""
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            f"{NYLAS_API_BASE}/v3/grants/{grant_id}{path}",
+            headers={"Authorization": f"Bearer {NYLAS_API_KEY}"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def _nylas_post(path: str, grant_id: str, payload: dict) -> dict:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(
+            f"{NYLAS_API_BASE}/v3/grants/{grant_id}{path}",
+            headers={
+                "Authorization": f"Bearer {NYLAS_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/nylas/auth-url")
+async def nylas_auth_url(current_user: User = Depends(get_current_user)):
+    """Return the Nylas-hosted auth URL for the user to visit."""
+    if not NYLAS_CLIENT_ID or not NYLAS_API_KEY:
+        raise HTTPException(status_code=503, detail="Nylas not configured (add NYLAS_CLIENT_ID and NYLAS_API_KEY to .env)")
+
+    import urllib.parse
+    params = {
+        "client_id":     NYLAS_CLIENT_ID,
+        "redirect_uri":  NYLAS_REDIRECT_URI,
+        "response_type": "code",
+        "access_type":   "online",
+        "state":         str(current_user.id),
+        "provider":      "google",
+        "scope":         "openid email https://www.googleapis.com/auth/gmail.modify",
+    }
+    url = f"{NYLAS_API_BASE}/v3/connect/auth?" + urllib.parse.urlencode(params)
+    return {"url": url}
+
+
+@app.get("/api/nylas/callback")
+async def nylas_callback(code: str, state: str = "", db: Session = Depends(get_db)):
+    """Nylas redirects here after the user grants access. Exchange code → grant_id."""
+    from fastapi.responses import RedirectResponse
+
+    if not NYLAS_API_KEY:
+        return RedirectResponse(url=f"{FRONTEND_URL}/profile?nylas=error&reason=not_configured")
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{NYLAS_API_BASE}/v3/connect/token",
+                headers={"Authorization": f"Bearer {NYLAS_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "client_id":    NYLAS_CLIENT_ID,
+                    "redirect_uri": NYLAS_REDIRECT_URI,
+                    "code":         code,
+                    "grant_type":   "authorization_code",
+                },
+            )
+            if resp.status_code != 200:
+                print(f"[Nylas] Token exchange failed: {resp.status_code} {resp.text}")
+                return RedirectResponse(url=f"{FRONTEND_URL}/profile?nylas=error&reason=token_exchange")
+
+            data = resp.json()
+            grant_id = data.get("grant_id") or data.get("id", "")
+    except Exception as e:
+        print(f"[Nylas] Callback error: {e}")
+        return RedirectResponse(url=f"{FRONTEND_URL}/profile?nylas=error&reason=exception")
+
+    # Store grant_id on the user
+    user_id = int(state) if state.isdigit() else None
+    if user_id:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            user.nylas_grant_id = grant_id
+            db.commit()
+
+    return RedirectResponse(url=f"{FRONTEND_URL}/profile?nylas=connected")
+
+
+@app.get("/api/nylas/status")
+async def nylas_status(current_user: User = Depends(get_current_user)):
+    """Return whether the user has Gmail connected."""
+    if not current_user.nylas_grant_id:
+        return {"connected": False, "email": None}
+
+    # Verify the grant is still valid by fetching the user's profile
+    try:
+        data = await _nylas_get("/profile", current_user.nylas_grant_id)
+        email = (data.get("data") or data).get("email", "")
+        return {"connected": True, "email": email}
+    except Exception:
+        return {"connected": False, "email": None}
+
+
+class NylasSendPayload(BaseModel):
+    to: str           # recipient email
+    subject: str
+    body: str         # plain text body
+    reply_to_thread: Optional[str] = None  # thread_id if replying
+
+
+@app.post("/api/nylas/send")
+async def nylas_send(
+    payload: NylasSendPayload,
+    current_user: User = Depends(get_current_user),
+):
+    """Send an email via Nylas on behalf of the authenticated user."""
+    if not current_user.nylas_grant_id:
+        raise HTTPException(status_code=400, detail="Gmail not connected. Connect via Profile → Integrations.")
+
+    msg = {
+        "to":      [{"email": payload.to}],
+        "subject": payload.subject,
+        "body":    payload.body,
+    }
+    if payload.reply_to_thread:
+        msg["thread_id"] = payload.reply_to_thread
+
+    try:
+        result = await _nylas_post("/messages/send", current_user.nylas_grant_id, msg)
+        return {"ok": True, "message_id": (result.get("data") or result).get("id", "")}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"Nylas send failed: {e.response.text[:200]}")
+
+
+@app.get("/api/nylas/threads")
+async def nylas_threads(
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+):
+    """Fetch recent email threads (for reply detection)."""
+    if not current_user.nylas_grant_id:
+        raise HTTPException(status_code=400, detail="Gmail not connected")
+
+    try:
+        data = await _nylas_get(f"/threads?limit={limit}", current_user.nylas_grant_id)
+        threads = data.get("data", data) if isinstance(data, dict) else data
+        return {"threads": threads}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"Nylas error: {e.response.text[:200]}")
+
+
+@app.delete("/api/nylas/disconnect")
+async def nylas_disconnect(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Revoke Nylas grant and disconnect Gmail from this account."""
+    grant_id = current_user.nylas_grant_id
+    if grant_id:
+        # Best-effort revocation
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.delete(
+                    f"{NYLAS_API_BASE}/v3/grants/{grant_id}",
+                    headers={"Authorization": f"Bearer {NYLAS_API_KEY}"},
+                )
+        except Exception:
+            pass
+        current_user.nylas_grant_id = None
+        db.commit()
+
+    return {"ok": True}

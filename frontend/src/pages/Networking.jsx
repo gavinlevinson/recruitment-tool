@@ -4,7 +4,7 @@ import {
   ChevronDown, Mail, Check, RefreshCw, Users, Building2, Linkedin,
   Copy, Sparkles, ArrowLeft, FileText, MapPin,
 } from 'lucide-react'
-import { contactsApi, jobsApi, emailTemplatesApi, networkingApi, coachApi } from '../api'
+import { contactsApi, jobsApi, emailTemplatesApi, networkingApi, coachApi, nylasApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 const CONNECTION_TYPES = [
@@ -415,6 +415,33 @@ function EmailComposerModal({ isOpen, onClose, contact, templates, userUniversit
   const [error, setError] = useState(null)
   const [showTemplateSave, setShowTemplateSave] = useState(false)
   const [newTemplateName, setNewTemplateName] = useState('')
+  const [gmailConnected, setGmailConnected] = useState(null)  // null = loading, bool otherwise
+  const [sending, setSending] = useState(false)
+  const [sendResult, setSendResult] = useState(null)  // { ok, text }
+
+  // Check Gmail connection status once
+  useEffect(() => {
+    nylasApi.getStatus()
+      .then(res => setGmailConnected(res.data?.connected || false))
+      .catch(() => setGmailConnected(false))
+  }, [])
+
+  const handleSendViaGmail = async () => {
+    if (!contact.email) { setError('This contact has no email address saved.'); return }
+    if (!subject || !body) { setError('Generate or write the email first.'); return }
+    setSending(true)
+    setSendResult(null)
+    setError(null)
+    try {
+      await nylasApi.send({ to: contact.email, subject, body })
+      setSendResult({ ok: true, text: `Sent to ${contact.email}` })
+    } catch (err) {
+      const msg = err?.response?.data?.detail || 'Send failed. Check your Gmail connection in Profile.'
+      setError(msg)
+    } finally {
+      setSending(false)
+    }
+  }
 
   // Auto-detect alumni context
   const alumniContext = (userUniversity && contact?.school && contact.school.toLowerCase().includes(userUniversity.toLowerCase()))
@@ -594,6 +621,26 @@ function EmailComposerModal({ isOpen, onClose, contact, templates, userUniversit
                   Download PDF
                 </a>
               </div>
+
+              {/* Send via Gmail */}
+              {sendResult?.ok ? (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-700 font-medium">
+                  <Check size={15} /> {sendResult.text}
+                </div>
+              ) : gmailConnected ? (
+                <button
+                  onClick={handleSendViaGmail}
+                  disabled={sending}
+                  className="w-full btn-primary flex items-center justify-center gap-2 text-sm py-2.5"
+                >
+                  {sending ? <><RefreshCw size={14} className="animate-spin" /> Sending…</> : <><Mail size={14} /> Send via Gmail</>}
+                </button>
+              ) : gmailConnected === false ? (
+                <p className="text-xs text-center text-navy-400">
+                  <a href="/profile" className="text-violet-DEFAULT hover:underline font-medium">Connect Gmail in Profile</a>{' '}
+                  to send directly from RecruitIQ
+                </p>
+              ) : null}
             </div>
           )}
         </div>

@@ -40,6 +40,8 @@ class User(Base):
     career_stage = Column(String, default="college_senior")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Nylas Gmail integration
+    nylas_grant_id = Column(String, nullable=True)   # set after OAuth callback
 
 
 class UserProfile(Base):
@@ -244,6 +246,7 @@ def run_migrations():
         "ALTER TABLE jobs ADD COLUMN interview_date TEXT",
         "ALTER TABLE jobs ADD COLUMN reminder_date TEXT",
         "ALTER TABLE discovered_jobs ADD COLUMN deadline TEXT",
+        "ALTER TABLE users ADD COLUMN nylas_grant_id TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:

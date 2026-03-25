@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  MapPin, Clock, Calendar, ExternalLink, Plus, Users, Tag, Zap, X,
+  MapPin, Clock, Calendar, ExternalLink, Plus, Users, Tag, Zap, X, Search,
 } from 'lucide-react'
 import { eventsApi } from '../api'
 
@@ -17,20 +17,6 @@ const DEFAULT_TYPE_META = { bg: 'bg-slate-100', text: 'text-slate-700', border: 
 
 const MONTH_ABBR = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
 
-const LOCATION_TABS = [
-  { id: 'all',   label: 'All' },
-  { id: 'nyc',   label: 'NYC' },
-  { id: 'sf',    label: 'SF' },
-  { id: 'virtual', label: 'Virtual' },
-]
-
-const LOCATION_QUERY_MAP = {
-  all:     'all',
-  nyc:     'new york',
-  sf:      'san francisco',
-  virtual: 'virtual',
-}
-
 const TYPE_FILTERS = [
   { id: 'all',           label: 'All' },
   { id: 'Career Fair',   label: 'Career Fair' },
@@ -38,6 +24,17 @@ const TYPE_FILTERS = [
   { id: 'Conference',    label: 'Conference' },
   { id: 'Info Session',  label: 'Info Session' },
   { id: 'Workshop',      label: 'Workshop' },
+]
+
+const QUICK_LOCATIONS = [
+  'New York, NY',
+  'San Francisco, CA',
+  'Los Angeles, CA',
+  'Chicago, IL',
+  'Boston, MA',
+  'Austin, TX',
+  'Seattle, WA',
+  'Virtual',
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -189,7 +186,7 @@ function EventCard({ event }) {
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────
-function EmptyState({ hasKey, onAddManual }) {
+function EmptyState({ hasKey, searched, onAddManual }) {
   if (!hasKey) {
     return (
       <div className="col-span-full flex flex-col items-center justify-center py-16 px-4">
@@ -206,7 +203,7 @@ function EmptyState({ hasKey, onAddManual }) {
             <p className="text-navy-400 font-sans font-semibold text-xs mb-1">backend/.env</p>
             <p>EVENTBRITE_API_KEY=your_key_here</p>
           </div>
-          <div className="space-y-1 text-xs text-navy-500">
+          <div className="space-y-1 text-xs text-navy-500 text-left">
             <p>
               1. Go to{' '}
               <a
@@ -236,8 +233,14 @@ function EmptyState({ hasKey, onAddManual }) {
       <div className="w-12 h-12 rounded-xl bg-navy-100 flex items-center justify-center mx-auto mb-4">
         <Calendar size={22} className="text-navy-400" />
       </div>
-      <h3 className="font-semibold text-navy-700 mb-1">No events found</h3>
-      <p className="text-sm text-navy-400">Try a different location or event type filter.</p>
+      <h3 className="font-semibold text-navy-700 mb-1">
+        {searched ? 'No events found for that location' : 'Search for events near you'}
+      </h3>
+      <p className="text-sm text-navy-400">
+        {searched
+          ? 'Try a broader location (e.g. "New York") or a different event type.'
+          : 'Enter a city above and click Search.'}
+      </p>
     </div>
   )
 }
@@ -299,7 +302,6 @@ function AddEventModal({ onClose, onSave }) {
 
           {/* Body */}
           <div className="px-6 py-5 space-y-4">
-            {/* Title */}
             <div>
               <label className="block text-xs font-semibold text-navy-600 mb-1">Event Title *</label>
               <input
@@ -313,7 +315,6 @@ function AddEventModal({ onClose, onSave }) {
               {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
             </div>
 
-            {/* Date */}
             <div>
               <label className="block text-xs font-semibold text-navy-600 mb-1">Date & Time *</label>
               <input
@@ -327,7 +328,6 @@ function AddEventModal({ onClose, onSave }) {
               {errors.date && <p className="text-xs text-red-500 mt-1">{errors.date}</p>}
             </div>
 
-            {/* Location */}
             <div>
               <label className="block text-xs font-semibold text-navy-600 mb-1">Location / Venue</label>
               <input
@@ -338,7 +338,6 @@ function AddEventModal({ onClose, onSave }) {
               />
             </div>
 
-            {/* URL */}
             <div>
               <label className="block text-xs font-semibold text-navy-600 mb-1">Event URL</label>
               <input
@@ -350,7 +349,6 @@ function AddEventModal({ onClose, onSave }) {
               />
             </div>
 
-            {/* Notes */}
             <div>
               <label className="block text-xs font-semibold text-navy-600 mb-1">Notes</label>
               <textarea
@@ -363,7 +361,6 @@ function AddEventModal({ onClose, onSave }) {
             </div>
           </div>
 
-          {/* Footer */}
           <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-navy-100">
             <button onClick={onClose} className="btn-secondary text-sm">Cancel</button>
             <button onClick={handleSave} className="btn-primary text-sm">Save Event</button>
@@ -376,42 +373,63 @@ function AddEventModal({ onClose, onSave }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function Events() {
-  const [location, setLocation]       = useState('all')
-  const [eventType, setEventType]     = useState('all')
-  const [events, setEvents]           = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [hasKey, setHasKey]           = useState(true)   // assume true until proven otherwise
-  const [showModal, setShowModal]     = useState(false)
-  const [manualEvents, setManualEvents] = useState(() => {
+  const [locationInput, setLocationInput] = useState('')
+  const [searchedLocation, setSearchedLocation] = useState('')  // what was actually searched
+  const [eventType, setEventType]         = useState('all')
+  const [events, setEvents]               = useState([])
+  const [loading, setLoading]             = useState(false)
+  const [hasKey, setHasKey]               = useState(true)
+  const [showModal, setShowModal]         = useState(false)
+  const [manualEvents, setManualEvents]   = useState(() => {
     try { return JSON.parse(localStorage.getItem('recruitiq_manual_events') || '[]') } catch { return [] }
   })
+  const inputRef = useRef(null)
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
-  const fetchEvents = useCallback(async () => {
+  const fetchEvents = useCallback(async (loc, type) => {
     setLoading(true)
     try {
       const params = {
-        location: LOCATION_QUERY_MAP[location] || 'all',
-        event_type: eventType === 'all' ? 'all' : eventType,
+        location: loc || 'all',
+        event_type: type === 'all' ? 'all' : type,
       }
       const res  = await eventsApi.getAll(params)
       const list = res.data?.events || []
-      setHasKey(list.length > 0 || res.data?.total !== undefined)
+      setHasKey(true)
       setEvents(list)
-      // If no events came back, check if key is missing
-      if (list.length === 0 && res.data?.total === 0) {
-        // Could be no results — that's fine; only flag missing key if backend says so
-        setHasKey(true)
+    } catch (err) {
+      const status = err?.response?.status
+      if (status === 503) {
+        setHasKey(false)
       }
-    } catch {
-      setHasKey(false)
       setEvents([])
     } finally {
       setLoading(false)
     }
-  }, [location, eventType])
+  }, [])
 
-  useEffect(() => { fetchEvents() }, [fetchEvents])
+  // Check if Eventbrite key is configured on mount
+  useEffect(() => {
+    fetchEvents('', 'all')
+  }, [fetchEvents])
+
+  function handleSearch(e) {
+    e?.preventDefault()
+    const loc = locationInput.trim()
+    setSearchedLocation(loc)
+    fetchEvents(loc, eventType)
+  }
+
+  function handleQuickLocation(loc) {
+    setLocationInput(loc)
+    setSearchedLocation(loc)
+    fetchEvents(loc, eventType)
+  }
+
+  function handleTypeChange(type) {
+    setEventType(type)
+    fetchEvents(searchedLocation, type)
+  }
 
   // ── Manual events helpers ──────────────────────────────────────────────────
   function saveManual(event) {
@@ -427,18 +445,18 @@ export default function Events() {
     localStorage.setItem('recruitiq_manual_events', JSON.stringify(updated))
   }
 
-  // ── Combine & filter manual events to current filters ─────────────────────
+  // Filter manual events to match current location/type
   const filteredManual = manualEvents.filter(e => {
     const locMatch =
-      location === 'all' ||
-      (LOCATION_QUERY_MAP[location] || '').toLowerCase() === 'virtual'
-        ? (location === 'virtual' ? (e.city || '').toLowerCase().includes('virtual') : true)
-        : (e.city || '').toLowerCase().includes(LOCATION_QUERY_MAP[location] || '')
+      !searchedLocation ||
+      (e.city || '').toLowerCase().includes(searchedLocation.toLowerCase()) ||
+      (e.venue || '').toLowerCase().includes(searchedLocation.toLowerCase())
     const typeMatch = eventType === 'all' || (e.event_type || '') === eventType
     return locMatch && typeMatch
   })
 
   const allEvents = [...filteredManual, ...events]
+  const hasSearched = !!searchedLocation
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -467,21 +485,46 @@ export default function Events() {
           </button>
         </div>
 
-        {/* ── Location tabs ───────────────────────────────────────────────── */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {LOCATION_TABS.map(tab => (
+        {/* ── Location search ─────────────────────────────────────────────── */}
+        <div className="card p-4 space-y-3">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <div className="relative flex-1">
+              <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-400 pointer-events-none" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={locationInput}
+                onChange={e => setLocationInput(e.target.value)}
+                placeholder="Enter your city or 'Virtual'…"
+                className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-navy-200 text-sm text-navy-900 placeholder-navy-400 focus:outline-none focus:ring-2 focus:ring-violet-DEFAULT/30 focus:border-violet-DEFAULT"
+              />
+            </div>
             <button
-              key={tab.id}
-              onClick={() => setLocation(tab.id)}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors duration-150 ${
-                location === tab.id
-                  ? 'bg-violet-DEFAULT text-white shadow-sm'
-                  : 'bg-white text-navy-600 border border-navy-200 hover:border-violet-DEFAULT hover:text-violet-DEFAULT'
-              }`}
+              type="submit"
+              className="btn-primary flex items-center gap-2 px-5 text-sm"
             >
-              {tab.label}
+              <Search size={15} />
+              Search
             </button>
-          ))}
+          </form>
+
+          {/* Quick location chips */}
+          <div className="flex flex-wrap gap-1.5">
+            <span className="text-xs text-navy-400 self-center mr-1">Quick:</span>
+            {QUICK_LOCATIONS.map(loc => (
+              <button
+                key={loc}
+                onClick={() => handleQuickLocation(loc)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors duration-150 ${
+                  searchedLocation === loc
+                    ? 'bg-violet-DEFAULT text-white border-violet-DEFAULT'
+                    : 'bg-white text-navy-600 border-navy-200 hover:border-violet-DEFAULT hover:text-violet-DEFAULT'
+                }`}
+              >
+                {loc}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ── Event type filter chips ─────────────────────────────────────── */}
@@ -492,7 +535,7 @@ export default function Events() {
             return (
               <button
                 key={f.id}
-                onClick={() => setEventType(f.id)}
+                onClick={() => handleTypeChange(f.id)}
                 className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors duration-150 ${
                   active
                     ? meta
@@ -510,16 +553,13 @@ export default function Events() {
         {/* ── Events grid ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {loading ? (
-            // Loading skeletons
-            Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
+            Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
           ) : allEvents.length === 0 ? (
-            // Empty / no-key state spans both columns
-            <EmptyState hasKey={hasKey} onAddManual={() => setShowModal(true)} />
+            <EmptyState hasKey={hasKey} searched={hasSearched} onAddManual={() => setShowModal(true)} />
           ) : (
             allEvents.map(event => (
               <div key={event.id || event.title} className="relative group">
                 <EventCard event={event} />
-                {/* Remove button for manual events */}
                 {event.source === 'Manual' && (
                   <button
                     onClick={() => removeManual(event.id)}
@@ -538,7 +578,8 @@ export default function Events() {
         {!loading && allEvents.length > 0 && (
           <p className="text-xs text-navy-400 text-center">
             {allEvents.length} event{allEvents.length !== 1 ? 's' : ''} found
-            {manualEvents.length > 0 && ` · ${filteredManual.length} added manually`}
+            {searchedLocation && ` near ${searchedLocation}`}
+            {filteredManual.length > 0 && ` · ${filteredManual.length} added manually`}
           </p>
         )}
       </div>

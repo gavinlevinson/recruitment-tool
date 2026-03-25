@@ -3,10 +3,10 @@ import { useLocation } from 'react-router-dom'
 import {
   Upload, FileText, Check, RefreshCw, User, GraduationCap, BookOpen,
   MapPin, Briefcase, Zap, AlertCircle, ChevronDown, Sparkles, X,
-  Download, Eye, EyeOff,
+  Download, Eye, EyeOff, Mail, Link2, Link2Off,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { profileApi, authApi } from '../api'
+import { profileApi, authApi, nylasApi } from '../api'
 
 const BASE_API = 'http://localhost:8000/api'
 function fileDownloadUrl(fileType) {
@@ -170,11 +170,37 @@ export default function Profile() {
   const [infoForm, setInfoForm] = useState({})
   const [savingInfo, setSavingInfo] = useState(false)
 
+  // Nylas Gmail state
+  const [nylasStatus, setNylasStatus]       = useState(null)   // { connected, email }
+  const [nylasLoading, setNylasLoading]     = useState(false)
+  const [nylasMsg, setNylasMsg]             = useState(null)   // success/error banner
+
   useEffect(() => {
     profileApi.get()
       .then(res => { setProfile(res.data.profile) })
       .catch(() => {})
       .finally(() => setLoading(false))
+
+    // Check Nylas status
+    nylasApi.getStatus()
+      .then(res => setNylasStatus(res.data))
+      .catch(() => setNylasStatus({ connected: false, email: null }))
+
+    // Handle redirect back from Nylas OAuth
+    const params = new URLSearchParams(window.location.search)
+    const nylasParam = params.get('nylas')
+    if (nylasParam === 'connected') {
+      setNylasMsg({ type: 'success', text: 'Gmail connected successfully!' })
+      // Refresh status after redirect
+      nylasApi.getStatus()
+        .then(res => setNylasStatus(res.data))
+        .catch(() => {})
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (nylasParam === 'error') {
+      const reason = params.get('reason') || 'unknown'
+      setNylasMsg({ type: 'error', text: `Gmail connection failed (${reason}). Please try again.` })
+      window.history.replaceState({}, '', window.location.pathname)
+    }
   }, [])
 
   const handleUploaded = (data) => {
@@ -190,6 +216,33 @@ export default function Profile() {
       setEditInfo(false)
     } catch {}
     finally { setSavingInfo(false) }
+  }
+
+  const handleNylasConnect = async () => {
+    setNylasLoading(true)
+    setNylasMsg(null)
+    try {
+      const res = await nylasApi.getAuthUrl()
+      window.location.href = res.data.url
+    } catch (err) {
+      const detail = err?.response?.data?.detail || 'Could not start Gmail connection.'
+      setNylasMsg({ type: 'error', text: detail })
+      setNylasLoading(false)
+    }
+  }
+
+  const handleNylasDisconnect = async () => {
+    setNylasLoading(true)
+    setNylasMsg(null)
+    try {
+      await nylasApi.disconnect()
+      setNylasStatus({ connected: false, email: null })
+      setNylasMsg({ type: 'success', text: 'Gmail disconnected.' })
+    } catch {
+      setNylasMsg({ type: 'error', text: 'Disconnect failed. Please try again.' })
+    } finally {
+      setNylasLoading(false)
+    }
   }
 
   if (loading) {
@@ -334,6 +387,79 @@ export default function Profile() {
             />
           ))}
         </div>
+      </div>
+
+      {/* ── Gmail / Nylas Integration ─────────────────────────────────── */}
+      <div className="card p-6 space-y-4">
+        <h2 className="text-base font-semibold text-navy-800 flex items-center gap-2">
+          <Mail size={17} className="text-violet-DEFAULT" />
+          Integrations
+        </h2>
+
+        {/* Nylas banner */}
+        {nylasMsg && (
+          <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border ${
+            nylasMsg.type === 'success'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-red-50 text-red-700 border-red-200'
+          }`}>
+            {nylasMsg.type === 'success' ? <Check size={15} /> : <AlertCircle size={15} />}
+            {nylasMsg.text}
+            <button className="ml-auto p-0.5 rounded" onClick={() => setNylasMsg(null)}><X size={13} /></button>
+          </div>
+        )}
+
+        {/* Gmail row */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {/* Gmail icon */}
+            <div className="w-9 h-9 rounded-lg bg-red-50 border border-red-200 flex items-center justify-center flex-shrink-0">
+              <Mail size={16} className="text-red-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-navy-800">Gmail</p>
+              {nylasStatus?.connected ? (
+                <p className="text-xs text-emerald-600 font-medium">
+                  Connected{nylasStatus.email ? ` · ${nylasStatus.email}` : ''}
+                </p>
+              ) : (
+                <p className="text-xs text-navy-400">Send networking emails directly from RecruitIQ</p>
+              )}
+            </div>
+          </div>
+
+          {nylasStatus?.connected ? (
+            <button
+              onClick={handleNylasDisconnect}
+              disabled={nylasLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-semibold hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              {nylasLoading
+                ? <RefreshCw size={13} className="animate-spin" />
+                : <Link2Off size={13} />}
+              Disconnect
+            </button>
+          ) : (
+            <button
+              onClick={handleNylasConnect}
+              disabled={nylasLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-DEFAULT text-white text-xs font-semibold hover:bg-violet-600 transition-colors disabled:opacity-50"
+            >
+              {nylasLoading
+                ? <RefreshCw size={13} className="animate-spin" />
+                : <Link2 size={13} />}
+              Connect Gmail
+            </button>
+          )}
+        </div>
+
+        {!nylasStatus?.connected && (
+          <p className="text-xs text-navy-400 border-t border-navy-100 pt-3">
+            Connecting Gmail lets you send networking emails and track replies without leaving RecruitIQ.
+            Requires <code className="bg-navy-100 px-1 rounded">NYLAS_CLIENT_ID</code> and{' '}
+            <code className="bg-navy-100 px-1 rounded">NYLAS_API_KEY</code> in <code className="bg-navy-100 px-1 rounded">backend/.env</code>.
+          </p>
+        )}
       </div>
 
       {/* Parsed profile preview */}

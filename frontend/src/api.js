@@ -139,3 +139,11 @@ export const newsApi = {
   getAll:  (params) => api.get('/news', { params }),
   refresh: ()       => api.post('/news/refresh'),
 }
+
+export const nylasApi = {
+  getAuthUrl:   ()       => api.get('/nylas/auth-url'),
+  getStatus:    ()       => api.get('/nylas/status'),
+  send:         (data)   => api.post('/nylas/send', data),
+  getThreads:   (limit)  => api.get('/nylas/threads', { params: { limit: limit || 20 } }),
+  disconnect:   ()       => api.delete('/nylas/disconnect'),
+}

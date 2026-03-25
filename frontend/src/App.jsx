@@ -19,9 +19,9 @@ const NAV_ITEMS = [
   { to: '/',            label: 'Dashboard',     icon: LayoutDashboard },
   { to: '/tracker',     label: 'Job Tracker',   icon: Briefcase },
   { to: '/discovery',   label: 'Job Discovery', icon: Search },
+  { to: '/coach',       label: 'Coach',         icon: GraduationCap },
   { to: '/calendar',    label: 'Calendar',      icon: CalendarDays },
   { to: '/events',      label: 'Events',        icon: MapPin },
-  { to: '/coach',       label: 'Coach',         icon: GraduationCap },
   { to: '/news',        label: 'News',          icon: Newspaper },
 ]
 

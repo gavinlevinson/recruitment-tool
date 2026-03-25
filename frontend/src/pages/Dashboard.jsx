@@ -4,7 +4,7 @@ import {
   Briefcase, Zap, RefreshCw, ChevronRight,
   Users, Plus, Check, Mail, AlertCircle,
 } from 'lucide-react'
-import { jobsApi, contactsApi, discoveredApi, statsApi } from '../api'
+import { jobsApi, contactsApi, discoveredApi, statsApi, nylasApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -227,6 +227,7 @@ export default function Dashboard() {
   const [stats,      setStats]      = useState(null)
   const [loading,    setLoading]    = useState(true)
   const [adding,     setAdding]     = useState({}) // { [discoveredId]: 'loading' | 'done' }
+  const [replyCount, setReplyCount] = useState(0)  // Gmail reply alerts
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -245,6 +246,20 @@ export default function Dashboard() {
       }
       if (sr.status === 'fulfilled') setStats(sr.value.data)
     } finally { setLoading(false) }
+  }, [])
+
+  // Check for email replies via Nylas (quietly — don't block main load)
+  useEffect(() => {
+    nylasApi.getStatus().then(res => {
+      if (res.data?.connected) {
+        nylasApi.getThreads(20).then(res2 => {
+          const threads = res2.data?.threads || []
+          // Count threads with unread messages that aren't just from us
+          const withReplies = threads.filter(t => (t.unread_message_count || 0) > 0).length
+          setReplyCount(withReplies)
+        }).catch(() => {})
+      }
+    }).catch(() => {})
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
@@ -618,6 +633,25 @@ export default function Dashboard() {
             </div>
           </div>
           <ChevronRight size={18} className="text-white/70 shrink-0" />
+        </Link>
+      )}
+
+      {/* Gmail replies alert */}
+      {replyCount > 0 && (
+        <Link to="/networking"
+          className="flex items-center justify-between gap-4 rounded-xl px-5 py-4 bg-sky-50 border border-sky-200 hover:bg-sky-100 transition-colors">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-sky-100 border border-sky-200 flex items-center justify-center shrink-0">
+              <Mail size={17} className="text-sky-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-sky-800">
+                {replyCount} unread email thread{replyCount !== 1 ? 's' : ''} — possible replies to your outreach
+              </p>
+              <p className="text-xs text-sky-600 mt-0.5">Go to Networking to follow up</p>
+            </div>
+          </div>
+          <ChevronRight size={18} className="text-sky-400 shrink-0" />
         </Link>
       )}
 
