@@ -1,0 +1,48 @@
+# ─── Environment & Secrets ───────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ─── Claude Code (contains API keys in settings) ─────────────
+.claude/
+
+# ─── Database ────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ─── User Uploads ────────────────────────────────────────────
+backend/uploads/
+uploads/
+
+# ─── Python ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+
+# ─── Node / Frontend ─────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/build/
+.npm
+
+# ─── macOS ───────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ─── IDE ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

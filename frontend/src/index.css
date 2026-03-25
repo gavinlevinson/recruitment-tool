@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #f4f6fb;
+  color: #14285c;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f4f6fb; }
+::-webkit-scrollbar-thumb { background: #7893c4; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3564aa; }
+
+/* ── Status badges ── */
+.status-not-applied  { @apply bg-slate-100 text-slate-600 border border-slate-200; }
+.status-applied      { @apply bg-sky-100 text-sky-700 border border-sky-200; }
+.status-pending      { @apply bg-amber-100 text-amber-700 border border-amber-200; }
+.status-accepted     { @apply bg-emerald-100 text-emerald-700 border border-emerald-200; }
+.status-rejected     { @apply bg-red-100 text-red-600 border border-red-200; }
+
+/* ── Card ── */
+.card {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(197, 209, 230, 0.4);
+  box-shadow: 0 2px 8px rgba(14, 30, 66, 0.10);
+}
+
+/* ── Table ── */
+.data-table { @apply w-full border-collapse; }
+.data-table th {
+  @apply text-xs font-semibold uppercase tracking-wider px-4 py-3 text-left whitespace-nowrap;
+  color: #577cb7;
+  background: rgba(232, 237, 245, 0.5);
+  border-bottom: 1px solid rgba(197, 209, 230, 0.5);
+}
+.data-table td {
+  @apply px-4 py-3 text-sm align-middle;
+  color: #14285c;
+  border-bottom: 1px solid #e8edf5;
+}
+.data-table tr:hover td { background: rgba(191, 219, 247, 0.15); }
+.data-table tr:last-child td { border-bottom: none; }
+
+/* ── Input ── */
+.input {
+  @apply w-full px-3 py-2 text-sm rounded-lg border bg-white outline-none transition-all duration-150;
+  border-color: #9fb2d5;
+  color: #0d1c42;
+}
+.input::placeholder { color: #9fb2d5; }
+.input:focus {
+  border-color: #8b6bbf;
+  box-shadow: 0 0 0 3px rgba(139, 107, 191, 0.18);
+}
+
+/* ── Buttons ── */
+.btn-primary {
+  @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors duration-150;
+  background: #14285c;
+  box-shadow: 0 2px 8px rgba(14, 30, 66, 0.10);
+}
+.btn-primary:hover { background: #1e3a7a; }
+.btn-primary:active { background: #0d1c42; }
+
+.btn-secondary {
+  @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-white border transition-colors duration-150;
+  color: #1e3a7a;
+  border-color: #9fb2d5;
+  box-shadow: 0 2px 8px rgba(14, 30, 66, 0.10);
+}
+.btn-secondary:hover { background: #e8edf5; }
+
+.btn-accent {
+  @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors duration-150;
+  background: #8b6bbf;
+  box-shadow: 0 2px 8px rgba(14, 30, 66, 0.10);
+}
+.btn-accent:hover { background: #7253a8; }
+
+.btn-danger {
+  @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors duration-150;
+}
+
+/* ── Match score pills ── */
+.match-high   { @apply bg-emerald-100 text-emerald-700 border border-emerald-200; }
+.match-medium { @apply bg-amber-100 text-amber-700 border border-amber-200; }
+.match-low    { @apply bg-slate-100 text-slate-500 border border-slate-200; }
