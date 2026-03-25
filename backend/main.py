@@ -944,6 +944,11 @@ def get_discovered_jobs(
         'linkedin':   ['linkedin'],
         'indeed':     ['indeed'],
         'handshake':  ['handshake'],
+        'yc_jobs':    ['yc work', 'workatastartup', 'yc startup'],
+        'lennys':     ["lenny's", 'lennys', "lenny"],
+        'builtin':    ['built in'],
+        'vc_boards':  ['vc portfolio', 'a16z', 'sequoia', 'greylock', 'general catalyst',
+                       'insight partners', 'bessemer', 'first round'],
     }
     if current_user:
         user_prefs = db.query(UserPreferences).filter(UserPreferences.user_id == current_user.id).first()

@@ -22,6 +22,16 @@ const SOURCE_META = [
   { match: 'workable',         label: 'Workable',        classes: 'bg-slate-100 text-slate-700 border border-slate-200' },
   { match: 'yc',               label: 'YC Jobs',         classes: 'bg-orange-100 text-orange-700 border border-orange-200' },
   { match: 'handshake',        label: 'Handshake',       classes: 'bg-pink-100 text-pink-700 border border-pink-200' },
+  { match: "lenny",            label: "Lenny's",         classes: 'bg-purple-100 text-purple-700 border border-purple-200' },
+  { match: 'built in',         label: 'Built In',        classes: 'bg-amber-100 text-amber-700 border border-amber-200' },
+  { match: 'vc portfolio',     label: 'VC Portfolio',    classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
+  { match: 'a16z',             label: 'a16z Talent',     classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
+  { match: 'sequoia',          label: 'Sequoia',         classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
+  { match: 'greylock',         label: 'Greylock',        classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
+  { match: 'general catalyst', label: 'Gen Catalyst',    classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
+  { match: 'insight partners', label: 'Insight Partners',classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
+  { match: 'bessemer',         label: 'Bessemer',        classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
+  { match: 'first round',      label: 'First Round',     classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
 ]
 
 const ALL_SOURCES = [
@@ -33,7 +43,11 @@ const ALL_SOURCES = [
   { id: 'workable',   label: 'Workable',             description: 'SMB and startup boards' },
   { id: 'remoteok',   label: 'Remote OK',            description: 'Remote-first listings' },
   { id: 'wellfound',  label: 'Wellfound',            description: 'Startup jobs (AngelList)' },
-  { id: 'handshake', label: 'Handshake',            description: 'Campus & early career roles' },
+  { id: 'handshake',  label: 'Handshake',            description: 'Campus & early career roles' },
+  { id: 'yc_jobs',    label: 'YC Jobs',              description: 'Work at a Startup (YC)' },
+  { id: 'lennys',     label: "Lenny's Newsletter",   description: 'PM, growth & ops roles' },
+  { id: 'builtin',    label: 'Built In',             description: 'Built In NYC & SF boards' },
+  { id: 'vc_boards',  label: 'VC Boards',            description: 'a16z, Sequoia, Greylock & more' },
 ]
 
 const ALL_SOURCE_BADGES = [
@@ -48,6 +62,10 @@ const ALL_SOURCE_BADGES = [
   { id: 'ashby',      label: 'Ashby',           classes: 'bg-indigo-100 text-indigo-700 border border-indigo-200' },
   { id: 'workable',   label: 'Workable',        classes: 'bg-slate-100 text-slate-700 border border-slate-200' },
   { id: 'handshake',  label: 'Handshake',       classes: 'bg-pink-100 text-pink-700 border border-pink-200' },
+  { id: 'yc_jobs',    label: 'YC Jobs',         classes: 'bg-orange-100 text-orange-700 border border-orange-200' },
+  { id: 'lennys',     label: "Lenny's",         classes: 'bg-purple-100 text-purple-700 border border-purple-200' },
+  { id: 'builtin',    label: 'Built In',        classes: 'bg-amber-100 text-amber-700 border border-amber-200' },
+  { id: 'vc_boards',  label: 'VC Boards',       classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
 ]
 
 const PAGE_SIZE = 30
@@ -685,7 +703,7 @@ function HowItWorks() {
       {open && (
         <div className="px-4 pb-4 pt-1 border-t border-navy-50">
           <p className="text-sm text-navy-500 leading-relaxed">
-            The agent scrapes <strong className="text-navy-700">9 sources</strong>: HN Who&apos;s Hiring, Ali Rohde&apos;s newsletter, Greenhouse (30+ AI company boards), Remote OK, Lever, Wellfound, Handshake (campus &amp; early career), LinkedIn &amp; Indeed via Apify. Jobs are scored 0&ndash;100 based on <strong className="text-navy-700">your target roles, location preferences, and skill overlap</strong> from your resume. Upload your resume in Profile to enable personalized scoring.
+            The agent scrapes <strong className="text-navy-700">13 sources</strong>: HN Who&apos;s Hiring, Ali Rohde&apos;s newsletter, Greenhouse (50+ AI startup boards), Lever, Ashby (35+ modern boards), Workable, Remote OK, Wellfound, Handshake (campus &amp; early career), YC Work at a Startup, Lenny&apos;s Newsletter (PM &amp; ops), Built In NYC &amp; SF, and VC Portfolio boards (a16z, Sequoia, Greylock, General Catalyst, Insight Partners, Bessemer &amp; First Round). LinkedIn &amp; Indeed available via Apify. Jobs are scored 0&ndash;100 based on <strong className="text-navy-700">your target roles, location preferences, and skill overlap</strong> from your resume. Upload your resume in Profile to enable personalized scoring.
           </p>
         </div>
       )}
@@ -1269,7 +1287,7 @@ export default function JobDiscovery() {
               <RefreshCw size={15} className={running ? 'animate-spin' : ''} />
               {running ? 'Running Agent...' : 'Run Discovery Agent'}
             </button>
-            <p className="text-xs text-navy-400">Searches 9 job boards & newsletters</p>
+            <p className="text-xs text-navy-400">Searches 13 job boards & newsletters</p>
           </div>
         </div>
       </div>
@@ -1388,7 +1406,7 @@ export default function JobDiscovery() {
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-navy-800">No jobs discovered yet</h3>
             <p className="text-sm text-navy-400 max-w-sm leading-relaxed">
-              Click "Run Discovery Agent" to find opportunities tailored to your profile across 8 sources.
+              Click "Run Discovery Agent" to find opportunities tailored to your profile across 13 sources.
             </p>
           </div>
           <button onClick={handleRunAgent} disabled={running} className="btn-primary">
