@@ -167,6 +167,7 @@ function EventPopover({ event, onClose }) {
           <div className="px-5 py-4 space-y-3">
             <div>
               <p className="text-lg font-bold text-navy-900 leading-tight">{event.title}</p>
+              {event.round_info && <p className="text-xs font-semibold text-violet-600 mt-0.5">{event.round_info}</p>}
               {event.role && <p className="text-sm text-navy-500 mt-0.5">{event.role}</p>}
             </div>
 
@@ -214,7 +215,7 @@ function EventChip({ event, onClick }) {
       onClick={e => { e.stopPropagation(); onClick(event) }}
       className={`w-full text-left px-1.5 py-0.5 rounded text-[10px] font-medium truncate border ${cfg.bg} ${cfg.text} ${cfg.border} hover:opacity-80 transition-opacity`}
     >
-      {event.title}
+      {event.title}{event.round_info ? ` · ${event.round_info}` : ''}
     </button>
   )
 }
@@ -254,7 +255,7 @@ function UpcomingSidebar({ events, onEventClick }) {
               <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold text-navy-800 truncate group-hover:text-violet-700">{e.title}</p>
-                <p className="text-[10px] text-navy-400 truncate">{cfg.label} · {e.role || '—'}</p>
+                <p className="text-[10px] text-navy-400 truncate">{cfg.label} · {e.round_info || e.role || '—'}</p>
               </div>
               <span className={`text-[10px] font-medium shrink-0 ${delta <= 3 ? 'text-amber-600' : 'text-navy-400'}`}>{when}</span>
             </button>

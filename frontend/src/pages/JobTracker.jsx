@@ -5,8 +5,9 @@ import {
   Calendar, DollarSign, User, FileText, Building2,
   Link2, AlertCircle, Folder, Star, Users, Mail,
   Linkedin, Copy, Sparkles, GraduationCap, Loader2, Send, Paperclip,
+  ClipboardList, Save,
 } from 'lucide-react'
-import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi } from '../api'
+import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi, interviewRoundsApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -291,38 +292,276 @@ function InterviewDateModal({ isOpen, company, onConfirm, onSkip, onCancel }) {
             <X size={16} />
           </button>
         </div>
-
         <div className="px-5 py-4">
-          <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
-            Interview Date
-          </label>
-          <input
-            type="date"
-            autoFocus
-            className="input w-full"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-          />
-          <p className="mt-2 text-xs text-navy-400">
-            This will appear on your Calendar automatically. You can always update it later.
-          </p>
+          <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">Interview Date</label>
+          <input type="date" autoFocus className="input w-full" value={date} onChange={e => setDate(e.target.value)} />
+          <p className="mt-2 text-xs text-navy-400">This will appear on your Calendar automatically. You can always update it later.</p>
         </div>
-
         <div className="flex gap-2 px-5 pb-5">
-          <button
-            onClick={onSkip}
-            className="flex-1 px-3 py-2 rounded-lg border border-navy-200 text-sm font-medium text-navy-500 hover:bg-navy-50 transition-colors"
-          >
+          <button onClick={onSkip} className="flex-1 px-3 py-2 rounded-lg border border-navy-200 text-sm font-medium text-navy-500 hover:bg-navy-50 transition-colors">
             Skip for now
           </button>
-          <button
-            onClick={() => onConfirm(date || null)}
-            className="flex-1 btn-primary justify-center"
-          >
+          <button onClick={() => onConfirm(date || null)} className="flex-1 btn-primary justify-center">
             <Check size={13} /> {date ? 'Save Date' : 'Confirm Move'}
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Shown when LEAVING Interviewing — ask if interview is still happening
+function ConfirmInterviewModal({ isOpen, company, newStatus, onKeep, onRemove }) {
+  if (!isOpen) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-navy-900/40 backdrop-blur-sm" />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm z-10">
+        <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-navy-100">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+            <Calendar size={18} className="text-amber-600" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-navy-900">Interview date still set</h2>
+            <p className="text-xs text-navy-400">{company} → {newStatus}</p>
+          </div>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-sm text-navy-600">
+            This job has an interview date on your calendar. Is the interview still happening?
+          </p>
+        </div>
+        <div className="flex gap-2 px-5 pb-5">
+          <button onClick={onRemove} className="flex-1 px-3 py-2 rounded-lg border border-red-200 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
+            Remove from Calendar
+          </button>
+          <button onClick={onKeep} className="flex-1 btn-primary justify-center">
+            <Check size={13} /> Keep it
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Interview Rounds ──────────────────────────────────────────────────────────
+const INTERVIEW_TYPES = ['Screening', 'Technical', 'Behavioral', 'Case Study', 'Final Round', 'Offer Discussion', 'Other']
+const TYPE_COLORS = {
+  'Screening':        'bg-sky-100 text-sky-700 border-sky-200',
+  'Technical':        'bg-violet-100 text-violet-700 border-violet-200',
+  'Behavioral':       'bg-emerald-100 text-emerald-700 border-emerald-200',
+  'Case Study':       'bg-amber-100 text-amber-700 border-amber-200',
+  'Final Round':      'bg-red-100 text-red-700 border-red-200',
+  'Offer Discussion': 'bg-teal-100 text-teal-700 border-teal-200',
+  'Other':            'bg-slate-100 text-slate-600 border-slate-200',
+}
+
+function InterviewRoundsSection({ jobId }) {
+  const [rounds, setRounds]     = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [editId, setEditId]     = useState(null)
+  const [saving, setSaving]     = useState(false)
+  const [form, setForm] = useState({
+    round_number: 1, interview_type: 'Screening', scheduled_date: '',
+    interviewer_name: '', interviewer_linkedin: '', notes: '', status: 'Scheduled',
+  })
+
+  const loadRounds = useCallback(async () => {
+    try {
+      const res = await interviewRoundsApi.getAll(jobId)
+      setRounds(res.data || [])
+    } catch {}
+    finally { setLoading(false) }
+  }, [jobId])
+
+  useEffect(() => { loadRounds() }, [loadRounds])
+
+  const openAdd = () => {
+    setForm({ round_number: rounds.length + 1, interview_type: 'Screening', scheduled_date: '',
+      interviewer_name: '', interviewer_linkedin: '', notes: '', status: 'Scheduled' })
+    setEditId(null)
+    setShowForm(true)
+  }
+
+  const openEdit = (r) => {
+    setForm({
+      round_number: r.round_number, interview_type: r.interview_type || 'Screening',
+      scheduled_date: r.scheduled_date || '', interviewer_name: r.interviewer_name || '',
+      interviewer_linkedin: r.interviewer_linkedin || '', notes: r.notes || '',
+      status: r.status || 'Scheduled',
+    })
+    setEditId(r.id)
+    setShowForm(true)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      if (editId) {
+        await interviewRoundsApi.update(editId, form)
+      } else {
+        await interviewRoundsApi.create(jobId, form)
+      }
+      setShowForm(false)
+      setEditId(null)
+      await loadRounds()
+    } catch {}
+    finally { setSaving(false) }
+  }
+
+  const handleDelete = async (id) => {
+    try {
+      await interviewRoundsApi.delete(id)
+      setRounds(prev => prev.filter(r => r.id !== id))
+    } catch {}
+  }
+
+  const setF = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const statusColors = { Scheduled: 'text-violet-600', Completed: 'text-emerald-600', Cancelled: 'text-red-500' }
+
+  return (
+    <div className="border-t border-navy-100 pt-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ClipboardList size={14} className="text-navy-400" />
+          <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide">Interview Rounds</p>
+          {rounds.length > 0 && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">{rounds.length}</span>
+          )}
+        </div>
+        {!showForm && (
+          <button onClick={openAdd} className="flex items-center gap-1 text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors">
+            <Plus size={13} /> Add Round
+          </button>
+        )}
+      </div>
+
+      {loading && <p className="text-xs text-navy-300 italic">Loading…</p>}
+
+      {rounds.map(r => (
+        <div key={r.id} className="rounded-xl border border-navy-100 bg-navy-50/50 p-3 space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-navy-700">Round {r.round_number}</span>
+              {r.interview_type && (
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${TYPE_COLORS[r.interview_type] || TYPE_COLORS['Other']}`}>
+                  {r.interview_type}
+                </span>
+              )}
+              <span className={`text-[10px] font-medium ${statusColors[r.status] || 'text-navy-400'}`}>{r.status}</span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button onClick={() => openEdit(r)} className="p-1 rounded text-navy-400 hover:text-navy-700 hover:bg-white transition-colors">
+                <Pencil size={11} />
+              </button>
+              <button onClick={() => handleDelete(r.id)} className="p-1 rounded text-navy-400 hover:text-red-500 hover:bg-white transition-colors">
+                <Trash2 size={11} />
+              </button>
+            </div>
+          </div>
+
+          {r.scheduled_date && (
+            <p className="text-xs text-navy-500 flex items-center gap-1">
+              <Calendar size={11} className="text-navy-400" />
+              {(() => {
+                const [y,m,d] = r.scheduled_date.split('-').map(Number)
+                return new Date(y,m-1,d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+              })()}
+            </p>
+          )}
+
+          {r.interviewer_name && (
+            <div className="flex items-center gap-1.5">
+              <User size={11} className="text-navy-400 shrink-0" />
+              <span className="text-xs text-navy-600 font-medium">{r.interviewer_name}</span>
+              {r.interviewer_linkedin && (
+                <a href={r.interviewer_linkedin} target="_blank" rel="noopener noreferrer"
+                  className="text-[10px] text-sky-600 hover:text-sky-800 hover:underline flex items-center gap-0.5">
+                  <Linkedin size={10} /> LinkedIn
+                </a>
+              )}
+            </div>
+          )}
+
+          {r.notes && (
+            <p className="text-xs text-navy-500 italic leading-relaxed border-t border-navy-100 pt-2 mt-1">{r.notes}</p>
+          )}
+        </div>
+      ))}
+
+      {rounds.length === 0 && !loading && !showForm && (
+        <p className="text-xs text-navy-300 italic">No rounds tracked yet. Add one to see it on your calendar.</p>
+      )}
+
+      {showForm && (
+        <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-3">
+          <p className="text-xs font-semibold text-navy-700">{editId ? 'Edit Round' : 'New Round'}</p>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] font-semibold text-navy-500 mb-1 uppercase tracking-wide">Round #</label>
+              <select className="input text-xs appearance-none" value={form.round_number}
+                onChange={e => setF('round_number', parseInt(e.target.value))}>
+                {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-navy-500 mb-1 uppercase tracking-wide">Type</label>
+              <select className="input text-xs appearance-none" value={form.interview_type}
+                onChange={e => setF('interview_type', e.target.value)}>
+                {INTERVIEW_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] font-semibold text-navy-500 mb-1 uppercase tracking-wide">Date</label>
+              <input type="date" className="input text-xs" value={form.scheduled_date}
+                onChange={e => setF('scheduled_date', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-navy-500 mb-1 uppercase tracking-wide">Status</label>
+              <select className="input text-xs appearance-none" value={form.status}
+                onChange={e => setF('status', e.target.value)}>
+                {['Scheduled','Completed','Cancelled'].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold text-navy-500 mb-1 uppercase tracking-wide">Interviewer Name</label>
+            <input className="input text-xs" placeholder="e.g. Sarah Chen" value={form.interviewer_name}
+              onChange={e => setF('interviewer_name', e.target.value)} />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold text-navy-500 mb-1 uppercase tracking-wide">Interviewer LinkedIn</label>
+            <input className="input text-xs" placeholder="https://linkedin.com/in/..." value={form.interviewer_linkedin}
+              onChange={e => setF('interviewer_linkedin', e.target.value)} />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold text-navy-500 mb-1 uppercase tracking-wide">Notes</label>
+            <textarea className="input text-xs resize-none" rows={2}
+              placeholder="Prep notes, topics covered, impressions…"
+              value={form.notes} onChange={e => setF('notes', e.target.value)} />
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => { setShowForm(false); setEditId(null) }}
+              className="flex-1 px-3 py-1.5 rounded-lg border border-navy-200 text-xs font-medium text-navy-500 hover:bg-white transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleSave} disabled={saving}
+              className="flex-1 btn-primary text-xs py-1.5 justify-center">
+              {saving ? <RefreshCw size={11} className="animate-spin" /> : <Save size={11} />}
+              {editId ? 'Save Changes' : 'Add Round'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -469,6 +708,8 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork }) {
               {job.notes || <span className="text-navy-300 italic">No notes added.</span>}
             </p>
           </div>
+
+          <InterviewRoundsSection jobId={job.id} />
         </div>
 
         <div className="p-6 border-t border-navy-100 space-y-2">
@@ -1882,7 +2123,8 @@ export default function JobTracker() {
   const [editJob, setEditJob]         = useState(null)
   const [selectedJob, setSelectedJob] = useState(null)
   const [networkJob, setNetworkJob]   = useState(null)
-  const [interviewPrompt, setInterviewPrompt] = useState(null) // { jobId, currentStatus }
+  const [interviewPrompt, setInterviewPrompt] = useState(null)       // entering Interviewing
+  const [leaveInterviewPrompt, setLeaveInterviewPrompt] = useState(null) // leaving Interviewing with date set
 
   const fetchJobs = useCallback(async () => {
     setLoading(true); setError(null)
@@ -1976,29 +2218,26 @@ export default function JobTracker() {
     const currentJob = jobs.find(j => j.id === id)
     if (!currentJob || currentJob.status === newStatus) return
 
-    // Build date-clearing payload based on status transition
-    const dateUpdates = {}
-    const terminalStatuses = ['Accepted', 'Rejected']
-    const preInterviewStatuses = ['Not Applied', 'Under Review']
-
-    if (terminalStatuses.includes(newStatus)) {
-      // Resolved application — clear interview date and reminder (keep deadline as record)
-      if (currentJob.interview_date) dateUpdates.interview_date = null
-      if (currentJob.reminder_date) dateUpdates.reminder_date = null
-    } else if (preInterviewStatuses.includes(newStatus) && currentJob.status === 'Interviewing') {
-      // Moving backwards from Interviewing — clear interview date
-      if (currentJob.interview_date) dateUpdates.interview_date = null
-    }
-
-    // Optimistic update — card moves immediately for snappy UX
-    setJobs(prev => prev.map(j => j.id === id ? { ...j, status: newStatus, ...dateUpdates } : j))
+    // Optimistic status move immediately
+    setJobs(prev => prev.map(j => j.id === id ? { ...j, status: newStatus } : j))
 
     if (newStatus === 'Interviewing') {
-      // Pause — prompt user for interview date before committing to API
+      // Prompt for interview date before committing
       setInterviewPrompt({ jobId: id, currentStatus: currentJob.status })
       return
     }
 
+    // Moving AWAY from Interviewing with an existing date — ask before clearing
+    if (currentJob.status === 'Interviewing' && currentJob.interview_date) {
+      setLeaveInterviewPrompt({ jobId: id, newStatus, currentJob })
+      return
+    }
+
+    // All other status moves — clear reminder on terminal statuses
+    const dateUpdates = {}
+    if (['Accepted', 'Rejected'].includes(newStatus) && currentJob.reminder_date) {
+      dateUpdates.reminder_date = null
+    }
     jobsApi.update(id, { status: newStatus, ...dateUpdates }).catch(() => {
       setJobs(prev => prev.map(j => j.id === id ? { ...j, status: currentJob.status } : j))
     })
@@ -2021,8 +2260,34 @@ export default function JobTracker() {
     if (!interviewPrompt) return
     const { jobId, currentStatus } = interviewPrompt
     setInterviewPrompt(null)
-    // Undo the optimistic status move
     setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: currentStatus } : j))
+  }
+
+  const handleLeaveInterviewKeep = () => {
+    if (!leaveInterviewPrompt) return
+    const { jobId, newStatus, currentJob } = leaveInterviewPrompt
+    setLeaveInterviewPrompt(null)
+    const dateUpdates = {}
+    if (['Accepted', 'Rejected'].includes(newStatus) && currentJob.reminder_date) {
+      dateUpdates.reminder_date = null
+    }
+    jobsApi.update(jobId, { status: newStatus, ...dateUpdates }).catch(() => {
+      setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: currentJob.status } : j))
+    })
+  }
+
+  const handleLeaveInterviewRemove = () => {
+    if (!leaveInterviewPrompt) return
+    const { jobId, newStatus, currentJob } = leaveInterviewPrompt
+    setLeaveInterviewPrompt(null)
+    const dateUpdates = { interview_date: null }
+    if (['Accepted', 'Rejected'].includes(newStatus) && currentJob.reminder_date) {
+      dateUpdates.reminder_date = null
+    }
+    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...dateUpdates } : j))
+    jobsApi.update(jobId, { status: newStatus, ...dateUpdates }).catch(() => {
+      setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: currentJob.status } : j))
+    })
   }
 
   // ── Folder counts (for chips) ──────────────────────────────────────────────
@@ -2191,6 +2456,14 @@ export default function JobTracker() {
         onConfirm={confirmInterviewDate}
         onSkip={() => confirmInterviewDate(null)}
         onCancel={cancelInterviewPrompt}
+      />
+
+      <ConfirmInterviewModal
+        isOpen={!!leaveInterviewPrompt}
+        company={leaveInterviewPrompt?.currentJob?.company || ''}
+        newStatus={leaveInterviewPrompt?.newStatus || ''}
+        onKeep={handleLeaveInterviewKeep}
+        onRemove={handleLeaveInterviewRemove}
       />
     </div>
   )

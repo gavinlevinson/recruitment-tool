@@ -121,6 +121,13 @@ export const calendarApi = {
   getEvents: () => api.get('/calendar/events'),
 }
 
+export const interviewRoundsApi = {
+  getAll:  (jobId)         => api.get(`/jobs/${jobId}/interviews`),
+  create:  (jobId, data)   => api.post(`/jobs/${jobId}/interviews`, data),
+  update:  (roundId, data) => api.put(`/interviews/${roundId}`, data),
+  delete:  (roundId)       => api.delete(`/interviews/${roundId}`),
+}
+
 export const collectionsApi = {
   getAll:     ()                       => api.get('/collections'),
   create:     (data)                   => api.post('/collections', data),
@@ -143,7 +150,12 @@ export const newsApi = {
 export const nylasApi = {
   getAuthUrl:   ()       => api.get('/nylas/auth-url'),
   getStatus:    ()       => api.get('/nylas/status'),
+  getConfig:    ()       => api.get('/nylas/config'),
   send:         (data)   => api.post('/nylas/send', data),
   getThreads:   (limit)  => api.get('/nylas/threads', { params: { limit: limit || 20 } }),
   disconnect:   ()       => api.delete('/nylas/disconnect'),
+}
+
+export const helpApi = {
+  chat: (data) => api.post('/help-chat', data),
 }

@@ -213,6 +213,22 @@ class JobCollectionItem(Base):
     added_at = Column(DateTime, default=datetime.utcnow)
 
 
+class InterviewRound(Base):
+    """Tracks individual interview rounds for a job application."""
+    __tablename__ = "interview_rounds"
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=True)
+    round_number = Column(Integer, default=1)
+    interview_type = Column(String, nullable=True)     # Screening, Technical, Behavioral, Case Study, Final Round
+    scheduled_date = Column(String, nullable=True)     # YYYY-MM-DD
+    interviewer_name = Column(String, nullable=True)
+    interviewer_linkedin = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    status = Column(String, default="Scheduled")       # Scheduled, Completed, Cancelled
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def get_db():

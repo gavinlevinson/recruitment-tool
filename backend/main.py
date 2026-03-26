@@ -16,6 +16,7 @@ from database import (
     get_db, init_db, Job, Contact, DiscoveredJob, Recruiter,
     UserPreferences, JobCollection, JobCollectionItem,
     User, UserProfile, CoverLetterTemplate, EmailTemplate,
+    InterviewRound,
 )
 from auth import (
     hash_password, verify_password, create_access_token,
@@ -159,7 +160,7 @@ def me(current_user: User = Depends(get_current_user)):
 
 @app.put("/api/auth/me")
 def update_me(payload: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    allowed = ["name", "university", "graduation_year", "major", "minor", "high_school", "grad_school", "career_stage"]
+    allowed = ["name", "university", "graduation_year", "major", "minor", "high_school", "grad_school", "career_stage", "linkedin_url"]
     for field in allowed:
         if field in payload:
             setattr(current_user, field, payload[field])
@@ -564,12 +565,13 @@ def get_calendar_events(
     current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
-    """Return all calendar events derived from job deadlines, interview dates, and reminders."""
+    """Return all calendar events derived from job deadlines, interview dates, reminders, and interview rounds."""
     q = db.query(Job)
     if current_user:
         q = q.filter(or_(Job.user_id == current_user.id, Job.user_id == None))
     jobs = q.all()
 
+    job_map = {j.id: j for j in jobs}
     events = []
     for j in jobs:
         base = {"job_id": j.id, "company": j.company, "role": j.role or "", "status": j.status}
@@ -583,9 +585,123 @@ def get_calendar_events(
             events.append({**base, "id": f"reminder-{j.id}", "type": "reminder",
                            "title": j.company, "date": j.reminder_date})
 
+    # Include individual interview rounds
+    if current_user:
+        rounds = db.query(InterviewRound).filter(
+            InterviewRound.user_id == current_user.id,
+            InterviewRound.scheduled_date != None,
+            InterviewRound.scheduled_date != "",
+            InterviewRound.status != "Cancelled",
+        ).all()
+        for r in rounds:
+            j = job_map.get(r.job_id)
+            if not j:
+                continue
+            round_label = f"Round {r.round_number}" if r.round_number else "Interview"
+            type_label  = r.interview_type or ""
+            round_info  = round_label + (f" · {type_label}" if type_label else "")
+            events.append({
+                "job_id": r.job_id, "company": j.company, "role": j.role or "",
+                "status": j.status, "id": f"round-{r.id}", "type": "interview",
+                "title": j.company, "date": r.scheduled_date, "round_info": round_info,
+            })
+
     # Sort by date ascending
     events.sort(key=lambda e: e["date"])
     return events
+
+
+# ─────────────────────────────────────────────
+# INTERVIEW ROUNDS
+# ─────────────────────────────────────────────
+
+class InterviewRoundCreate(BaseModel):
+    round_number: int = 1
+    interview_type: Optional[str] = None
+    scheduled_date: Optional[str] = None
+    interviewer_name: Optional[str] = None
+    interviewer_linkedin: Optional[str] = None
+    notes: Optional[str] = None
+    status: str = "Scheduled"
+
+class InterviewRoundUpdate(BaseModel):
+    round_number: Optional[int] = None
+    interview_type: Optional[str] = None
+    scheduled_date: Optional[str] = None
+    interviewer_name: Optional[str] = None
+    interviewer_linkedin: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None
+
+def round_to_dict(r: InterviewRound) -> dict:
+    return {
+        "id": r.id, "job_id": r.job_id, "user_id": r.user_id,
+        "round_number": r.round_number, "interview_type": r.interview_type,
+        "scheduled_date": r.scheduled_date, "interviewer_name": r.interviewer_name,
+        "interviewer_linkedin": r.interviewer_linkedin, "notes": r.notes,
+        "status": r.status,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    }
+
+@app.get("/api/jobs/{job_id}/interviews")
+def get_interview_rounds(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rounds = db.query(InterviewRound).filter(
+        InterviewRound.job_id == job_id,
+        InterviewRound.user_id == current_user.id,
+    ).order_by(InterviewRound.round_number, InterviewRound.created_at).all()
+    return [round_to_dict(r) for r in rounds]
+
+@app.post("/api/jobs/{job_id}/interviews")
+def create_interview_round(
+    job_id: int,
+    payload: InterviewRoundCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    r = InterviewRound(job_id=job_id, user_id=current_user.id, **payload.dict())
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return round_to_dict(r)
+
+@app.put("/api/interviews/{round_id}")
+def update_interview_round(
+    round_id: int,
+    payload: InterviewRoundUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    r = db.query(InterviewRound).filter(
+        InterviewRound.id == round_id,
+        InterviewRound.user_id == current_user.id,
+    ).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Round not found")
+    for k, v in payload.dict(exclude_none=True).items():
+        setattr(r, k, v)
+    db.commit()
+    db.refresh(r)
+    return round_to_dict(r)
+
+@app.delete("/api/interviews/{round_id}")
+def delete_interview_round(
+    round_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    r = db.query(InterviewRound).filter(
+        InterviewRound.id == round_id,
+        InterviewRound.user_id == current_user.id,
+    ).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Round not found")
+    db.delete(r)
+    db.commit()
+    return {"ok": True}
 
 
 # ─────────────────────────────────────────────
@@ -1017,8 +1133,12 @@ def get_discovered_jobs(
         return {"total": total, "jobs": page_jobs}
     else:
         # Non-personalized: DB handles filtering and pagination
-        if min_score is not None:
-            q = q.filter(DiscoveredJob.match_score >= min_score)
+        # Include jobs with null scores (not yet scored) alongside scored jobs
+        if min_score is not None and min_score > 0:
+            q = q.filter(or_(
+                DiscoveredJob.match_score == None,
+                DiscoveredJob.match_score >= min_score,
+            ))
         if sort == "score":
             q = q.order_by(DiscoveredJob.match_score.desc())
         else:
@@ -3027,6 +3147,60 @@ async def _fetch_news() -> list:
     return unique[:80]
 
 
+# ── Help Chat ─────────────────────────────────────────────────────────────────
+
+@app.post("/api/help-chat")
+async def help_chat(payload: dict, current_user: User = Depends(get_current_user)):
+    """AI assistant for navigating RecruitIQ."""
+    message = (payload.get("message") or "").strip()
+    context = payload.get("context") or {}
+    if not message:
+        return {"reply": "Please ask me something!"}
+
+    if not ANTHROPIC_API_KEY:
+        return {"reply": "The AI assistant is not configured yet. Ask your admin to add an ANTHROPIC_API_KEY."}
+
+    system_prompt = """You are a concise, friendly assistant built into RecruitIQ — an AI-powered job search platform for early-career candidates.
+
+RecruitIQ features:
+- **Dashboard**: Stats overview, recent activity, quick actions
+- **Job Tracker**: Kanban board for applications. Statuses: Not Applied → Applied → Phone Screen → Interviewing → Offer → Accepted/Rejected/Withdrawn. Features: interview rounds (Screening, Technical, Behavioral, Case Study, Final Round, Offer Discussion), deadlines, interview dates (shown on Calendar), reminders, folders, starred jobs, drag-and-drop status changes
+- **Job Discovery**: AI-scored jobs from 12+ sources (Greenhouse, Lever, Ashby, HN Who's Hiring, Ali Rohde Newsletter, Remote OK, Wellfound, YC Jobs, Himalayas, We Work Remotely, VC Portfolio boards). Click "Run Discovery Agent" to scrape fresh listings. Filter by location, funding stage, company size. Upload a resume for personalized scores.
+- **AI Coach**: Scan resume for gaps, generate cover letters, get help with application questions — all powered by AI
+- **Calendar**: Auto-synced from Job Tracker. Shows interview dates, application deadlines, reminders per job. Also shows individual interview round dates.
+- **Events**: Local networking events, tech meetups, and career fairs in your city
+- **News**: Curated industry news relevant to your job search and target companies
+- **Networking**: Find contacts at companies via Apollo/Hunter integrations. Send cold outreach emails through connected Gmail.
+- **Profile**: Upload resume (PDF), add career context text, connect Gmail (Nylas), edit account info (school, major, LinkedIn, graduation year)
+
+Helpful tips to share:
+- After adding a job to Not Applied → encourage them to find a contact in Networking and reach out
+- After uploading a resume → encourage running Job Discovery for personalized results
+- When in Interviewing status → add interview rounds with details (type, date, interviewer)
+- Calendar reflects all interview rounds automatically
+- Gmail integration lets you send networking emails without leaving RecruitIQ
+
+Keep replies SHORT (2-4 sentences). Be specific and actionable. Never make up features that don't exist."""
+
+    current_page = context.get("page", "")
+    user_message = f"[User is on: {current_page}]\n\n{message}" if current_page else message
+
+    try:
+        import anthropic as _anthropic
+        client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        response = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=300,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        reply = response.content[0].text
+        return {"reply": reply}
+    except Exception as e:
+        print(f"[HelpChat] Error: {e}")
+        return {"reply": "I'm having trouble connecting right now. Please try again in a moment."}
+
+
 # ── Nylas Gmail Integration ────────────────────────────────────────────────────
 #
 # Flow:
@@ -3045,9 +3219,13 @@ async def _fetch_news() -> list:
 
 NYLAS_CLIENT_ID    = os.getenv("NYLAS_CLIENT_ID", "")
 NYLAS_API_KEY      = os.getenv("NYLAS_API_KEY", "")
-NYLAS_REDIRECT_URI = os.getenv("NYLAS_REDIRECT_URI", "http://localhost:8000/api/nylas/callback")
 FRONTEND_URL       = os.getenv("FRONTEND_URL", "http://localhost:5173")
-NYLAS_API_BASE     = "https://api.us.nylas.com"
+NYLAS_API_BASE     = os.getenv("NYLAS_API_BASE", "https://api.us.nylas.com")
+
+# Auto-detect backend URL from Railway env vars so the redirect URI is correct in production
+_railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "") or os.getenv("RAILWAY_STATIC_URL", "")
+_default_backend = f"https://{_railway_domain}" if _railway_domain else os.getenv("BACKEND_URL", "http://localhost:8000")
+NYLAS_REDIRECT_URI = os.getenv("NYLAS_REDIRECT_URI", f"{_default_backend}/api/nylas/callback")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -3078,6 +3256,18 @@ async def _nylas_post(path: str, grant_id: str, payload: dict) -> dict:
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/nylas/config")
+async def nylas_config(current_user: User = Depends(get_current_user)):
+    """Return Nylas configuration status (no secrets) for debugging."""
+    return {
+        "configured": bool(NYLAS_CLIENT_ID and NYLAS_API_KEY),
+        "has_client_id": bool(NYLAS_CLIENT_ID),
+        "has_api_key": bool(NYLAS_API_KEY),
+        "redirect_uri": NYLAS_REDIRECT_URI,
+        "frontend_url": FRONTEND_URL,
+    }
+
 
 @app.get("/api/nylas/auth-url")
 async def nylas_auth_url(current_user: User = Depends(get_current_user)):

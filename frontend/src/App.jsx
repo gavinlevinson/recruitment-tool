@@ -14,6 +14,7 @@ import Events       from './pages/Events'
 import News         from './pages/News'
 import Login        from './pages/Login'
 import Register     from './pages/Register'
+import HelpAgent    from './pages/HelpAgent'
 
 const NAV_ITEMS = [
   { to: '/',            label: 'Dashboard',     icon: LayoutDashboard },
@@ -125,6 +126,7 @@ function ProtectedLayout({ children }) {
       <main className="flex-1 ml-56 min-h-screen">
         {children}
       </main>
+      <HelpAgent />
     </div>
   )
 }

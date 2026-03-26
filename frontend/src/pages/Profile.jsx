@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Upload, FileText, Check, RefreshCw, User, GraduationCap, BookOpen,
@@ -29,7 +29,6 @@ const CAREER_STAGE_LABELS = {
 }
 
 function UploadCard({ fileType, label, hint, required, currentFilename, onUploaded, uploading, setUploading }) {
-  const inputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
   const [error, setError]       = useState(null)
   const [success, setSuccess]   = useState(false)
@@ -84,8 +83,8 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
       </div>
 
       {/* Drop zone */}
-      <div
-        onClick={() => !isLoading && inputRef.current?.click()}
+      <label
+        htmlFor={`file-input-${fileType}`}
         onDragOver={e => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
         onDrop={e => { e.preventDefault(); setDragging(false); upload(e.dataTransfer.files[0]) }}
@@ -109,9 +108,9 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
            'Click to upload or drag & drop'}
         </p>
         <p className="text-xs text-navy-400">PDF only</p>
-        <input ref={inputRef} type="file" accept=".pdf" className="hidden"
-          onChange={e => upload(e.target.files[0])} />
-      </div>
+        <input id={`file-input-${fileType}`} type="file" accept=".pdf" className="hidden"
+          disabled={isLoading} onChange={e => upload(e.target.files[0])} />
+      </label>
 
       {/* View / Download actions — shown when a file exists */}
       {currentFilename && (
@@ -175,8 +174,10 @@ export default function Profile() {
 
   // Nylas Gmail state
   const [nylasStatus, setNylasStatus]       = useState({ connected: false, email: null })
+  const [nylasConfig, setNylasConfig]       = useState(null)
   const [nylasLoading, setNylasLoading]     = useState(false)
   const [nylasMsg, setNylasMsg]             = useState(null)   // success/error banner
+  const [showNylasDebug, setShowNylasDebug] = useState(false)
 
   useEffect(() => {
     profileApi.get()
@@ -187,24 +188,30 @@ export default function Profile() {
       .catch(() => {})
       .finally(() => setLoading(false))
 
-    // Check Nylas status
+    // Check Nylas status + config
     nylasApi.getStatus()
       .then(res => setNylasStatus(res.data))
       .catch(() => setNylasStatus({ connected: false, email: null }))
+    nylasApi.getConfig()
+      .then(res => setNylasConfig(res.data))
+      .catch(() => {})
 
     // Handle redirect back from Nylas OAuth
     const params = new URLSearchParams(window.location.search)
     const nylasParam = params.get('nylas')
     if (nylasParam === 'connected') {
       setNylasMsg({ type: 'success', text: 'Gmail connected successfully!' })
-      // Refresh status after redirect
-      nylasApi.getStatus()
-        .then(res => setNylasStatus(res.data))
-        .catch(() => {})
+      nylasApi.getStatus().then(res => setNylasStatus(res.data)).catch(() => {})
       window.history.replaceState({}, '', window.location.pathname)
     } else if (nylasParam === 'error') {
       const reason = params.get('reason') || 'unknown'
-      setNylasMsg({ type: 'error', text: `Gmail connection failed (${reason}). Please try again.` })
+      const reasonText = {
+        not_configured: 'Nylas keys not configured on the server.',
+        token_exchange: 'OAuth token exchange failed — check NYLAS_CLIENT_ID, NYLAS_API_KEY, and NYLAS_REDIRECT_URI.',
+        exception: 'An unexpected error occurred during the OAuth callback.',
+      }[reason] || `Error: ${reason}`
+      setNylasMsg({ type: 'error', text: reasonText })
+      setShowNylasDebug(true)
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [])
@@ -515,11 +522,36 @@ export default function Profile() {
         </div>
 
         {!nylasStatus?.connected && (
-          <p className="text-xs text-navy-400 border-t border-navy-100 pt-3">
-            Connecting Gmail lets you send networking emails and track replies without leaving RecruitIQ.
-            Requires <code className="bg-navy-100 px-1 rounded">NYLAS_CLIENT_ID</code> and{' '}
-            <code className="bg-navy-100 px-1 rounded">NYLAS_API_KEY</code> in <code className="bg-navy-100 px-1 rounded">backend/.env</code>.
-          </p>
+          <div className="border-t border-navy-100 pt-3 space-y-2">
+            {nylasConfig && !nylasConfig.configured && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <AlertCircle size={14} className="text-amber-500 shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-800 space-y-1">
+                  <p className="font-semibold">Gmail integration needs setup</p>
+                  <p>Add to Railway environment variables:</p>
+                  <ul className="space-y-0.5 ml-2">
+                    {!nylasConfig.has_client_id && <li><code className="bg-amber-100 px-1 rounded">NYLAS_CLIENT_ID</code> — from Nylas dashboard</li>}
+                    {!nylasConfig.has_api_key && <li><code className="bg-amber-100 px-1 rounded">NYLAS_API_KEY</code> — from Nylas dashboard</li>}
+                    <li><code className="bg-amber-100 px-1 rounded">NYLAS_REDIRECT_URI</code> — set to: <code className="bg-amber-100 px-1 rounded break-all">{window.location.origin.replace('5173', '8000')}/api/nylas/callback</code></li>
+                    <li><code className="bg-amber-100 px-1 rounded">FRONTEND_URL</code> — set to: <code className="bg-amber-100 px-1 rounded">{window.location.origin}</code></li>
+                  </ul>
+                </div>
+              </div>
+            )}
+            {nylasConfig?.configured && showNylasDebug && (
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
+                <p className="font-semibold text-slate-700">Debug info</p>
+                <p>Redirect URI: <code className="bg-slate-100 px-1 rounded break-all">{nylasConfig.redirect_uri}</code></p>
+                <p>Make sure this exactly matches what's registered in your Nylas dashboard under "Redirect URIs".</p>
+              </div>
+            )}
+            {nylasConfig?.configured && !showNylasDebug && (
+              <p className="text-xs text-navy-400">
+                Connect Gmail to send networking emails directly from RecruitIQ.{' '}
+                <button onClick={() => setShowNylasDebug(true)} className="text-violet-500 hover:underline">Having trouble?</button>
+              </p>
+            )}
+          </div>
         )}
       </div>
 

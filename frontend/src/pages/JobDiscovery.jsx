@@ -1050,6 +1050,7 @@ export default function JobDiscovery() {
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
   const [running, setRunning] = useState(false)
+  const [runElapsed, setRunElapsed] = useState(0)
 
   // Preferences
   const [preferences, setPreferences] = useState({
@@ -1078,6 +1079,7 @@ export default function JobDiscovery() {
   const [page, setPage]                       = useState(1)
 
   const debounceRef = useRef(null)
+  const runTimerRef = useRef(null)
 
   // Debounce search
   useEffect(() => {
@@ -1194,13 +1196,26 @@ export default function JobDiscovery() {
 
   const handleRunAgent = async () => {
     setRunning(true)
+    setRunElapsed(0)
+    // Start elapsed timer
+    runTimerRef.current = setInterval(() => {
+      setRunElapsed(prev => prev + 1)
+    }, 1000)
     try {
       await discoveredApi.triggerScrape()
-      setTimeout(() => fetchJobs(), 3000)
+      // Poll every 12 seconds for up to ~90 seconds (7 times)
+      const prevTotal = total
+      for (let i = 0; i < 7; i++) {
+        await new Promise(r => setTimeout(r, 12000))
+        await fetchJobs({ page: 1 })
+      }
     } catch (err) {
       console.error('Scrape failed:', err)
     } finally {
+      clearInterval(runTimerRef.current)
+      runTimerRef.current = null
       setRunning(false)
+      setRunElapsed(0)
     }
   }
 
@@ -1290,9 +1305,11 @@ export default function JobDiscovery() {
           <div className="flex flex-col items-start lg:items-end gap-1 shrink-0">
             <button onClick={handleRunAgent} disabled={running || loading} className="btn-primary">
               <RefreshCw size={15} className={running ? 'animate-spin' : ''} />
-              {running ? 'Running Agent...' : 'Run Discovery Agent'}
+              {running ? `Scanning… ${runElapsed}s` : 'Run Discovery Agent'}
             </button>
-            <p className="text-xs text-navy-400">Searches 12 job boards & newsletters</p>
+            <p className="text-xs text-navy-400">
+              {running ? 'Searching 12 job boards — results appear as they load' : 'Searches 12 job boards & newsletters'}
+            </p>
           </div>
         </div>
       </div>
