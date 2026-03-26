@@ -737,10 +737,11 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork }) {
               <div>
                 <p className="text-xs text-navy-400 uppercase tracking-wide font-semibold">Job URL</p>
                 {job.job_url ? (
-                  <a href={job.job_url} target="_blank" rel="noopener noreferrer"
+                  <button
+                    onClick={e => { e.stopPropagation(); window.open(job.job_url, '_blank', 'noopener,noreferrer') }}
                     className="text-sm text-violet-600 hover:text-violet-800 flex items-center gap-1 mt-0.5">
                     Open posting <ExternalLink size={12} />
-                  </a>
+                  </button>
                 ) : (
                   <p className="text-sm text-navy-300 italic mt-0.5">No URL saved</p>
                 )}
