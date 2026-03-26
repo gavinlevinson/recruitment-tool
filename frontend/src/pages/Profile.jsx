@@ -258,10 +258,14 @@ export default function Profile() {
   const handleNylasConnect = async () => {
     setNylasLoading(true)
     setNylasMsg(null)
+    // Open a blank window immediately (within the click gesture) so Chrome doesn't block it,
+    // then redirect it once we have the URL from the API.
+    const popup = window.open('', '_self')
     try {
       const res = await nylasApi.getAuthUrl()
-      window.location.href = res.data.url
+      popup.location.href = res.data.url
     } catch (err) {
+      popup.close()
       const detail = err?.response?.data?.detail || 'Could not start Gmail connection.'
       setNylasMsg({ type: 'error', text: detail })
       setNylasLoading(false)
