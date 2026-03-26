@@ -603,7 +603,7 @@ async def scrape_hn_who_is_hiring() -> List[Dict]:
                     continue
 
                 score, reasons = score_job(company, role, location, description)
-                if score >= 30:
+                if score >= 20:
                     url = f"https://news.ycombinator.com/item?id={item.get('id', thread_id)}"
                     jobs.append(make_job(company, role, location, url, "HN Who's Hiring", description))
 
@@ -712,7 +712,7 @@ async def scrape_remoteok() -> List[Dict]:
                 posted = job.get("date", "")
                 combined = f"{role} {tags} {description}"
                 score, reasons = score_job(company, role, "Remote", combined)
-                if score >= 35:
+                if score >= 20:
                     jobs.append(make_job(company, role, "Remote", url, "Remote OK", description, posted))
     except Exception as e:
         print(f"[Remote OK] Error: {e}")
@@ -746,7 +746,7 @@ async def scrape_greenhouse() -> List[Dict]:
                     url = job.get("absolute_url", "")
                     content = re.sub(r"<[^>]+>", " ", job.get("content", "") or "")
                     score, reasons = score_job(name, role, location, content)
-                    if score >= 35:
+                    if score >= 20:
                         results.append(make_job(name, role, location, url, "Greenhouse", content))
                 return results
             except Exception:
@@ -783,7 +783,7 @@ async def scrape_lever() -> List[Dict]:
                     url = job.get("hostedUrl", "")
                     description = re.sub(r"<[^>]+>", " ", job.get("descriptionPlain", "") or "")
                     score, reasons = score_job(name, role, location, description)
-                    if score >= 35:
+                    if score >= 20:
                         results.append(make_job(name, role, location, url, "Lever", description))
                 return results
             except Exception:
@@ -833,7 +833,7 @@ async def scrape_ashby() -> List[Dict]:
                     url = f"https://jobs.ashbyhq.com/{slug}/{job.get('id', '')}"
                     desc = re.sub(r"<[^>]+>", " ", job.get("descriptionHtml", "") or "")
                     score, _ = score_job(name, role, location, desc)
-                    if score >= 35:
+                    if score >= 20:
                         results.append(make_job(name, role, location, url, "Ashby", desc))
                 return results
             except Exception:
@@ -873,7 +873,7 @@ async def scrape_workable() -> List[Dict]:
                     url = f"https://apply.workable.com/{slug}/j/{shortcode}" if shortcode else ""
                     desc = job.get("description", "") or ""
                     score, _ = score_job(name, role, location, desc)
-                    if score >= 35:
+                    if score >= 20:
                         results.append(make_job(name, role, location, url, "Workable", desc))
                 return results
             except Exception:
@@ -986,7 +986,7 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
                             job_url = f"https://www.workatastartup.com/jobs/{job_id}" if job_id else ""
                             if name and role:
                                 score, _ = score_job(name, role, location, desc)
-                                if score >= 28:
+                                if score >= 20:
                                     jobs.append(make_job(name, role, location, job_url, "YC Work at a Startup", desc))
                 except Exception as e:
                     print(f"[YC Jobs] URL error: {e}")
@@ -1034,7 +1034,7 @@ async def scrape_himalayas() -> List[Dict]:
                             if key not in seen:
                                 seen.add(key)
                                 score, _ = score_job(company, role, location, desc)
-                                if score >= 28:
+                                if score >= 20:
                                     jobs.append(make_job(company, role, location, url, "Himalayas", desc))
                 except Exception:
                     pass
@@ -1085,7 +1085,7 @@ async def scrape_weworkremotely() -> List[Dict]:
                             if key not in seen:
                                 seen.add(key)
                                 score, _ = score_job(company, role, "Remote", desc)
-                                if score >= 28:
+                                if score >= 20:
                                     jobs.append(make_job(company, role, "Remote", url, "We Work Remotely", desc))
                 except Exception:
                     pass
@@ -1189,7 +1189,7 @@ async def scrape_vc_boards() -> List[Dict]:
                     url = job.get("absolute_url", "")
                     content = re.sub(r"<[^>]+>", " ", job.get("content", "") or "")
                     score, _ = score_job(name, role, location, content)
-                    if score >= 28:
+                    if score >= 20:
                         results.append(make_job(name, role, location, url, "VC Portfolio (Greenhouse)", content))
                 return results
             except Exception:
@@ -1233,7 +1233,7 @@ async def scrape_vc_boards() -> List[Dict]:
                     url = f"https://jobs.ashbyhq.com/{slug}/{job.get('id', '')}"
                     desc = re.sub(r"<[^>]+>", " ", job.get("descriptionHtml", "") or "")
                     score, _ = score_job(name, role, location, desc)
-                    if score >= 28:
+                    if score >= 20:
                         results.append(make_job(name, role, location, url, "VC Portfolio (Ashby)", desc))
                 return results
             except Exception:
@@ -1278,7 +1278,7 @@ async def scrape_apify_linkedin(api_key: str) -> List[Dict]:
                         description = job.get("description", "")
                         posted = job.get("postedAt", "")
                         score, _ = score_job(company, role, location, description)
-                        if score >= 30:
+                        if score >= 20:
                             jobs.append(make_job(company, role, location, url, "LinkedIn (Apify)", description, posted))
             except Exception as e:
                 print(f"[LinkedIn Apify] query error: {e}")
@@ -1310,7 +1310,7 @@ async def scrape_apify_indeed(api_key: str) -> List[Dict]:
                         url = job.get("url", "https://indeed.com")
                         description = job.get("description", "")
                         score, _ = score_job(company, role, location, description)
-                        if score >= 30:
+                        if score >= 20:
                             jobs.append(make_job(company, role, location, url, "Indeed (Apify)", description))
             except Exception as e:
                 print(f"[Indeed Apify] error: {e}")
@@ -1362,7 +1362,7 @@ async def scrape_all_sources() -> List[Dict]:
             print(f"[Indeed] Error: {e}")
 
     # Filter to score >= 30 and deduplicate
-    all_jobs = [j for j in all_jobs if j.get("match_score", 0) >= 30]
+    all_jobs = [j for j in all_jobs if j.get("match_score", 0) >= 20]
     seen = set()
     unique = []
     for j in all_jobs:

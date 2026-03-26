@@ -1065,6 +1065,10 @@ def get_discovered_jobs(
             patterns = LOCATION_MAP.get(loc_name, [loc_name.lower()])
             for pattern in patterns:
                 loc_conditions.append(DiscoveredJob.location.ilike(f"%{pattern}%"))
+        # Always include remote/anywhere jobs — users in any city want to see remote roles too
+        loc_conditions.append(DiscoveredJob.location.ilike("%remote%"))
+        loc_conditions.append(DiscoveredJob.location.ilike("%anywhere%"))
+        loc_conditions.append(DiscoveredJob.location.ilike("%worldwide%"))
         if loc_conditions:
             q = q.filter(or_(*loc_conditions))
 
