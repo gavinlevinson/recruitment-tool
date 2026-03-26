@@ -3166,19 +3166,22 @@ async def nylas_send(
     if not current_user.nylas_grant_id:
         raise HTTPException(status_code=400, detail="Gmail not connected. Connect via Profile → Integrations.")
 
-    # Convert plain text to HTML so Gmail preserves paragraph spacing exactly
-    safe = payload.body.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-    normalized = safe.replace('\r\n', '\n').replace('\r', '\n')
-    # Split on double newlines (paragraphs), preserve single newlines within paragraphs
-    paragraphs = normalized.split('\n\n')
-    inner_html = ''.join(
-        f'<p style="margin:0 0 16px 0;padding:0;">{p.replace(chr(10), "<br>")}</p>'
-        for p in paragraphs if p.strip()
+    # Use <pre> to preserve all whitespace and line breaks unconditionally.
+    # <pre> is one of the only HTML elements Gmail cannot collapse — line breaks
+    # are preserved at the semantic level even if all inline styles are stripped.
+    # font-family overrides the default monospace so it reads like a normal email.
+    escaped = (
+        payload.body
+        .replace('&', '&amp;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
     )
     html_body = (
-        '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#1a1a1a;">'
-        + inner_html
-        + '</div>'
+        '<pre style="font-family:Arial,Helvetica,sans-serif;font-size:14px;'
+        'line-height:1.6;color:#222;white-space:pre-wrap;word-wrap:break-word;'
+        'margin:0;padding:0;border:none;background:transparent;">'
+        + escaped
+        + '</pre>'
     )
 
     msg = {
@@ -3190,20 +3193,28 @@ async def nylas_send(
         msg["thread_id"] = payload.reply_to_thread
 
     if payload.attachments:
-        msg["attachments"] = [
-            {
+        import base64
+        att_list = []
+        for a in payload.attachments:
+            try:
+                raw = base64.b64decode(a.data)
+                size = len(raw)
+            except Exception:
+                size = 0
+            att_list.append({
                 "filename":     a.filename,
                 "content_type": a.content_type or "application/octet-stream",
-                "content":      a.data,   # Nylas v3 uses "content" for base64 data
-            }
-            for a in payload.attachments
-        ]
+                "content":      a.data,
+                "size":         size,
+            })
+        msg["attachments"] = att_list
 
     try:
         result = await _nylas_post("/messages/send", current_user.nylas_grant_id, msg)
         return {"ok": True, "message_id": (result.get("data") or result).get("id", "")}
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=502, detail=f"Nylas send failed: {e.response.text[:200]}")
+        print(f"[Nylas send error] status={e.response.status_code} body={e.response.text[:500]}")
+        raise HTTPException(status_code=502, detail=f"Nylas send failed: {e.response.text[:300]}")
 
 
 @app.get("/api/nylas/threads")
