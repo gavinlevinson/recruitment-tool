@@ -266,11 +266,9 @@ function AddEventModal({ onClose, onSave }) {
           {/* Body */}
           <div className="px-6 py-5 space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-navy-600 mb-1">Event Title *</label>
+              <label className="block text-xs font-semibold text-navy-500 mb-1 uppercase tracking-wide">Event Title <span className="text-red-400">*</span></label>
               <input
-                className={`w-full px-3 py-2 rounded-lg border text-sm text-navy-900 placeholder-navy-300 focus:outline-none focus:ring-2 focus:ring-violet-DEFAULT/30 ${
-                  errors.title ? 'border-red-400' : 'border-navy-200'
-                }`}
+                className={`input ${errors.title ? 'border-red-400' : ''}`}
                 placeholder="e.g. Tech Networking Night — NYC"
                 value={form.title}
                 onChange={e => set('title', e.target.value)}
@@ -279,12 +277,10 @@ function AddEventModal({ onClose, onSave }) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-navy-600 mb-1">Date & Time *</label>
+              <label className="block text-xs font-semibold text-navy-500 mb-1 uppercase tracking-wide">Date & Time <span className="text-red-400">*</span></label>
               <input
                 type="datetime-local"
-                className={`w-full px-3 py-2 rounded-lg border text-sm text-navy-900 focus:outline-none focus:ring-2 focus:ring-violet-DEFAULT/30 ${
-                  errors.date ? 'border-red-400' : 'border-navy-200'
-                }`}
+                className={`input ${errors.date ? 'border-red-400' : ''}`}
                 value={form.date}
                 onChange={e => set('date', e.target.value)}
               />
@@ -292,9 +288,9 @@ function AddEventModal({ onClose, onSave }) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-navy-600 mb-1">Location / Venue</label>
+              <label className="block text-xs font-semibold text-navy-500 mb-1 uppercase tracking-wide">Location / Venue</label>
               <input
-                className="w-full px-3 py-2 rounded-lg border border-navy-200 text-sm text-navy-900 placeholder-navy-300 focus:outline-none focus:ring-2 focus:ring-violet-DEFAULT/30"
+                className="input"
                 placeholder="e.g. 123 Broadway, New York, NY or Virtual"
                 value={form.location}
                 onChange={e => set('location', e.target.value)}
@@ -302,10 +298,10 @@ function AddEventModal({ onClose, onSave }) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-navy-600 mb-1">Event URL</label>
+              <label className="block text-xs font-semibold text-navy-500 mb-1 uppercase tracking-wide">Event URL</label>
               <input
                 type="url"
-                className="w-full px-3 py-2 rounded-lg border border-navy-200 text-sm text-navy-900 placeholder-navy-300 focus:outline-none focus:ring-2 focus:ring-violet-DEFAULT/30"
+                className="input"
                 placeholder="https://eventbrite.com/..."
                 value={form.url}
                 onChange={e => set('url', e.target.value)}
@@ -313,10 +309,10 @@ function AddEventModal({ onClose, onSave }) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-navy-600 mb-1">Notes</label>
+              <label className="block text-xs font-semibold text-navy-500 mb-1 uppercase tracking-wide">Notes</label>
               <textarea
                 rows={3}
-                className="w-full px-3 py-2 rounded-lg border border-navy-200 text-sm text-navy-900 placeholder-navy-300 focus:outline-none focus:ring-2 focus:ring-violet-DEFAULT/30 resize-none"
+                className="input resize-none"
                 placeholder="Who's attending, dress code, what to bring…"
                 value={form.notes}
                 onChange={e => set('notes', e.target.value)}
@@ -453,7 +449,7 @@ export default function Events() {
                 value={locationInput}
                 onChange={e => setLocationInput(e.target.value)}
                 placeholder="Enter your city or 'Virtual'…"
-                className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-navy-200 text-sm text-navy-900 placeholder-navy-400 focus:outline-none focus:ring-2 focus:ring-violet-DEFAULT/30 focus:border-violet-DEFAULT"
+                className="input pl-9"
               />
             </div>
             <button

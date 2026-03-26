@@ -8,7 +8,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { profileApi, authApi, nylasApi } from '../api'
 
-const BASE_API = 'http://localhost:8000/api'
+const BASE_API = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api'
 function fileDownloadUrl(fileType) {
   const token = localStorage.getItem('recruitiq_token') || ''
   const path = fileType === 'cover_letter' ? 'cover-letter' : fileType
@@ -291,7 +291,7 @@ export default function Profile() {
             Account Information
           </h2>
           {!editInfo && (
-            <button onClick={() => { setEditInfo(true); setInfoForm({ name: user?.name, university: user?.university, graduation_year: user?.graduation_year, major: user?.major, minor: user?.minor, high_school: user?.high_school, grad_school: user?.grad_school, career_stage: user?.career_stage }) }}
+            <button onClick={() => { setEditInfo(true); setInfoForm({ name: user?.name, university: user?.university, graduation_year: user?.graduation_year, major: user?.major, minor: user?.minor, high_school: user?.high_school, grad_school: user?.grad_school, career_stage: user?.career_stage, linkedin_url: user?.linkedin_url }) }}
               className="btn-secondary py-1.5 text-xs">
               Edit
             </button>
@@ -303,6 +303,11 @@ export default function Profile() {
             <div>
               <label className="block text-xs font-semibold text-navy-500 mb-1 uppercase tracking-wide">Name</label>
               <input className="input" value={infoForm.name || ''} onChange={e => setInfoForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-navy-500 mb-1 uppercase tracking-wide">LinkedIn URL <span className="text-navy-300 font-normal normal-case">(optional)</span></label>
+              <input className="input" placeholder="https://linkedin.com/in/yourname" value={infoForm.linkedin_url || ''}
+                onChange={e => setInfoForm(f => ({ ...f, linkedin_url: e.target.value }))} />
             </div>
             <div>
               <label className="block text-xs font-semibold text-navy-500 mb-1 uppercase tracking-wide">University</label>
@@ -356,10 +361,14 @@ export default function Profile() {
               { label: 'High School',     value: user?.high_school },
               { label: 'Grad School',     value: user?.grad_school },
               { label: 'Career Stage',    value: CAREER_STAGE_LABELS[user?.career_stage] || user?.career_stage },
+              { label: 'LinkedIn',        value: user?.linkedin_url },
             ].filter(({ label, value }) => value || label === 'Name' || label === 'Email' || label === 'University').map(({ label, value }) => (
               <div key={label}>
                 <p className="text-xs text-navy-400 uppercase tracking-wide font-semibold">{label}</p>
-                <p className="text-sm text-navy-800 mt-0.5">{value || <span className="text-navy-300 italic">Not set</span>}</p>
+                {label === 'LinkedIn' && value
+                  ? <a href={value} target="_blank" rel="noopener noreferrer" className="text-sm text-violet-600 hover:underline mt-0.5 block truncate">{value}</a>
+                  : <p className="text-sm text-navy-800 mt-0.5">{value || <span className="text-navy-300 italic">Not set</span>}</p>
+                }
               </div>
             ))}
           </div>
