@@ -120,12 +120,12 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
         ) : (
           <Upload size={20} className="text-navy-300" />
         )}
-        <p className="text-sm text-navy-500">
-          {isLoading ? 'Uploading & parsing…' :
-           currentFilename ? 'Click to replace' :
-           'Click to upload or drag & drop'}
-        </p>
-        <p className="text-xs text-navy-400">PDF only</p>
+        {currentFilename ? (
+          <p className="text-sm font-medium text-emerald-700 truncate max-w-[220px] text-center">{currentFilename}</p>
+        ) : (
+          <p className="text-sm text-navy-500">{isLoading ? 'Uploading & parsing…' : 'Click to upload or drag & drop'}</p>
+        )}
+        <p className="text-xs text-navy-400">{currentFilename ? 'Click to replace' : 'PDF only'}</p>
       </div>
 
       {/* View / Download actions — shown when a file exists */}
