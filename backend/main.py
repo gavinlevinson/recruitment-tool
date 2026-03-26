@@ -665,7 +665,7 @@ def get_calendar_events(
     events = []
     for j in jobs:
         base = {"job_id": j.id, "company": j.company, "role": j.role or "", "status": j.status}
-        if getattr(j, 'interview_date', None) and j.id not in jobs_with_rounds:
+        if getattr(j, 'interview_date', None) and j.id not in jobs_with_rounds and j.status == 'Interviewing':
             events.append({**base, "id": f"interview-{j.id}", "type": "interview",
                            "title": j.company, "date": j.interview_date})
         if getattr(j, 'deadline', None):
