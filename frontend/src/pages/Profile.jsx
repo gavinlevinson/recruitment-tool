@@ -288,7 +288,6 @@ export default function Profile() {
       const res = await profileApi.updateParsed({ custom_context: customContext })
       setProfile(p => ({ ...p, ...res.data }))
       setContextSaved(true)
-      setTimeout(() => setContextSaved(false), 3000)
     } catch {}
     finally { setContextSaving(false) }
   }
@@ -440,7 +439,7 @@ export default function Profile() {
           rows={4}
           placeholder="e.g. I'm looking for strategy or operations roles at early-stage fintech or healthcare startups. Interested in companies focused on AI. Prefer roles with exposure to senior leadership."
           value={customContext}
-          onChange={e => setCustomContext(e.target.value)}
+          onChange={e => { setCustomContext(e.target.value); setContextSaved(false) }}
         />
         <div className="flex items-center justify-end gap-2">
           {contextSaving && (
