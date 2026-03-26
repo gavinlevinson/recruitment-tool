@@ -171,7 +171,7 @@ export default function Profile() {
   const [savingInfo, setSavingInfo] = useState(false)
 
   // Nylas Gmail state
-  const [nylasStatus, setNylasStatus]       = useState(null)   // { connected, email }
+  const [nylasStatus, setNylasStatus]       = useState({ connected: false, email: null })
   const [nylasLoading, setNylasLoading]     = useState(false)
   const [nylasMsg, setNylasMsg]             = useState(null)   // success/error banner
 
@@ -443,7 +443,7 @@ export default function Profile() {
             <button
               onClick={handleNylasConnect}
               disabled={nylasLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-DEFAULT text-white text-xs font-semibold hover:bg-violet-600 transition-colors disabled:opacity-50"
+              className="btn-primary flex items-center gap-1.5 py-1.5 text-xs disabled:opacity-50"
             >
               {nylasLoading
                 ? <RefreshCw size={13} className="animate-spin" />

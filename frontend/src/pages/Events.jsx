@@ -186,48 +186,7 @@ function EventCard({ event }) {
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────
-function EmptyState({ hasKey, searched, onAddManual }) {
-  if (!hasKey) {
-    return (
-      <div className="col-span-full flex flex-col items-center justify-center py-16 px-4">
-        <div className="card max-w-lg w-full p-8 text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-violet-100 flex items-center justify-center mx-auto">
-            <Calendar size={28} className="text-violet-DEFAULT" />
-          </div>
-          <h3 className="text-lg font-bold text-navy-900">Connect Eventbrite to see live events</h3>
-          <p className="text-sm text-navy-500 leading-relaxed">
-            Add your free Eventbrite API key to pull career fairs, networking nights, and recruiting events
-            near you in real time.
-          </p>
-          <div className="bg-navy-50 rounded-xl p-4 text-left space-y-2 text-xs text-navy-600 font-mono">
-            <p className="text-navy-400 font-sans font-semibold text-xs mb-1">backend/.env</p>
-            <p>EVENTBRITE_API_KEY=your_key_here</p>
-          </div>
-          <div className="space-y-1 text-xs text-navy-500 text-left">
-            <p>
-              1. Go to{' '}
-              <a
-                href="https://www.eventbrite.com/platform/api"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-violet-DEFAULT hover:underline font-medium"
-              >
-                eventbrite.com/platform/api
-              </a>{' '}
-              and create a free API key
-            </p>
-            <p>2. Paste it as <code className="bg-navy-100 px-1 rounded">EVENTBRITE_API_KEY</code> in <code className="bg-navy-100 px-1 rounded">backend/.env</code></p>
-            <p>3. Restart the backend server — events load automatically</p>
-          </div>
-          <button onClick={onAddManual} className="btn-secondary w-full flex items-center justify-center gap-2">
-            <Plus size={15} />
-            Add an Event Manually
-          </button>
-        </div>
-      </div>
-    )
-  }
-
+function EmptyState({ searched, onAddManual }) {
   return (
     <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
       <div className="w-12 h-12 rounded-xl bg-navy-100 flex items-center justify-center mx-auto mb-4">
@@ -236,11 +195,15 @@ function EmptyState({ hasKey, searched, onAddManual }) {
       <h3 className="font-semibold text-navy-700 mb-1">
         {searched ? 'No events found for that location' : 'Search for events near you'}
       </h3>
-      <p className="text-sm text-navy-400">
+      <p className="text-sm text-navy-400 mb-4">
         {searched
           ? 'Try a broader location (e.g. "New York") or a different event type.'
           : 'Enter a city above and click Search.'}
       </p>
+      <button onClick={onAddManual} className="btn-secondary flex items-center gap-2 text-sm">
+        <Plus size={14} />
+        Add an Event Manually
+      </button>
     </div>
   )
 }
@@ -378,7 +341,6 @@ export default function Events() {
   const [eventType, setEventType]         = useState('all')
   const [events, setEvents]               = useState([])
   const [loading, setLoading]             = useState(false)
-  const [hasKey, setHasKey]               = useState(true)
   const [showModal, setShowModal]         = useState(false)
   const [manualEvents, setManualEvents]   = useState(() => {
     try { return JSON.parse(localStorage.getItem('recruitiq_manual_events') || '[]') } catch { return [] }
@@ -395,13 +357,8 @@ export default function Events() {
       }
       const res  = await eventsApi.getAll(params)
       const list = res.data?.events || []
-      setHasKey(true)
       setEvents(list)
-    } catch (err) {
-      const status = err?.response?.status
-      if (status === 503) {
-        setHasKey(false)
-      }
+    } catch {
       setEvents([])
     } finally {
       setLoading(false)
@@ -555,7 +512,7 @@ export default function Events() {
           {loading ? (
             Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
           ) : allEvents.length === 0 ? (
-            <EmptyState hasKey={hasKey} searched={hasSearched} onAddManual={() => setShowModal(true)} />
+            <EmptyState searched={hasSearched} onAddManual={() => setShowModal(true)} />
           ) : (
             allEvents.map(event => (
               <div key={event.id || event.title} className="relative group">

@@ -4,9 +4,9 @@ import {
   ChevronDown, ChevronUp, Check, RefreshCw, Briefcase, MapPin,
   Calendar, DollarSign, User, FileText, Building2,
   Link2, AlertCircle, Folder, Star, Users, Mail,
-  Linkedin, Copy, Sparkles, GraduationCap, Loader2, Send,
+  Linkedin, Copy, Sparkles, GraduationCap, Loader2, Send, Paperclip,
 } from 'lucide-react'
-import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, coachApi } from '../api'
+import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1228,11 +1228,65 @@ function EmailComposer({ contact, job, onClose, userUniversity }) {
   const [showSave, setShowSave]     = useState(false)
   const [saveName, setSaveName]     = useState('')
   const [saved, setSaved]           = useState(false)
+  const [gmailConnected, setGmailConnected] = useState(false)
+  const [sending, setSending]       = useState(false)
+  const [sendResult, setSendResult] = useState(null)
+  const [attachments, setAttachments] = useState([])
+  const [showPreview, setShowPreview] = useState(false)
 
-  // Fetch email templates once
+  // Fetch email templates + Gmail status once
   useEffect(() => {
     emailTemplatesApi.getAll().then(r => setTemplates(r.data || [])).catch(() => {})
+    nylasApi.getStatus()
+      .then(res => setGmailConnected(res.data?.connected || false))
+      .catch(() => setGmailConnected(false))
   }, [])
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files)
+    files.forEach(file => {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const base64 = ev.target.result.split(',')[1]
+        setAttachments(prev => [...prev, { name: file.name, size: file.size, type: file.type, data: base64 }])
+      }
+      reader.readAsDataURL(file)
+    })
+    e.target.value = ''
+  }
+
+  const removeAttachment = (index) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleSendViaGmail = async () => {
+    if (!contact.email) { setError('This contact has no email address saved.'); return }
+    if (!subject || !body) { setError('Generate the email first.'); return }
+    setSending(true)
+    setSendResult(null)
+    setError(null)
+    setShowPreview(false)
+    try {
+      await nylasApi.send({
+        to: contact.email,
+        subject,
+        body,
+        attachments: attachments.map(a => ({
+          filename: a.name,
+          content_type: a.type || 'application/octet-stream',
+          data: a.data,
+        })),
+      })
+      setSendResult({ ok: true, text: `Sent to ${contact.email}` })
+      if (contact.id) {
+        contactsApi.update(contact.id, { outreach_status: 'Emailed' }).catch(() => {})
+      }
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Send failed. Check your Gmail connection in Profile.')
+    } finally {
+      setSending(false)
+    }
+  }
 
   const alumniContext = (userUniversity && contact?.school &&
     contact.school.toLowerCase().includes(userUniversity.toLowerCase()))
@@ -1275,8 +1329,6 @@ function EmailComposer({ contact, job, onClose, userUniversity }) {
       setTimeout(() => setSaved(false), 2500)
     } catch { /* silent */ }
   }
-
-  const resumeUrl = coachApi.resumeDownloadUrl()
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -1425,28 +1477,110 @@ function EmailComposer({ contact, job, onClose, userUniversity }) {
                 <textarea className="input resize-none text-sm leading-relaxed" rows={8} value={body} onChange={e => setBody(e.target.value)} />
               </div>
 
-              {/* Resume attach prompt */}
-              <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
-                <div className="flex items-start gap-2">
-                  <FileText size={13} className="text-violet-500 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-semibold text-violet-800">Attach your resume</p>
-                    <p className="text-[10px] text-violet-600 mt-0.5">Download then attach when sending from your email client</p>
-                  </div>
+              {/* Attach files */}
+              <div className="border border-navy-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-navy-600 cursor-pointer hover:text-navy-800 transition-colors">
+                    <Paperclip size={12} className="text-navy-400" />
+                    Attach Files
+                    <input type="file" multiple className="hidden" onChange={handleFileSelect} />
+                  </label>
+                  <span className="text-[10px] text-navy-300">Optional</span>
                 </div>
-                <a
-                  href={resumeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 text-xs font-semibold text-violet-700 hover:text-violet-900 border border-violet-300 bg-white px-3 py-1.5 rounded-lg transition-colors hover:bg-violet-50"
-                >
-                  Download PDF
-                </a>
+                {attachments.length > 0 && (
+                  <div className="space-y-1">
+                    {attachments.map((a, i) => (
+                      <div key={i} className="flex items-center justify-between bg-navy-50 rounded-lg px-2.5 py-1.5 text-xs">
+                        <span className="text-navy-700 truncate">{a.name}</span>
+                        <button onClick={() => removeAttachment(i)} className="text-navy-400 hover:text-red-500 ml-2 shrink-0 transition-colors">
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {/* Send via Gmail */}
+              {sendResult?.ok ? (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-700 font-medium">
+                  <Check size={15} /> {sendResult.text}
+                </div>
+              ) : gmailConnected ? (
+                <button
+                  onClick={() => setShowPreview(true)}
+                  disabled={sending}
+                  className="w-full btn-primary flex items-center justify-center gap-2 text-sm py-2.5"
+                >
+                  <Mail size={14} /> Preview &amp; Send
+                </button>
+              ) : (
+                <p className="text-xs text-center text-navy-400">
+                  <a href="/profile" className="text-violet underline font-medium">Connect Gmail in Profile</a>{' '}
+                  to send directly from RecruitIQ
+                </p>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      {/* Email Preview Modal */}
+      {showPreview && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-navy-900/60 backdrop-blur-sm" onClick={() => setShowPreview(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[85vh] overflow-y-auto z-10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-navy-100">
+              <h3 className="text-base font-semibold text-navy-900 flex items-center gap-2">
+                <Mail size={15} className="text-violet-500" />
+                Email Preview
+              </h3>
+              <button onClick={() => setShowPreview(false)} className="p-1.5 rounded-lg text-navy-400 hover:text-navy-700 hover:bg-navy-100 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="text-sm flex gap-2">
+                <span className="text-navy-400 font-medium shrink-0">To:</span>
+                <span className="text-navy-800">{contact.email || <span className="text-red-500">No email on record</span>}</span>
+              </div>
+              <div className="text-sm flex gap-2">
+                <span className="text-navy-400 font-medium shrink-0">Subject:</span>
+                <span className="text-navy-800 font-medium">{subject}</span>
+              </div>
+              <div className="border-t border-navy-100 pt-3">
+                <pre className="text-sm text-navy-800 whitespace-pre-wrap font-sans leading-relaxed">{body}</pre>
+              </div>
+              {attachments.length > 0 && (
+                <div className="border-t border-navy-100 pt-3 space-y-1.5">
+                  <p className="text-xs font-semibold text-navy-400 uppercase tracking-wide">Attachments</p>
+                  {attachments.map((a, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-xs text-navy-700">
+                      <Paperclip size={11} className="text-navy-400 shrink-0" />
+                      {a.name}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {error && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
+              )}
+              <div className="flex items-center gap-3 pt-2 border-t border-navy-100">
+                <button onClick={() => setShowPreview(false)} className="flex-1 py-2.5 rounded-xl border border-navy-200 text-sm font-medium text-navy-600 hover:bg-navy-50 transition-colors">
+                  Back to Edit
+                </button>
+                <button
+                  onClick={handleSendViaGmail}
+                  disabled={sending}
+                  className="flex-1 btn-primary flex items-center justify-center gap-2 text-sm py-2.5"
+                >
+                  {sending ? <><RefreshCw size={14} className="animate-spin" /> Sending…</> : <><Mail size={14} /> Confirm &amp; Send</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

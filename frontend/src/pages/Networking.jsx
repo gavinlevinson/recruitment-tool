@@ -348,7 +348,7 @@ function DetailPanel({ contact, onClose, onUpdate, connectionTypes }) {
 }
 
 // ── Contact Card ──────────────────────────────────────────────────────────────
-function ContactCard({ contact, onEdit, onDelete, deleteConfirm, setDeleteConfirm, onClick }) {
+function ContactCard({ contact, onEdit, onDelete, deleteConfirm, setDeleteConfirm, onClick, onEmail }) {
   return (
     <div className="card p-5 flex flex-col gap-3 hover:shadow-md transition-shadow cursor-pointer" onClick={() => onClick(contact)}>
       <div className="flex items-start gap-3">
@@ -391,6 +391,14 @@ function ContactCard({ contact, onEdit, onDelete, deleteConfirm, setDeleteConfir
           </a>
         )}
       </div>
+      {onEmail && (
+        <button
+          onClick={e => { e.stopPropagation(); onEmail(contact) }}
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-violet-200 text-violet-700 text-xs font-semibold hover:bg-violet-50 transition-colors"
+        >
+          <Sparkles size={12} /> Generate Email
+        </button>
+      )}
     </div>
   )
 }
@@ -415,7 +423,7 @@ function EmailComposerModal({ isOpen, onClose, contact, templates, userUniversit
   const [error, setError] = useState(null)
   const [showTemplateSave, setShowTemplateSave] = useState(false)
   const [newTemplateName, setNewTemplateName] = useState('')
-  const [gmailConnected, setGmailConnected] = useState(null)  // null = loading, bool otherwise
+  const [gmailConnected, setGmailConnected] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState(null)  // { ok, text }
 
@@ -435,6 +443,10 @@ function EmailComposerModal({ isOpen, onClose, contact, templates, userUniversit
     try {
       await nylasApi.send({ to: contact.email, subject, body })
       setSendResult({ ok: true, text: `Sent to ${contact.email}` })
+      // Auto-update outreach status to Emailed
+      if (contact.id) {
+        contactsApi.update(contact.id, { outreach_status: 'Emailed' }).catch(() => {})
+      }
     } catch (err) {
       const msg = err?.response?.data?.detail || 'Send failed. Check your Gmail connection in Profile.'
       setError(msg)
@@ -658,13 +670,15 @@ function RelevanceBadge({ score }) {
 }
 
 // ── My Network (per-company) ──────────────────────────────────────────────────
-function MyNetworkSection({ company, contacts, jobCompanies, connectionTypes, onSaveContact, onUpdateContact, onDeleteContact }) {
+function MyNetworkSection({ company, contacts, jobCompanies, connectionTypes, onSaveContact, onUpdateContact, onDeleteContact, templates, userUniversity }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('All')
   const [modalOpen, setModalOpen] = useState(false)
   const [editContact, setEditContact] = useState(null)
   const [selectedContact, setSelectedContact] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
+  const [emailTarget, setEmailTarget] = useState(null)
 
   const companyContacts = contacts.filter(c => c.company === company)
   const filtered = companyContacts.filter(c => {
@@ -730,7 +744,7 @@ function MyNetworkSection({ company, contacts, jobCompanies, connectionTypes, on
             {filtered.map(contact => (
               <ContactCard key={contact.id} contact={contact} onEdit={c => { setEditContact(c); setModalOpen(true) }}
                 onDelete={onDeleteContact} deleteConfirm={deleteConfirm} setDeleteConfirm={setDeleteConfirm}
-                onClick={setSelectedContact} />
+                onClick={setSelectedContact} onEmail={c => { setEmailTarget(c); setEmailModalOpen(true) }} />
             ))}
           </div>
           <p className="text-xs text-navy-400 text-right">
@@ -745,6 +759,11 @@ function MyNetworkSection({ company, contacts, jobCompanies, connectionTypes, on
 
       <ContactModal isOpen={modalOpen} onClose={() => { setModalOpen(false); setEditContact(null) }}
         onSave={handleSave} initialData={editContact} jobCompanies={jobCompanies} connectionTypes={connectionTypes} />
+
+      {emailModalOpen && emailTarget && (
+        <EmailComposerModal isOpen={emailModalOpen} onClose={() => { setEmailModalOpen(false); setEmailTarget(null) }}
+          contact={emailTarget} templates={templates || []} userUniversity={userUniversity} />
+      )}
     </div>
   )
 }
@@ -923,7 +942,8 @@ function CompanyDetailView({ company, companyJobs, contacts, jobCompanies, conne
       {/* Tab content */}
       {tab === 'network' ? (
         <MyNetworkSection company={company} contacts={contacts} jobCompanies={jobCompanies} connectionTypes={connectionTypes}
-          onSaveContact={onSaveContact} onUpdateContact={onUpdateContact} onDeleteContact={onDeleteContact} />
+          onSaveContact={onSaveContact} onUpdateContact={onUpdateContact} onDeleteContact={onDeleteContact}
+          templates={templates} userUniversity={userUniversity} />
       ) : (
         <DiscoverSection company={company} contacts={contacts} jobCompanies={jobCompanies} connectionTypes={connectionTypes}
           onSaveContact={onSaveContact} templates={templates} userUniversity={userUniversity} />

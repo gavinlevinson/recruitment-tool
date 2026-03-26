@@ -2600,16 +2600,12 @@ _events_cache: dict = {}   # { location_key: {"data": [], "fetched_at": float} }
 async def get_events(location: str = "all", event_type: str = "all"):
     import time as _time
 
-    eventbrite_key = os.getenv("EVENTBRITE_API_KEY", "")
-    if not eventbrite_key:
-        raise HTTPException(status_code=503, detail="EVENTBRITE_API_KEY not configured")
-
     loc_key = (location or "all").strip().lower()
 
     # Return cached data for this location if fresh (2 hours)
     entry = _events_cache.get(loc_key)
     cache_age = (_time.time() - entry["fetched_at"]) if entry and entry.get("fetched_at") else 999
-    if cache_age < 7200 and entry and entry.get("data"):
+    if cache_age < 7200 and entry and entry.get("data") is not None:
         data = entry["data"]
     else:
         data = await _fetch_events(location)
@@ -2620,123 +2616,200 @@ async def get_events(location: str = "all", event_type: str = "all"):
     if event_type != "all":
         results = [e for e in results if event_type.lower() in (e.get("event_type") or "").lower()]
 
+    if not data and not results:
+        # Return 503 only when no location was given and there are truly no results
+        # (i.e. scraping is broken) — for now just return empty gracefully
+        pass
+
     return {"events": results, "total": len(results)}
 
 
+# ── Eventbrite location slug helper ───────────────────────────────────────────
+# Maps common city names to Eventbrite URL slugs  (city--state / city--country)
+_EB_SLUG_MAP = {
+    "new york":       "ny--new-york",
+    "new york, ny":   "ny--new-york",
+    "nyc":            "ny--new-york",
+    "san francisco":  "ca--san-francisco",
+    "san francisco, ca": "ca--san-francisco",
+    "sf":             "ca--san-francisco",
+    "los angeles":    "ca--los-angeles",
+    "los angeles, ca":"ca--los-angeles",
+    "la":             "ca--los-angeles",
+    "chicago":        "il--chicago",
+    "chicago, il":    "il--chicago",
+    "boston":         "ma--boston",
+    "boston, ma":     "ma--boston",
+    "austin":         "tx--austin",
+    "austin, tx":     "tx--austin",
+    "seattle":        "wa--seattle",
+    "seattle, wa":    "wa--seattle",
+    "miami":          "fl--miami",
+    "miami, fl":      "fl--miami",
+    "washington dc":  "dc--washington",
+    "dc":             "dc--washington",
+    "atlanta":        "ga--atlanta",
+    "denver":         "co--denver",
+    "dallas":         "tx--dallas",
+    "houston":        "tx--houston",
+    "philadelphia":   "pa--philadelphia",
+    "london":         "uk--london",
+    "toronto":        "on--toronto",
+    "virtual":        "online",
+    "online":         "online",
+    "remote":         "online",
+}
+
+def _location_to_eb_slug(location: str) -> str:
+    """Convert a city name to Eventbrite URL slug."""
+    loc = location.strip().lower()
+    if loc in _EB_SLUG_MAP:
+        return _EB_SLUG_MAP[loc]
+    # Generic fallback: lowercase, replace spaces/commas with hyphens
+    parts = [p.strip() for p in loc.replace(",", " ").split() if p.strip()]
+    return "--".join(parts) if parts else "online"
+
+
 async def _fetch_events(location: str = "all") -> list:
-    """Fetch recruitment events from Eventbrite for the given location."""
-    import re as _re
+    """Scrape recruitment events from Eventbrite's public search pages. No API key needed."""
+    import re as _re, json as _json
+
+    loc = (location or "all").strip().lower()
+    is_virtual = loc in ("virtual", "online", "remote", "all", "")
+
+    # Build search URLs: tech networking + career fair + recruiting
+    eb_slug = _location_to_eb_slug(loc) if not is_virtual else "online"
+
+    search_combos = [
+        (eb_slug, "tech-networking"),
+        (eb_slug, "career-fair"),
+        (eb_slug, "recruiting"),
+        (eb_slug, "startup-networking"),
+    ]
+    if not is_virtual:
+        # Also pull virtual events alongside in-person
+        search_combos.append(("online", "tech-networking"))
+
     events = []
-    eventbrite_key = os.getenv("EVENTBRITE_API_KEY", "")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    }
 
-    # ── Eventbrite API ─────────────────────────────────────────────────────────
-    if eventbrite_key:
-        # Build query list based on location
-        loc_str = location.strip() if location and location.lower() not in ("all", "") else None
-        search_terms = [
-            "tech networking career",
-            "startup recruiting career fair",
-            "AI tech hiring",
-        ]
-        if loc_str:
-            queries = [{"q": q, "location": loc_str} for q in search_terms]
-        else:
-            # No specific location — search broadly (virtual + general)
-            queries = [{"q": q, "location": "Online"} for q in search_terms]
+    async with httpx.AsyncClient(timeout=20.0, headers=headers, follow_redirects=True) as client:
+        for eb_loc, keyword in search_combos:
+            url = f"https://www.eventbrite.com/d/{eb_loc}/{keyword}/"
+            try:
+                resp = await client.get(url, timeout=12.0)
+                if resp.status_code != 200:
+                    continue
 
-        try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                for q_params in queries:
+                # Extract embedded JSON
+                match = _re.search(r'window\.__SERVER_DATA__\s*=\s*(\{.+)', resp.text, _re.DOTALL)
+                if not match:
+                    continue
+                raw = match.group(1)
+                depth = 0
+                end = 0
+                for i, c in enumerate(raw):
+                    if c == "{": depth += 1
+                    elif c == "}":
+                        depth -= 1
+                        if depth == 0:
+                            end = i + 1
+                            break
+                try:
+                    data = _json.loads(raw[:end])
+                except _json.JSONDecodeError:
+                    continue
+
+                results = (data.get("search_data") or {}).get("events", {}).get("results", [])
+                for ev in results:
+                    name = ev.get("name", "").strip()
+                    ev_url = ev.get("url") or ev.get("parent_url", "")
+                    start_date = ev.get("start_date", "")
+                    start_time = ev.get("start_time", "")
+                    end_date = ev.get("end_date", "")
+                    end_time = ev.get("end_time", "")
+                    summary = (ev.get("summary") or "")[:400]
+                    is_online = ev.get("is_online_event", False)
+                    is_cancelled = ev.get("is_cancelled") or False
+
+                    venue_obj = ev.get("primary_venue") or {}
+                    addr_obj = venue_obj.get("address") or {}
+                    venue_name = venue_obj.get("name", "")
+                    city = addr_obj.get("city", "") or ("Virtual" if is_online else "")
+                    state = addr_obj.get("region", "")
+                    display_addr = f"{venue_name}, {city}" if venue_name and city else (venue_name or city or ("Online" if is_online else ""))
+
+                    # Tickets / price — check tickets_by
+                    tickets_url = ev.get("tickets_url") or ev_url
+                    is_free = False  # We can't know for sure from this data, default paid
+
+                    start_iso = f"{start_date}T{start_time}" if start_date and start_time else start_date
+                    end_iso = f"{end_date}T{end_time}" if end_date and end_time else end_date
+
+                    if not name or not start_date or is_cancelled:
+                        continue
+
+                    # Skip past events
                     try:
-                        params = {
-                            "q": q_params["q"],
-                            "sort_by": "date",
-                            "expand": "organizer,venue",
-                            "start_date.range_start": _get_now_iso(),
-                            "token": eventbrite_key,
-                        }
-                        if q_params["location"].lower() == "online":
-                            params["online_event"] = "true"
-                        else:
-                            params["location.address"] = q_params["location"]
-                            params["location.within"] = "25mi"
-                        resp = await client.get(
-                            "https://www.eventbriteapi.com/v3/events/search/",
-                            params=params,
-                            timeout=12.0,
-                        )
-                        if resp.status_code != 200:
+                        from datetime import datetime as _dt
+                        if _dt.strptime(start_date, "%Y-%m-%d") < _dt.now():
                             continue
-                        for ev in resp.json().get("events", []):
-                            name = ev.get("name", {}).get("text", "")
-                            desc = _re.sub(r"<[^>]+>", " ", ev.get("description", {}).get("html", "") or "")[:400]
-                            start = ev.get("start", {}).get("local", "")
-                            end   = ev.get("end", {}).get("local", "")
-                            url   = ev.get("url", "")
-                            is_free = ev.get("is_free", False)
-                            capacity = ev.get("capacity")
-                            venue = ev.get("venue") or {}
-                            venue_name = venue.get("name", "")
-                            address = (venue.get("address") or {})
-                            city = address.get("city", "")
-                            full_addr = address.get("localized_address_display", venue_name)
-                            organizer = (ev.get("organizer") or {}).get("name", "")
-                            is_online = ev.get("online_event", False)
-
-                            if not name or not start:
-                                continue
-
-                            # Classify event type
-                            name_lower = name.lower() + " " + desc.lower()
-                            if any(w in name_lower for w in ["career fair", "job fair", "hiring fair", "recruiting fair"]):
-                                etype = "Career Fair"
-                            elif any(w in name_lower for w in ["workshop", "bootcamp", "training", "seminar"]):
-                                etype = "Workshop"
-                            elif any(w in name_lower for w in ["conference", "summit", "forum", "expo"]):
-                                etype = "Conference"
-                            elif any(w in name_lower for w in ["info session", "information session", "office hour"]):
-                                etype = "Info Session"
-                            else:
-                                etype = "Networking"
-
-                            events.append({
-                                "id": ev.get("id", ""),
-                                "title": name,
-                                "description": desc,
-                                "start_date": start,
-                                "end_date": end,
-                                "url": url,
-                                "is_free": is_free,
-                                "capacity": capacity,
-                                "venue": full_addr or ("Online" if is_online else ""),
-                                "city": city or ("Virtual" if is_online else ""),
-                                "organizer": organizer,
-                                "event_type": etype,
-                                "source": "Eventbrite",
-                                "is_online": is_online,
-                            })
                     except Exception:
                         pass
-        except Exception as e:
-            print(f"[Events/Eventbrite] Error: {e}")
+
+                    # Classify event type
+                    text_lower = name.lower() + " " + summary.lower()
+                    if any(w in text_lower for w in ["career fair", "job fair", "hiring fair", "recruiting fair"]):
+                        etype = "Career Fair"
+                    elif any(w in text_lower for w in ["workshop", "bootcamp", "training", "seminar", "webinar"]):
+                        etype = "Workshop"
+                    elif any(w in text_lower for w in ["conference", "summit", "forum", "expo", "symposium"]):
+                        etype = "Conference"
+                    elif any(w in text_lower for w in ["info session", "information session", "office hour", "open house"]):
+                        etype = "Info Session"
+                    else:
+                        etype = "Networking"
+
+                    image = ""
+                    img_obj = ev.get("image") or {}
+                    image = (img_obj.get("image_sizes") or {}).get("medium", "") or img_obj.get("url", "")
+
+                    events.append({
+                        "id": ev.get("id") or ev.get("eid", ""),
+                        "title": name,
+                        "description": summary,
+                        "start_date": start_iso,
+                        "end_date": end_iso,
+                        "url": ev_url or tickets_url,
+                        "is_free": is_free,
+                        "capacity": None,
+                        "venue": display_addr,
+                        "city": city or (f"{city}, {state}".strip(", ")),
+                        "organizer": "",
+                        "event_type": etype,
+                        "source": "Eventbrite",
+                        "is_online": is_online,
+                        "image": image,
+                    })
+            except Exception as e:
+                print(f"[Events] Scrape error {url}: {e}")
 
     # Deduplicate by title+date
     seen = set()
     unique = []
     for e in events:
-        key = f"{e['title'].lower().strip()}|{e['start_date'][:10]}"
+        key = f"{e['title'].lower().strip()[:60]}|{(e['start_date'] or '')[:10]}"
         if key not in seen:
             seen.add(key)
             unique.append(e)
 
     unique.sort(key=lambda x: x.get("start_date", ""))
-    print(f"[Events] {len(unique)} events found")
+    print(f"[Events] {len(unique)} events scraped for location='{location}'")
     return unique
-
-
-def _get_now_iso():
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ── News endpoints ─────────────────────────────────────────────────────────────
@@ -2895,7 +2968,15 @@ async def _fetch_news() -> list:
                     topics = []
                     if any(w in text for w in ["fund", "raise", "series", "valuation", "ipo", "acquisition", "acquire", "unicorn"]):
                         topics.append("funding")
-                    if any(w in text for w in ["hire", "hiring", "layoff", "laid off", "job", "talent", "workforce", "headcount"]):
+                    if any(w in text for w in [
+                        "hire", "hiring", "rehire", "layoff", "laid off", "lay off", "job cut",
+                        "job market", "talent", "workforce", "headcount", "staff", "employee",
+                        "workers", "recruit", "recruiting", "recruitment", "downsiz", "fired",
+                        "rif ", "reduction in force", "attrition", "remote work", "return to office",
+                        "rto", "new ceo", "new cto", "new hire", "appoint", "joins as",
+                        "named as", "promoted to", "general partner", "partner at", "head of",
+                        "vp of", "chief ", "going public", "ipo",
+                    ]):
                         topics.append("hiring")
                     if any(w in text for w in ["gpt", "llm", "model", "openai", "anthropic", "gemini", "claude", "research", "paper", "benchmark"]):
                         topics.append("ai_research")
@@ -2998,7 +3079,6 @@ async def nylas_auth_url(current_user: User = Depends(get_current_user)):
         "access_type":   "online",
         "state":         str(current_user.id),
         "provider":      "google",
-        "scope":         "openid email https://www.googleapis.com/auth/gmail.modify",
     }
     url = f"{NYLAS_API_BASE}/v3/connect/auth?" + urllib.parse.urlencode(params)
     return {"url": url}
@@ -3016,12 +3096,13 @@ async def nylas_callback(code: str, state: str = "", db: Session = Depends(get_d
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
                 f"{NYLAS_API_BASE}/v3/connect/token",
-                headers={"Authorization": f"Bearer {NYLAS_API_KEY}", "Content-Type": "application/json"},
+                headers={"Content-Type": "application/json"},
                 json={
-                    "client_id":    NYLAS_CLIENT_ID,
-                    "redirect_uri": NYLAS_REDIRECT_URI,
-                    "code":         code,
-                    "grant_type":   "authorization_code",
+                    "client_id":     NYLAS_CLIENT_ID,
+                    "client_secret": NYLAS_API_KEY,
+                    "redirect_uri":  NYLAS_REDIRECT_URI,
+                    "code":          code,
+                    "grant_type":    "authorization_code",
                 },
             )
             if resp.status_code != 200:
@@ -3051,20 +3132,29 @@ async def nylas_status(current_user: User = Depends(get_current_user)):
     if not current_user.nylas_grant_id:
         return {"connected": False, "email": None}
 
-    # Verify the grant is still valid by fetching the user's profile
+    # Grant exists — try to get email but don't fail if Nylas is slow
+    email = None
     try:
         data = await _nylas_get("/profile", current_user.nylas_grant_id)
         email = (data.get("data") or data).get("email", "")
-        return {"connected": True, "email": email}
     except Exception:
-        return {"connected": False, "email": None}
+        pass  # Still connected even if profile fetch fails
+
+    return {"connected": True, "email": email}
+
+
+class NylasAttachment(BaseModel):
+    filename: str
+    content_type: str
+    data: str  # base64-encoded file content
 
 
 class NylasSendPayload(BaseModel):
     to: str           # recipient email
     subject: str
-    body: str         # plain text body
+    body: str         # plain text body (converted to HTML on send)
     reply_to_thread: Optional[str] = None  # thread_id if replying
+    attachments: Optional[List[NylasAttachment]] = None
 
 
 @app.post("/api/nylas/send")
@@ -3076,13 +3166,38 @@ async def nylas_send(
     if not current_user.nylas_grant_id:
         raise HTTPException(status_code=400, detail="Gmail not connected. Connect via Profile → Integrations.")
 
+    # Convert plain text to HTML so Gmail preserves paragraph spacing exactly
+    safe = payload.body.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    normalized = safe.replace('\r\n', '\n').replace('\r', '\n')
+    # Split on double newlines (paragraphs), preserve single newlines within paragraphs
+    paragraphs = normalized.split('\n\n')
+    inner_html = ''.join(
+        f'<p style="margin:0 0 16px 0;padding:0;">{p.replace(chr(10), "<br>")}</p>'
+        for p in paragraphs if p.strip()
+    )
+    html_body = (
+        '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#1a1a1a;">'
+        + inner_html
+        + '</div>'
+    )
+
     msg = {
         "to":      [{"email": payload.to}],
         "subject": payload.subject,
-        "body":    payload.body,
+        "body":    html_body,
     }
     if payload.reply_to_thread:
         msg["thread_id"] = payload.reply_to_thread
+
+    if payload.attachments:
+        msg["attachments"] = [
+            {
+                "filename":     a.filename,
+                "content_type": a.content_type or "application/octet-stream",
+                "content":      a.data,   # Nylas v3 uses "content" for base64 data
+            }
+            for a in payload.attachments
+        ]
 
     try:
         result = await _nylas_post("/messages/send", current_user.nylas_grant_id, msg)
