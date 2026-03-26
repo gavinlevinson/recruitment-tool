@@ -55,15 +55,21 @@ _last_scrape_triggered: Optional[str] = None
 # In-memory cache for company summaries: company_name (lowercase) → summary string
 _company_summary_cache: dict = {}
 
-# CORS — allow localhost for dev + Vercel URL for production
+# CORS — allow localhost for dev + any Vercel deployment + custom FRONTEND_URL
 _frontend_url = os.environ.get("FRONTEND_URL", "")
-_allow_origins = ["http://localhost:5173", "http://localhost:3000"]
-if _frontend_url:
+_allow_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://recruitment-tool-orcin.vercel.app",
+    "https://recruitiq.vercel.app",
+]
+if _frontend_url and _frontend_url not in _allow_origins:
     _allow_origins.append(_frontend_url)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allow_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
