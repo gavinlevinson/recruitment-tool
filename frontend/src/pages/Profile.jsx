@@ -532,7 +532,7 @@ export default function Profile() {
                   <ul className="space-y-0.5 ml-2">
                     {!nylasConfig.has_client_id && <li><code className="bg-amber-100 px-1 rounded">NYLAS_CLIENT_ID</code> — from Nylas dashboard</li>}
                     {!nylasConfig.has_api_key && <li><code className="bg-amber-100 px-1 rounded">NYLAS_API_KEY</code> — from Nylas dashboard</li>}
-                    <li><code className="bg-amber-100 px-1 rounded">NYLAS_REDIRECT_URI</code> — set to: <code className="bg-amber-100 px-1 rounded break-all">{window.location.origin.replace('5173', '8000')}/api/nylas/callback</code></li>
+                    <li><code className="bg-amber-100 px-1 rounded">NYLAS_REDIRECT_URI</code> — set to: <code className="bg-amber-100 px-1 rounded break-all">{(import.meta.env.VITE_API_URL || 'http://localhost:8000')}/api/nylas/callback</code></li>
                     <li><code className="bg-amber-100 px-1 rounded">FRONTEND_URL</code> — set to: <code className="bg-amber-100 px-1 rounded">{window.location.origin}</code></li>
                   </ul>
                 </div>
