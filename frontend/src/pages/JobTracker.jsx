@@ -646,7 +646,16 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork }) {
                 </div>
               )
             })()}
-            {job.interview_date && (() => {
+            {job.status === 'Interviewing' && (() => {
+              if (!job.interview_date) return (
+                <div className="flex items-start gap-3">
+                  <Calendar size={15} className="text-navy-300 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs text-navy-400 uppercase tracking-wide font-semibold">Interview Date</p>
+                    <p className="text-sm text-navy-300 italic mt-0.5">Waiting to be scheduled</p>
+                  </div>
+                </div>
+              )
               const [y,m,d] = job.interview_date.split('-').map(Number)
               const dt = new Date(y, m-1, d)
               const today = new Date(); today.setHours(0,0,0,0)
