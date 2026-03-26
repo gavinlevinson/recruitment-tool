@@ -63,6 +63,7 @@ class UserProfile(Base):
     parsed_locations = Column(Text, nullable=True)    # JSON list
     parsed_gpa = Column(String, nullable=True)
     parsed_school = Column(String, nullable=True)
+    custom_context = Column(Text, nullable=True)    # user-typed career context / preferences
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -249,6 +250,7 @@ def run_migrations():
         "ALTER TABLE discovered_jobs ADD COLUMN deadline TEXT",
         "ALTER TABLE users ADD COLUMN nylas_grant_id TEXT",
         "ALTER TABLE users ADD COLUMN linkedin_url TEXT",
+        "ALTER TABLE user_profiles ADD COLUMN custom_context TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -263,6 +265,7 @@ def _run_pg_migrations():
     """PostgreSQL-safe migrations using IF NOT EXISTS."""
     pg_migrations = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_url TEXT",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS custom_context TEXT",
     ]
     with engine.connect() as conn:
         for sql in pg_migrations:

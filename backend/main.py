@@ -267,6 +267,7 @@ def _profile_to_dict(p: UserProfile) -> dict:
         "suggested_locations": _loads(p.parsed_locations),
         "gpa": p.parsed_gpa,
         "school": p.parsed_school,
+        "custom_context": p.custom_context or "",
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
     }
 
@@ -333,6 +334,8 @@ def update_parsed_profile(
         prof.parsed_locations = json.dumps(payload["suggested_locations"])
     if "skills" in payload:
         prof.parsed_skills = json.dumps(payload["skills"])
+    if "custom_context" in payload:
+        prof.custom_context = payload["custom_context"] or None
     prof.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(prof)

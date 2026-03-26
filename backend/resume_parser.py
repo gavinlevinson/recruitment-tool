@@ -378,6 +378,19 @@ def compute_personal_score(
         if user_years == 0:
             score += 5
 
+    # ── Custom context boost (0-10 pts) ──────────────────────────────────────────
+    custom_context = user_profile.get("custom_context", "")
+    if custom_context:
+        ctx_words = [w.lower().strip(",.") for w in custom_context.split() if len(w) > 3]
+        ctx_hits = [w for w in ctx_words if w in combined]
+        if len(ctx_hits) >= 3:
+            score += 10
+            reasons.append("Strong context match")
+        elif len(ctx_hits) >= 1:
+            score += 5
+            reasons.append(f"Context match ({len(ctx_hits)} keywords)")
+    score = min(score, 100)
+
     # Clamp score to 0-100
     score = max(0, min(100, score))
     return int(score), reasons
@@ -400,4 +413,5 @@ def build_user_profile_for_scoring(user, profile) -> dict:
         "skills": _loads(profile.parsed_skills) if profile else [],
         "gpa": profile.parsed_gpa if profile else None,
         "career_stage": user.career_stage if user else "college_senior",
+        "custom_context": (profile.custom_context or "") if profile else "",
     }

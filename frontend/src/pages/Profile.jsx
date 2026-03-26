@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import {
   Upload, FileText, Check, RefreshCw, User, GraduationCap, BookOpen,
   MapPin, Briefcase, Zap, AlertCircle, ChevronDown, Sparkles, X,
-  Download, Eye, EyeOff, Mail, Link2, Link2Off,
+  Download, Eye, EyeOff, Mail, Link2, Link2Off, Save, MessageSquare,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { profileApi, authApi, nylasApi } from '../api'
@@ -16,9 +16,7 @@ function fileDownloadUrl(fileType) {
 }
 
 const FILE_TYPES = [
-  { key: 'resume',       label: 'Resume',       hint: "PDF \u2014 we'll auto-extract your target roles, skills & location preferences", required: true },
-  { key: 'cover_letter', label: 'Cover Letter',  hint: 'PDF \u2014 optional, helps us understand your voice and target companies', required: false },
-  { key: 'transcript',   label: 'Transcript',    hint: 'PDF \u2014 optional, helps confirm GPA and graduation year', required: false },
+  { key: 'resume', label: 'Resume', hint: "PDF — we'll auto-extract your target roles, skills & location preferences", required: true },
 ]
 
 const CAREER_STAGE_LABELS = {
@@ -165,6 +163,11 @@ export default function Profile() {
   const [loading, setLoading]   = useState(true)
   const [uploading, setUploading] = useState(null)   // which file type is uploading
 
+  // Career context
+  const [customContext, setCustomContext] = useState('')
+  const [contextSaving, setContextSaving] = useState(false)
+  const [contextSaved, setContextSaved] = useState(false)
+
   // Edit account info
   const [editInfo, setEditInfo] = useState(false)
   const [infoForm, setInfoForm] = useState({})
@@ -177,7 +180,10 @@ export default function Profile() {
 
   useEffect(() => {
     profileApi.get()
-      .then(res => { setProfile(res.data.profile) })
+      .then(res => {
+        setProfile(res.data.profile)
+        setCustomContext(res.data.profile?.custom_context || '')
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
 
@@ -243,6 +249,16 @@ export default function Profile() {
     } finally {
       setNylasLoading(false)
     }
+  }
+
+  const handleSaveContext = async () => {
+    setContextSaving(true)
+    try {
+      await profileApi.updateParsed({ custom_context: customContext })
+      setContextSaved(true)
+      setTimeout(() => setContextSaved(false), 2500)
+    } catch {}
+    finally { setContextSaving(false) }
   }
 
   if (loading) {
@@ -373,6 +389,42 @@ export default function Profile() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Career Context */}
+      <div className="card p-6 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-navy-800 flex items-center gap-2">
+            <MessageSquare size={17} className="text-violet-DEFAULT" />
+            Career Context
+          </h2>
+          <span className="text-xs text-navy-400">Optional</span>
+        </div>
+        <p className="text-sm text-navy-500">
+          Describe the type of roles you're targeting, industries you're interested in, or anything else that should guide your job recommendations. This supplements your resume for better matching.
+        </p>
+        <textarea
+          className="input"
+          rows={4}
+          placeholder="e.g. I'm looking for strategy or operations roles at early-stage fintech or healthcare startups. Interested in companies focused on AI. Prefer roles with exposure to senior leadership."
+          value={customContext}
+          onChange={e => setCustomContext(e.target.value)}
+        />
+        <div className="flex items-center justify-end gap-2">
+          {contextSaved && (
+            <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+              <Check size={12} /> Saved
+            </span>
+          )}
+          <button
+            onClick={handleSaveContext}
+            disabled={contextSaving}
+            className="btn-secondary py-1.5 text-sm flex items-center gap-1.5"
+          >
+            {contextSaving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
+            Save Context
+          </button>
+        </div>
       </div>
 
       {/* File uploads */}

@@ -1976,8 +1976,22 @@ export default function JobTracker() {
     const currentJob = jobs.find(j => j.id === id)
     if (!currentJob || currentJob.status === newStatus) return
 
+    // Build date-clearing payload based on status transition
+    const dateUpdates = {}
+    const terminalStatuses = ['Accepted', 'Rejected']
+    const preInterviewStatuses = ['Not Applied', 'Under Review']
+
+    if (terminalStatuses.includes(newStatus)) {
+      // Resolved application — clear interview date and reminder (keep deadline as record)
+      if (currentJob.interview_date) dateUpdates.interview_date = null
+      if (currentJob.reminder_date) dateUpdates.reminder_date = null
+    } else if (preInterviewStatuses.includes(newStatus) && currentJob.status === 'Interviewing') {
+      // Moving backwards from Interviewing — clear interview date
+      if (currentJob.interview_date) dateUpdates.interview_date = null
+    }
+
     // Optimistic update — card moves immediately for snappy UX
-    setJobs(prev => prev.map(j => j.id === id ? { ...j, status: newStatus } : j))
+    setJobs(prev => prev.map(j => j.id === id ? { ...j, status: newStatus, ...dateUpdates } : j))
 
     if (newStatus === 'Interviewing') {
       // Pause — prompt user for interview date before committing to API
@@ -1985,7 +1999,7 @@ export default function JobTracker() {
       return
     }
 
-    jobsApi.update(id, { status: newStatus }).catch(() => {
+    jobsApi.update(id, { status: newStatus, ...dateUpdates }).catch(() => {
       setJobs(prev => prev.map(j => j.id === id ? { ...j, status: currentJob.status } : j))
     })
   }

@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   RefreshCw, Search, ExternalLink, Check, ChevronDown, ChevronUp,
   Info, Zap, X, ChevronLeft, ChevronRight, SlidersHorizontal,
-  Settings, Save, MapPin, AlertCircle, Loader2,
+  Settings, Save, MapPin, AlertCircle, Loader2, Sparkles,
 } from 'lucide-react'
-import { discoveredApi, preferencesApi } from '../api'
+import { discoveredApi, preferencesApi, profileApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 // ── Source badge metadata ─────────────────────────────────────────────────────
@@ -1096,6 +1096,20 @@ export default function JobDiscovery() {
       .catch(() => {})
   }, [])
 
+  const [hasResume, setHasResume] = useState(true)   // assume true until checked
+  const [resumeBannerDismissed, setResumeBannerDismissed] = useState(
+    () => sessionStorage.getItem('riq_resume_banner_dismissed') === '1'
+  )
+
+  const { user } = useAuth()
+
+  useEffect(() => {
+    if (!user) return
+    profileApi.get()
+      .then(res => setHasResume(!!res.data.profile?.resume_filename))
+      .catch(() => {})
+  }, [user])
+
 
   const fetchJobs = useCallback(async (opts = {}) => {
     const curPage   = opts.page   !== undefined ? opts.page   : page
@@ -1282,6 +1296,27 @@ export default function JobDiscovery() {
           </div>
         </div>
       </div>
+
+      {/* No-resume banner */}
+      {!hasResume && !resumeBannerDismissed && (
+        <div className="mx-4 mt-4 flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50">
+          <Sparkles size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-800">Get personalized job matches</p>
+            <p className="text-sm text-amber-700 mt-0.5">
+              You're seeing all available jobs. Upload your resume in{' '}
+              <a href="/profile" className="underline font-medium hover:text-amber-900">Profile</a>{' '}
+              to get AI-scored recommendations tailored to your background, skills, and goals.
+            </p>
+          </div>
+          <button
+            onClick={() => { setResumeBannerDismissed(true); sessionStorage.setItem('riq_resume_banner_dismissed', '1') }}
+            className="text-amber-400 hover:text-amber-700 shrink-0 p-0.5"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
       {/* Add job from any URL */}
       <AddFromUrlCard onAdded={() => fetchJobs()} />
