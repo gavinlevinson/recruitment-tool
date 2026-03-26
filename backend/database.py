@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Float
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Float, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
@@ -52,11 +52,14 @@ class UserProfile(Base):
     user_id = Column(Integer, index=True, nullable=False)
     # Uploaded file paths (relative to /uploads/{user_id}/)
     resume_filename = Column(String, nullable=True)
-    resume_text = Column(Text, nullable=True)       # extracted text
+    resume_text = Column(Text, nullable=True)
+    resume_data = Column(LargeBinary, nullable=True)        # file bytes stored in DB
     cover_letter_filename = Column(String, nullable=True)
     cover_letter_text = Column(Text, nullable=True)
+    cover_letter_data = Column(LargeBinary, nullable=True)
     transcript_filename = Column(String, nullable=True)
     transcript_text = Column(Text, nullable=True)
+    transcript_data = Column(LargeBinary, nullable=True)
     # Parsed / suggested data (JSON arrays stored as strings)
     parsed_skills = Column(Text, nullable=True)       # JSON list
     parsed_roles = Column(Text, nullable=True)        # JSON list
@@ -267,6 +270,9 @@ def run_migrations():
         "ALTER TABLE users ADD COLUMN nylas_grant_id TEXT",
         "ALTER TABLE users ADD COLUMN linkedin_url TEXT",
         "ALTER TABLE user_profiles ADD COLUMN custom_context TEXT",
+        "ALTER TABLE user_profiles ADD COLUMN resume_data BLOB",
+        "ALTER TABLE user_profiles ADD COLUMN cover_letter_data BLOB",
+        "ALTER TABLE user_profiles ADD COLUMN transcript_data BLOB",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -282,6 +288,9 @@ def _run_pg_migrations():
     pg_migrations = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_url TEXT",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS custom_context TEXT",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS resume_data BYTEA",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS cover_letter_data BYTEA",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS transcript_data BYTEA",
     ]
     with engine.connect() as conn:
         for sql in pg_migrations:

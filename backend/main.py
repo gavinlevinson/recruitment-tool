@@ -201,12 +201,15 @@ async def upload_file(
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported currently")
 
+    # Read file bytes into memory — stored in DB so they survive redeploys
+    file_bytes = await file.read()
+
+    # Also write to disk for local text extraction
     user_dir = UPLOADS_DIR / str(current_user.id)
     user_dir.mkdir(exist_ok=True)
     dest = user_dir / f"{file_type}.pdf"
-
     with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        f.write(file_bytes)
 
     # Extract text
     from resume_parser import extract_pdf_text, parse_resume, parse_transcript
@@ -219,7 +222,8 @@ async def upload_file(
         db.add(prof)
 
     setattr(prof, f"{file_type}_filename", file.filename)
-    setattr(prof, f"{file_type}_text", text[:10000])   # cap at 10k chars
+    setattr(prof, f"{file_type}_text", text[:10000])
+    setattr(prof, f"{file_type}_data", file_bytes)   # persist bytes in DB
 
     if file_type == "resume" and text:
         parsed = parse_resume(text)
@@ -289,14 +293,21 @@ def _get_user_from_token_param(token: str, db: Session) -> User:
     return user
 
 def _file_response_for_type(file_type: str, user, db, inline: bool = False):
-    """Shared helper: stream a user's uploaded PDF."""
-    from fastapi.responses import FileResponse
+    """Shared helper: stream a user's uploaded PDF. Serves from DB bytes (survives redeploys)."""
+    from fastapi.responses import Response, FileResponse
     prof = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
-    attr = f"{file_type}_filename"
-    original_filename = getattr(prof, attr, None) if prof else None
+    original_filename = getattr(prof, f"{file_type}_filename", None) if prof else None
     if not original_filename:
         raise HTTPException(status_code=404, detail=f"No {file_type.replace('_', ' ')} uploaded")
-    # Files are always saved on disk as {file_type}.pdf regardless of the original upload name
+
+    # Prefer DB bytes (persistent), fall back to disk
+    file_bytes = getattr(prof, f"{file_type}_data", None) if prof else None
+    if file_bytes:
+        disposition = "inline" if inline else f'attachment; filename="{original_filename}"'
+        return Response(content=file_bytes, media_type="application/pdf",
+                        headers={"Content-Disposition": disposition})
+
+    # Legacy fallback: disk
     path = UPLOADS_DIR / str(user.id) / f"{file_type}.pdf"
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
