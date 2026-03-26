@@ -653,10 +653,19 @@ def get_calendar_events(
     jobs = q.all()
 
     job_map = {j.id: j for j in jobs}
+
+    # Jobs that have interview rounds — skip their interview_date to avoid duplicates
+    jobs_with_rounds = set()
+    if current_user:
+        round_job_ids = db.query(InterviewRound.job_id).filter(
+            InterviewRound.user_id == current_user.id
+        ).distinct().all()
+        jobs_with_rounds = {r[0] for r in round_job_ids}
+
     events = []
     for j in jobs:
         base = {"job_id": j.id, "company": j.company, "role": j.role or "", "status": j.status}
-        if getattr(j, 'interview_date', None):
+        if getattr(j, 'interview_date', None) and j.id not in jobs_with_rounds:
             events.append({**base, "id": f"interview-{j.id}", "type": "interview",
                            "title": j.company, "date": j.interview_date})
         if getattr(j, 'deadline', None):
