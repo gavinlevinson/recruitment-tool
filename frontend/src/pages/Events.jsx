@@ -169,15 +169,13 @@ function EventCard({ event }) {
         {/* RSVP button */}
         {event.url && (
           <div className="mt-1">
-            <a
-              href={event.url}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => window.open(event.url, '_blank', 'noopener,noreferrer')}
               className="btn-primary inline-flex items-center gap-1.5 text-xs py-1.5 px-3 h-auto"
             >
               RSVP
               <ExternalLink size={11} />
-            </a>
+            </button>
           </div>
         )}
       </div>
