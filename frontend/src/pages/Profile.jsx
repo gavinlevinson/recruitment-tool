@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Upload, FileText, Check, RefreshCw, User, GraduationCap, BookOpen,
@@ -33,6 +33,7 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
   const [error, setError]       = useState(null)
   const [success, setSuccess]   = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const fileInputRef = useRef(null)
   const downloadUrl = fileDownloadUrl(fileType)
 
   const upload = async (file) => {
@@ -85,6 +86,7 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
       {/* Drop zone */}
       <label
         htmlFor={`file-input-${fileType}`}
+        onClick={e => { if (!isLoading) { e.preventDefault(); fileInputRef.current?.click() } }}
         onDragOver={e => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
         onDrop={e => { e.preventDefault(); setDragging(false); upload(e.dataTransfer.files[0]) }}
@@ -108,7 +110,7 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
            'Click to upload or drag & drop'}
         </p>
         <p className="text-xs text-navy-400">PDF only</p>
-        <input id={`file-input-${fileType}`} type="file" accept=".pdf" className="hidden"
+        <input ref={fileInputRef} id={`file-input-${fileType}`} type="file" accept=".pdf" className="hidden"
           disabled={isLoading} onChange={e => upload(e.target.files[0])} />
       </label>
 
