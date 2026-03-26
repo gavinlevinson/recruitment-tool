@@ -36,6 +36,7 @@ class User(Base):
     minor = Column(String, nullable=True)
     high_school = Column(String, nullable=True)
     grad_school = Column(String, nullable=True)
+    linkedin_url = Column(String, nullable=True)
     # career_stage: college_senior | college_junior | college_sophomore | early_career | mid_career | senior
     career_stage = Column(String, default="college_senior")
     is_active = Column(Boolean, default=True)
@@ -247,6 +248,7 @@ def run_migrations():
         "ALTER TABLE jobs ADD COLUMN reminder_date TEXT",
         "ALTER TABLE discovered_jobs ADD COLUMN deadline TEXT",
         "ALTER TABLE users ADD COLUMN nylas_grant_id TEXT",
+        "ALTER TABLE users ADD COLUMN linkedin_url TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -257,8 +259,23 @@ def run_migrations():
                 conn.rollback()  # Reset transaction so next migration can run
 
 
+def _run_pg_migrations():
+    """PostgreSQL-safe migrations using IF NOT EXISTS."""
+    pg_migrations = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_url TEXT",
+    ]
+    with engine.connect() as conn:
+        for sql in pg_migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
-    # Only run SQLite migrations for local dev — PostgreSQL gets full schema from create_all()
     if DATABASE_URL.startswith("sqlite"):
         run_migrations()
+    else:
+        _run_pg_migrations()

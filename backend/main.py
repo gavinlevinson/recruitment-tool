@@ -128,6 +128,7 @@ def register(payload: dict, db: Session = Depends(get_db)):
         high_school=payload.get("high_school"),
         grad_school=payload.get("grad_school"),
         career_stage=payload.get("career_stage", "college_senior"),
+        linkedin_url=payload.get("linkedin_url"),
     )
     db.add(user)
     db.commit()
@@ -136,6 +137,9 @@ def register(payload: dict, db: Session = Depends(get_db)):
     prefs = UserPreferences(user_id=user.id)
     db.add(prefs)
     db.commit()
+    if "years_experience" in payload:
+        prefs.years_experience = payload.get("years_experience")
+        db.commit()
     token = create_access_token(user.id, user.email)
     return {"token": token, "user": _user_to_dict(user)}
 
@@ -171,6 +175,7 @@ def _user_to_dict(u: User) -> dict:
         "high_school": u.high_school, "grad_school": u.grad_school,
         "career_stage": u.career_stage,
         "career_stage_label": CAREER_STAGE_LABELS.get(u.career_stage, u.career_stage),
+        "linkedin_url": u.linkedin_url,
         "created_at": u.created_at.isoformat() if u.created_at else None,
     }
 

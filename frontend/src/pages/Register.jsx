@@ -3,49 +3,42 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   Zap, User, Mail, Lock, Eye, EyeOff, RefreshCw, AlertCircle,
   GraduationCap, BookOpen, ChevronRight, ChevronLeft, Check,
-  Briefcase, TrendingUp, Sprout, Rocket,
+  Briefcase, TrendingUp, Rocket, Linkedin,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
-const CAREER_STAGES = [
+const EXPERIENCE_OPTIONS = [
   {
-    id: 'college_senior',
-    label: 'College Senior',
-    sublabel: 'Entry-level full-time roles after graduation',
+    career_stage: 'college_senior',
+    years_experience: '0+',
+    label: 'Student / New Grad',
+    sublabel: '0–1 years',
     Icon: GraduationCap,
-    available: true,
   },
   {
-    id: 'college_junior',
-    label: 'College Junior',
-    sublabel: 'Summer internships',
-    Icon: BookOpen,
-    available: false,
-  },
-  {
-    id: 'college_sophomore',
-    label: 'College Sophomore',
-    sublabel: 'Freshman / Sophomore internships',
-    Icon: Sprout,
-    available: false,
-  },
-  {
-    id: 'early_career',
-    label: '1–3 Years Experience',
-    sublabel: 'Full-time roles with some experience',
+    career_stage: 'early_career',
+    years_experience: '1-2',
+    label: '1–2 Years',
+    sublabel: 'Early career',
     Icon: Rocket,
-    available: false,
   },
   {
-    id: 'mid_career',
-    label: '3–6 Years Experience',
-    sublabel: 'Mid-level and senior IC roles',
+    career_stage: 'mid_career',
+    years_experience: '3-5',
+    label: '3–5 Years',
+    sublabel: 'Mid-level',
     Icon: Briefcase,
-    available: false,
+  },
+  {
+    career_stage: 'senior',
+    years_experience: '5-10',
+    label: '5+ Years',
+    sublabel: 'Senior level',
+    Icon: TrendingUp,
   },
 ]
 
-const STEPS = ['Account', 'Career Stage', 'Academic Info']
+const STEPS = ['Account', 'Experience', 'Background']
 
 export default function Register() {
   const { register } = useAuth()
@@ -61,6 +54,8 @@ export default function Register() {
     email: '',
     password: '',
     career_stage: 'college_senior',
+    years_experience: '0+',
+    linkedin_url: '',
     university: '',
     graduation_year: '',
     major: '',
@@ -101,6 +96,8 @@ export default function Register() {
 
   const currentYear = new Date().getFullYear()
   const gradYears = Array.from({ length: 8 }, (_, i) => String(currentYear + i))
+
+  const selectedOption = EXPERIENCE_OPTIONS.find(o => o.career_stage === form.career_stage)
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -188,50 +185,66 @@ export default function Register() {
             </div>
           )}
 
-          {/* ── Step 1: Career Stage ── */}
+          {/* ── Step 1: Experience ── */}
           {step === 1 && (
             <div className="space-y-4">
               <div className="text-center">
                 <h2 className="text-xl font-semibold text-navy-900">Where are you in your career?</h2>
-                <p className="text-sm text-navy-400 mt-1">We'll tailor job discovery to your stage.</p>
+                <p className="text-sm text-navy-400 mt-1">We'll tailor job discovery to your experience.</p>
               </div>
 
-              <div className="space-y-2">
-                {CAREER_STAGES.map(stage => (
-                  <button
-                    key={stage.id}
-                    type="button"
-                    disabled={!stage.available}
-                    onClick={() => stage.available && set('career_stage', stage.id)}
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
-                      !stage.available
-                        ? 'opacity-40 cursor-not-allowed border-navy-100 bg-navy-50'
-                        : form.career_stage === stage.id
-                        ? 'border-violet-DEFAULT bg-violet-50'
-                        : 'border-navy-200 bg-white hover:border-navy-300'
-                    }`}
-                  >
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                      form.career_stage === stage.id && stage.available
-                        ? 'bg-violet-100'
-                        : 'bg-navy-100'
-                    }`}>
-                      <stage.Icon size={16} className={form.career_stage === stage.id && stage.available ? 'text-violet-DEFAULT' : 'text-navy-500'} />
-                    </div>
-                    <div className="flex-1">
-                      <p className={`text-sm font-semibold ${form.career_stage === stage.id ? 'text-violet-DEFAULT' : 'text-navy-800'}`}>
-                        {stage.label}
-                        {!stage.available && <span className="ml-2 text-xs font-normal text-navy-400">Coming soon</span>}
-                      </p>
-                      <p className="text-xs text-navy-400 mt-0.5">{stage.sublabel}</p>
-                    </div>
-                    {form.career_stage === stage.id && stage.available && (
-                      <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: '#8b6bbf' }}>
-                        <Check size={11} className="text-white" />
+              <div className="grid grid-cols-2 gap-3">
+                {EXPERIENCE_OPTIONS.map(option => {
+                  const isSelected = form.career_stage === option.career_stage
+                  return (
+                    <button
+                      key={option.career_stage}
+                      type="button"
+                      onClick={() => {
+                        set('career_stage', option.career_stage)
+                        set('years_experience', option.years_experience)
+                      }}
+                      className={`flex flex-col items-start gap-2 p-3 rounded-xl border-2 text-left transition-all ${
+                        isSelected
+                          ? 'border-violet-500 bg-violet-50'
+                          : 'border-navy-200 bg-white hover:border-navy-300'
+                      }`}
+                      style={isSelected ? { borderColor: '#8b6bbf' } : {}}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        isSelected ? 'bg-violet-100' : 'bg-navy-100'
+                      }`}>
+                        <option.Icon size={15} className={isSelected ? 'text-violet-600' : 'text-navy-500'}
+                          style={isSelected ? { color: '#8b6bbf' } : {}} />
                       </div>
-                    )}
-                  </button>
-                ))}
+                      <div>
+                        <p className={`text-sm font-semibold leading-tight ${isSelected ? 'text-violet-700' : 'text-navy-800'}`}
+                          style={isSelected ? { color: '#8b6bbf' } : {}}>
+                          {option.label}
+                        </p>
+                        <p className="text-xs text-navy-400 mt-0.5">{option.sublabel}</p>
+                      </div>
+                      {isSelected && (
+                        <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center hidden" />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
+                  LinkedIn URL <span className="text-navy-300 font-normal normal-case">(optional)</span>
+                </label>
+                <div className="relative">
+                  <Linkedin size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
+                  <input
+                    className="input pl-9"
+                    placeholder="https://linkedin.com/in/yourprofile"
+                    value={form.linkedin_url}
+                    onChange={e => set('linkedin_url', e.target.value)}
+                  />
+                </div>
               </div>
 
               <div className="flex gap-3">
@@ -245,7 +258,7 @@ export default function Register() {
             </div>
           )}
 
-          {/* ── Step 2: Academic Info ── */}
+          {/* ── Step 2: Background ── */}
           {step === 2 && (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="text-center">
