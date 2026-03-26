@@ -328,6 +328,29 @@ async def download_cover_letter(token: str = _Query(""), inline: bool = _Query(F
 async def download_transcript(token: str = _Query(""), inline: bool = _Query(False), db: Session = Depends(get_db)):
     return _file_response_for_type("transcript", _get_user_from_token_param(token, db), db, inline=inline)
 
+@app.delete("/api/profile/{file_type}")
+async def delete_file(file_type: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if file_type not in ("resume", "cover_letter", "transcript"):
+        raise HTTPException(status_code=400, detail="Invalid file type")
+    prof = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+    if prof:
+        setattr(prof, f"{file_type}_filename", None)
+        setattr(prof, f"{file_type}_text", None)
+        setattr(prof, f"{file_type}_data", None)
+        # If removing resume, clear parsed data and reset personalized discovery scores
+        if file_type == "resume":
+            prof.parsed_roles = None
+            prof.parsed_locations = None
+            prof.parsed_skills = None
+            prof.parsed_school = None
+            prof.parsed_gpa = None
+        db.commit()
+    # Also remove from disk if present
+    path = UPLOADS_DIR / str(current_user.id) / f"{file_type}.pdf"
+    if path.exists():
+        path.unlink()
+    return {"ok": True}
+
 
 @app.put("/api/profile/parsed")
 def update_parsed_profile(

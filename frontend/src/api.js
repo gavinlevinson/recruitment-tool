@@ -36,6 +36,7 @@ export const profileApi = {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
   updateParsed: (data)    => api.put('/profile/parsed', data),
+  deleteFile:  (fileType) => api.delete(`/profile/${fileType}`),
 }
 
 export const jobsApi = {

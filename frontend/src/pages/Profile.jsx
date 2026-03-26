@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import {
   Upload, FileText, Check, RefreshCw, User, GraduationCap, BookOpen,
   MapPin, Briefcase, Zap, AlertCircle, ChevronDown, Sparkles, X,
-  Download, Eye, EyeOff, Mail, Link2, Link2Off, Save, MessageSquare,
+  Download, Eye, EyeOff, Mail, Link2, Link2Off, Save, MessageSquare, Trash2,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { profileApi, authApi, nylasApi } from '../api'
@@ -33,8 +33,20 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
   const [error, setError]       = useState(null)
   const [success, setSuccess]   = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const fileInputRef = useRef(null)
   const downloadUrl = fileDownloadUrl(fileType)
+
+  const handleRemove = async () => {
+    if (!window.confirm(`Remove your ${label.toLowerCase()}?`)) return
+    setRemoving(true)
+    try {
+      await profileApi.deleteFile(fileType)
+      onUploaded(null)
+      setShowPreview(false)
+    } catch { /* ignore */ }
+    finally { setRemoving(false) }
+  }
 
   const upload = async (file) => {
     if (!file) return
@@ -132,6 +144,13 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
             className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-800 border border-violet-200 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-lg transition-colors"
           >
             {showPreview ? <><EyeOff size={12} /> Hide Preview</> : <><Eye size={12} /> View PDF</>}
+          </button>
+          <button
+            onClick={handleRemove}
+            disabled={removing}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-700 border border-red-200 bg-white hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <Trash2 size={12} /> Remove
           </button>
         </div>
       )}
