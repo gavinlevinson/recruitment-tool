@@ -42,8 +42,9 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
     setRemoving(true)
     try {
       await profileApi.deleteFile(fileType)
-      onUploaded(null)
       setShowPreview(false)
+      const res = await profileApi.get()
+      onUploaded(res.data)
     } catch { /* ignore */ }
     finally { setRemoving(false) }
   }
