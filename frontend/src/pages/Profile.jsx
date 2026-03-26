@@ -84,17 +84,21 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
       </div>
 
       {/* Drop zone */}
-      <label
-        htmlFor={`file-input-${fileType}`}
-        onClick={e => { if (!isLoading) { e.preventDefault(); fileInputRef.current?.click() } }}
+      <input ref={fileInputRef} type="file" accept=".pdf" className="hidden"
+        disabled={isLoading} onChange={e => upload(e.target.files[0])} />
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => { if (!isLoading) fileInputRef.current?.click() }}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click() }}
         onDragOver={e => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
         onDrop={e => { e.preventDefault(); setDragging(false); upload(e.dataTransfer.files[0]) }}
-        className={`relative flex flex-col items-center justify-center gap-2 py-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
+        className={`relative flex flex-col items-center justify-center gap-2 py-6 rounded-xl border-2 border-dashed transition-all ${
           isLoading ? 'opacity-60 cursor-not-allowed' :
-          dragging ? 'border-violet-DEFAULT bg-violet-50' :
-          currentFilename ? 'border-emerald-300 bg-emerald-50/50 hover:border-violet-DEFAULT hover:bg-violet-50' :
-          'border-navy-200 bg-navy-50/50 hover:border-violet-DEFAULT hover:bg-violet-50'
+          dragging ? 'border-violet-DEFAULT bg-violet-50 cursor-pointer' :
+          currentFilename ? 'border-emerald-300 bg-emerald-50/50 hover:border-violet-DEFAULT hover:bg-violet-50 cursor-pointer' :
+          'border-navy-200 bg-navy-50/50 hover:border-violet-DEFAULT hover:bg-violet-50 cursor-pointer'
         }`}
       >
         {isLoading ? (
@@ -110,9 +114,7 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
            'Click to upload or drag & drop'}
         </p>
         <p className="text-xs text-navy-400">PDF only</p>
-        <input ref={fileInputRef} id={`file-input-${fileType}`} type="file" accept=".pdf" className="hidden"
-          disabled={isLoading} onChange={e => upload(e.target.files[0])} />
-      </label>
+      </div>
 
       {/* View / Download actions — shown when a file exists */}
       {currentFilename && (
