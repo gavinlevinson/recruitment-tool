@@ -685,18 +685,20 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork }) {
             <Detail icon={DollarSign} label="Salary Range" value={job.salary_range} />
             <Detail icon={Building2} label="Source" value={job.discovered_job_id ? 'Job Discovery' : job.source} />
             {job.referral && <Detail icon={User} label="Referral" value={job.referral_name || 'Yes'} />}
-            {job.job_url && (
-              <div className="flex items-start gap-3">
-                <Link2 size={15} className="text-navy-400 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-navy-400 uppercase tracking-wide font-semibold">Job URL</p>
+            <div className="flex items-start gap-3">
+              <Link2 size={15} className="text-navy-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs text-navy-400 uppercase tracking-wide font-semibold">Job URL</p>
+                {job.job_url ? (
                   <a href={job.job_url} target="_blank" rel="noopener noreferrer"
                     className="text-sm text-violet-600 hover:text-violet-800 flex items-center gap-1 mt-0.5">
                     Open posting <ExternalLink size={12} />
                   </a>
-                </div>
+                ) : (
+                  <p className="text-sm text-navy-300 italic mt-0.5">No URL saved</p>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           <div className="border-t border-navy-100 pt-5">

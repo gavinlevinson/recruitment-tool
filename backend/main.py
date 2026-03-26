@@ -457,7 +457,7 @@ def get_jobs(
 ):
     q = db.query(Job)
     if current_user:
-        q = q.filter(or_(Job.user_id == current_user.id, Job.user_id == None))
+        q = q.filter(Job.user_id == current_user.id)
     if status and status != "All":
         q = q.filter(Job.status == status)
     if search:
@@ -485,7 +485,7 @@ def update_job(
 ):
     q = db.query(Job).filter(Job.id == job_id)
     if current_user:
-        q = q.filter(or_(Job.user_id == current_user.id, Job.user_id == None))
+        q = q.filter(Job.user_id == current_user.id)
     db_job = q.first()
     if not db_job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -503,7 +503,7 @@ def delete_job(
 ):
     q = db.query(Job).filter(Job.id == job_id)
     if current_user:
-        q = q.filter(or_(Job.user_id == current_user.id, Job.user_id == None))
+        q = q.filter(Job.user_id == current_user.id)
     db_job = q.first()
     if not db_job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -522,7 +522,7 @@ def get_job_stats(
 ):
     q = db.query(Job)
     if current_user:
-        q = q.filter(or_(Job.user_id == current_user.id, Job.user_id == None))
+        q = q.filter(Job.user_id == current_user.id)
     jobs = q.all()
     stats = {"total": len(jobs), "Not Applied": 0, "Applied": 0, "Pending": 0, "Accepted": 0, "Rejected": 0}
     for j in jobs:
@@ -536,7 +536,7 @@ def get_job_folders(
 ):
     q = db.query(Job.folder).filter(Job.folder != None, Job.folder != "")
     if current_user:
-        q = q.filter(or_(Job.user_id == current_user.id, Job.user_id == None))
+        q = q.filter(Job.user_id == current_user.id)
     return sorted(set(row[0] for row in q.all()))
 
 
@@ -568,7 +568,7 @@ def get_calendar_events(
     """Return all calendar events derived from job deadlines, interview dates, reminders, and interview rounds."""
     q = db.query(Job)
     if current_user:
-        q = q.filter(or_(Job.user_id == current_user.id, Job.user_id == None))
+        q = q.filter(Job.user_id == current_user.id)
     jobs = q.all()
 
     job_map = {j.id: j for j in jobs}
@@ -1196,7 +1196,11 @@ def classify_role(role: str, description: str = "") -> str:
 
 
 @app.post("/api/discovered-jobs/{job_id}/add-to-tracker")
-def add_discovered_to_tracker(job_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db)):
+def add_discovered_to_tracker(
+    job_id: int, payload: dict = Body(default={}),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     discovered = db.query(DiscoveredJob).filter(DiscoveredJob.id == job_id).first()
     if not discovered:
         raise HTTPException(status_code=404, detail="Not found")
@@ -1209,6 +1213,7 @@ def add_discovered_to_tracker(job_id: int, payload: dict = Body(default={}), db:
         discovered_job_id=discovered.id,
         folder=folder,
         deadline=getattr(discovered, 'deadline', None),
+        user_id=current_user.id if current_user else None,
     )
     db.add(new_job)
     discovered.added_to_tracker = True
@@ -1501,9 +1506,9 @@ def get_preferences(
             db.commit()
             db.refresh(prefs)
     return {
-        "locations": json.loads(prefs.locations),
-        "funding_stages": json.loads(prefs.funding_stages),
-        "employee_ranges": json.loads(prefs.employee_ranges),
+        "locations": json.loads(prefs.locations) if prefs.locations else [],
+        "funding_stages": json.loads(prefs.funding_stages) if prefs.funding_stages else [],
+        "employee_ranges": json.loads(prefs.employee_ranges) if prefs.employee_ranges else [],
         "min_score": prefs.min_score,
         "enabled_sources": json.loads(prefs.enabled_sources) if prefs.enabled_sources else None,
         "preferred_roles": json.loads(prefs.preferred_roles) if prefs.preferred_roles else None,
@@ -2317,7 +2322,7 @@ def get_all_stats(
     # User-scoped tracker jobs
     job_q = db.query(Job)
     if current_user:
-        job_q = job_q.filter(or_(Job.user_id == current_user.id, Job.user_id == None))
+        job_q = job_q.filter(Job.user_id == current_user.id)
 
     jobs = job_q.all()
 

@@ -1054,9 +1054,9 @@ export default function JobDiscovery() {
 
   // Preferences
   const [preferences, setPreferences] = useState({
-    locations: ['NYC', 'SF'],
-    funding_stages: ['Seed', 'Series A', 'Series B'],
-    employee_ranges: ['1-50', '50-200', '200-500'],
+    locations: [],
+    funding_stages: [],
+    employee_ranges: [],
     preferred_roles: null,
     preferred_work_types: null,
     years_experience: null,

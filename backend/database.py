@@ -184,9 +184,9 @@ class UserPreferences(Base):
     __tablename__ = "user_preferences"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True, nullable=True)   # NULL = legacy global prefs
-    locations = Column(String, default='["NYC", "SF", "Remote"]')
-    funding_stages = Column(String, default='["Seed", "Series A", "Series B", "Series C+"]')
-    employee_ranges = Column(String, default='["1-50", "50-200", "200-500", "500-1000", "1000+"]')
+    locations = Column(String, default='[]')        # empty = no location filter (show all)
+    funding_stages = Column(String, default='[]')   # empty = no funding filter (show all)
+    employee_ranges = Column(String, default='[]')  # empty = no size filter (show all)
     min_score = Column(Integer, default=0)
     enabled_sources = Column(String, nullable=True)  # JSON list of enabled source IDs; NULL = all enabled
     preferred_roles = Column(String, nullable=True)       # JSON list of role categories; NULL = all
