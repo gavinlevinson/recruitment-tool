@@ -182,10 +182,10 @@ class UserPreferences(Base):
     __tablename__ = "user_preferences"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True, nullable=True)   # NULL = legacy global prefs
-    locations = Column(String, default='["NYC", "SF"]')
-    funding_stages = Column(String, default='["Seed", "Series A", "Series B"]')
-    employee_ranges = Column(String, default='["1-50", "50-200", "200-500"]')
-    min_score = Column(Integer, default=35)
+    locations = Column(String, default='["NYC", "SF", "Remote"]')
+    funding_stages = Column(String, default='["Seed", "Series A", "Series B", "Series C+"]')
+    employee_ranges = Column(String, default='["1-50", "50-200", "200-500", "500-1000", "1000+"]')
+    min_score = Column(Integer, default=0)
     enabled_sources = Column(String, nullable=True)  # JSON list of enabled source IDs; NULL = all enabled
     preferred_roles = Column(String, nullable=True)       # JSON list of role categories; NULL = all
     preferred_work_types = Column(String, nullable=True)  # JSON list of "Remote"/"Hybrid"/"In-Office"; NULL = all
