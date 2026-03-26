@@ -789,7 +789,15 @@ def delete_interview_round(
     ).first()
     if not r:
         raise HTTPException(status_code=404, detail="Round not found")
+    job_id = r.job_id
     db.delete(r)
+    db.flush()
+    # If no rounds remain for this job, clear interview_date so calendar is clean
+    remaining = db.query(InterviewRound).filter(InterviewRound.job_id == job_id).count()
+    if remaining == 0:
+        job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
+        if job:
+            job.interview_date = None
     db.commit()
     return {"ok": True}
 
