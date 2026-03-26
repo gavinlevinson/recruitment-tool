@@ -254,9 +254,11 @@ def run_migrations():
                 conn.execute(text(sql))
                 conn.commit()
             except Exception:
-                pass  # Column already exists — safe to ignore
+                conn.rollback()  # Reset transaction so next migration can run
 
 
 def init_db():
     Base.metadata.create_all(bind=engine)
-    run_migrations()
+    # Only run SQLite migrations for local dev — PostgreSQL gets full schema from create_all()
+    if DATABASE_URL.startswith("sqlite"):
+        run_migrations()
