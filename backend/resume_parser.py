@@ -407,10 +407,22 @@ def build_user_profile_for_scoring(user, profile) -> dict:
         except Exception:
             return []
 
+    resume_roles     = _loads(profile.parsed_roles)     if profile else []
+    resume_locations = _loads(profile.parsed_locations) if profile else []
+    resume_skills    = _loads(profile.parsed_skills)    if profile else []
+    ctx_roles        = _loads(profile.context_roles)    if profile else []
+    ctx_locations    = _loads(profile.context_locations) if profile else []
+    ctx_skills       = _loads(profile.context_skills)   if profile else []
+
+    # Merge: resume data takes priority; context fills gaps
+    merged_roles     = resume_roles     or ctx_roles
+    merged_locations = resume_locations or ctx_locations
+    merged_skills    = list(set(resume_skills + ctx_skills))
+
     return {
-        "roles": _loads(profile.parsed_roles) if profile else [],
-        "locations": _loads(profile.parsed_locations) if profile else [],
-        "skills": _loads(profile.parsed_skills) if profile else [],
+        "roles": merged_roles,
+        "locations": merged_locations,
+        "skills": merged_skills,
         "gpa": profile.parsed_gpa if profile else None,
         "career_stage": user.career_stage if user else "college_senior",
         "custom_context": (profile.custom_context or "") if profile else "",

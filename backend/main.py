@@ -273,6 +273,9 @@ def _profile_to_dict(p: UserProfile) -> dict:
         "gpa": p.parsed_gpa,
         "school": p.parsed_school,
         "custom_context": p.custom_context or "",
+        "context_roles": _loads(p.context_roles),
+        "context_locations": _loads(p.context_locations),
+        "context_skills": _loads(p.context_skills),
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
     }
 
@@ -353,7 +356,7 @@ async def delete_file(file_type: str, current_user: User = Depends(get_current_u
 
 
 @app.put("/api/profile/parsed")
-def update_parsed_profile(
+async def update_parsed_profile(
     payload: dict,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -370,11 +373,55 @@ def update_parsed_profile(
     if "skills" in payload:
         prof.parsed_skills = json.dumps(payload["skills"])
     if "custom_context" in payload:
-        prof.custom_context = payload["custom_context"] or None
+        new_context = payload["custom_context"] or None
+        prof.custom_context = new_context
+        # Parse context with Claude to extract roles/locations/skills for personalization
+        if new_context and len(new_context.strip()) > 10:
+            try:
+                parsed = await _parse_career_context(new_context)
+                if parsed.get("roles"):
+                    prof.context_roles = json.dumps(parsed["roles"])
+                if parsed.get("locations"):
+                    prof.context_locations = json.dumps(parsed["locations"])
+                if parsed.get("skills"):
+                    prof.context_skills = json.dumps(parsed["skills"])
+            except Exception as e:
+                print(f"[Context parse error] {e}")
+        elif not new_context:
+            prof.context_roles = None
+            prof.context_locations = None
+            prof.context_skills = None
     prof.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(prof)
     return _profile_to_dict(prof)
+
+
+async def _parse_career_context(text: str) -> dict:
+    """Use Claude to extract roles, locations, and skills from career context free text."""
+    import anthropic
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+    prompt = f"""Extract job search preferences from this career context. Return ONLY valid JSON with these keys:
+- "roles": list of up to 6 job role keywords (e.g. "operations", "product management", "business development", "strategy", "finance", "marketing")
+- "locations": list of location codes from this set only: ["NYC", "SF", "Remote", "LA", "Boston", "Chicago", "Austin", "Seattle", "Denver", "Miami"]
+- "skills": list of up to 8 specific skills or tools mentioned
+
+Career context:
+{text}
+
+Return only the JSON object, nothing else."""
+    msg = client.messages.create(
+        model="claude-haiku-4-5",
+        max_tokens=300,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    raw = msg.content[0].text.strip()
+    # Strip markdown code fences if present
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    return json.loads(raw.strip())
 
 
 # ─────────────────────────────────────────────
@@ -1140,7 +1187,7 @@ def get_discovered_jobs(
     user_profile_dict = None
     if current_user:
         user_profile_obj = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
-        if user_profile_obj and user_profile_obj.parsed_roles:
+        if user_profile_obj and (user_profile_obj.parsed_roles or user_profile_obj.context_roles):
             user_profile_dict = build_user_profile_for_scoring(current_user, user_profile_obj)
 
     if user_profile_dict:

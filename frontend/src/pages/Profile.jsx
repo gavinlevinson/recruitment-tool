@@ -285,9 +285,10 @@ export default function Profile() {
   const handleSaveContext = async () => {
     setContextSaving(true)
     try {
-      await profileApi.updateParsed({ custom_context: customContext })
+      const res = await profileApi.updateParsed({ custom_context: customContext })
+      setProfile(p => ({ ...p, ...res.data }))
       setContextSaved(true)
-      setTimeout(() => setContextSaved(false), 2500)
+      setTimeout(() => setContextSaved(false), 3000)
     } catch {}
     finally { setContextSaving(false) }
   }
@@ -442,9 +443,14 @@ export default function Profile() {
           onChange={e => setCustomContext(e.target.value)}
         />
         <div className="flex items-center justify-end gap-2">
+          {contextSaving && (
+            <span className="text-xs text-navy-400 flex items-center gap-1">
+              <RefreshCw size={12} className="animate-spin" /> Analyzing with AI…
+            </span>
+          )}
           {contextSaved && (
             <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
-              <Check size={12} /> Saved
+              <Check size={12} /> Saved & analyzed
             </span>
           )}
           <button
@@ -456,6 +462,12 @@ export default function Profile() {
             Save Context
           </button>
         </div>
+        {profile?.context_roles?.length > 0 && (
+          <div className="mt-2 p-3 rounded-lg bg-violet-50 border border-violet-100 text-xs text-violet-700 space-y-1">
+            <p className="font-semibold flex items-center gap-1"><Sparkles size={11} /> Personalization active from your career context</p>
+            <p>Targeting: {profile.context_roles.slice(0, 4).join(', ')}{profile.context_locations?.length > 0 ? ` · ${profile.context_locations.join(', ')}` : ''}</p>
+          </div>
+        )}
       </div>
 
       {/* File uploads */}

@@ -67,6 +67,9 @@ class UserProfile(Base):
     parsed_gpa = Column(String, nullable=True)
     parsed_school = Column(String, nullable=True)
     custom_context = Column(Text, nullable=True)    # user-typed career context / preferences
+    context_roles = Column(Text, nullable=True)     # JSON — Claude-parsed from custom_context
+    context_locations = Column(Text, nullable=True) # JSON — Claude-parsed from custom_context
+    context_skills = Column(Text, nullable=True)    # JSON — Claude-parsed from custom_context
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -273,6 +276,9 @@ def run_migrations():
         "ALTER TABLE user_profiles ADD COLUMN resume_data BLOB",
         "ALTER TABLE user_profiles ADD COLUMN cover_letter_data BLOB",
         "ALTER TABLE user_profiles ADD COLUMN transcript_data BLOB",
+        "ALTER TABLE user_profiles ADD COLUMN context_roles TEXT",
+        "ALTER TABLE user_profiles ADD COLUMN context_locations TEXT",
+        "ALTER TABLE user_profiles ADD COLUMN context_skills TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -291,6 +297,9 @@ def _run_pg_migrations():
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS resume_data BYTEA",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS cover_letter_data BYTEA",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS transcript_data BYTEA",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS context_roles TEXT",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS context_locations TEXT",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS context_skills TEXT",
     ]
     with engine.connect() as conn:
         for sql in pg_migrations:
