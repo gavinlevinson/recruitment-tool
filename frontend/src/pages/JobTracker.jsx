@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import confetti from 'canvas-confetti'
 import {
   Plus, Pencil, Trash2, ExternalLink, Search, X,
   ChevronDown, ChevronUp, Check, RefreshCw, Briefcase, MapPin,
@@ -311,6 +312,43 @@ function InterviewDateModal({ isOpen, company, onConfirm, onSkip, onCancel }) {
 }
 
 // Shown when LEAVING Interviewing — ask if interview is still happening
+// ── Congratulations Modal ──────────────────────────────────────────────────────
+function CongratsModal({ job, onClose }) {
+  const fired = useRef(false)
+  useEffect(() => {
+    if (!job || fired.current) return
+    fired.current = true
+    const end = Date.now() + 3000
+    const frame = () => {
+      confetti({ particleCount: 6, angle: 60, spread: 55, origin: { x: 0 }, colors: ['#7c3aed','#10b981','#f59e0b','#3b82f6'] })
+      confetti({ particleCount: 6, angle: 120, spread: 55, origin: { x: 1 }, colors: ['#7c3aed','#10b981','#f59e0b','#3b82f6'] })
+      if (Date.now() < end) requestAnimationFrame(frame)
+    }
+    frame()
+  }, [job])
+
+  if (!job) return null
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-navy-900/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center space-y-4 animate-scale-in">
+        <div className="text-5xl">🎉</div>
+        <div>
+          <h2 className="text-xl font-black text-navy-900">Congratulations!</h2>
+          <p className="text-sm text-navy-500 mt-1">
+            You got the job at <span className="font-bold text-violet-600">{job.company}</span>
+            {job.role ? <> as <span className="font-semibold text-navy-700">{job.role}</span></> : ''}.
+          </p>
+        </div>
+        <p className="text-xs text-navy-400">All your hard work paid off. This is a huge deal — enjoy it!</p>
+        <button onClick={onClose} className="btn-primary w-full justify-center mt-2">
+          Thanks! 🚀
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function ConfirmInterviewModal({ isOpen, company, newStatus, onKeep, onRemove }) {
   if (!isOpen) return null
   return (
@@ -2136,6 +2174,7 @@ export default function JobTracker() {
   const [networkJob, setNetworkJob]   = useState(null)
   const [interviewPrompt, setInterviewPrompt] = useState(null)       // entering Interviewing
   const [leaveInterviewPrompt, setLeaveInterviewPrompt] = useState(null) // leaving Interviewing with date set
+  const [congratsJob, setCongratsJob] = useState(null)               // job just accepted — show congrats modal
 
   const fetchJobs = useCallback(async () => {
     setLoading(true); setError(null)
@@ -2252,6 +2291,9 @@ export default function JobTracker() {
     jobsApi.update(id, { status: newStatus, ...dateUpdates }).catch(() => {
       setJobs(prev => prev.map(j => j.id === id ? { ...j, status: currentJob.status } : j))
     })
+    if (newStatus === 'Accepted') {
+      setCongratsJob(currentJob)
+    }
   }
 
   const confirmInterviewDate = async (date) => {
@@ -2487,6 +2529,7 @@ export default function JobTracker() {
         onKeep={handleLeaveInterviewKeep}
         onRemove={handleLeaveInterviewRemove}
       />
+      <CongratsModal job={congratsJob} onClose={() => setCongratsJob(null)} />
     </div>
   )
 }
