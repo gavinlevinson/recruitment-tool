@@ -431,7 +431,7 @@ function InterviewRoundsSection({ jobId }) {
           )}
         </div>
         {!showForm && (
-          <button onClick={openAdd} className="flex items-center gap-1 text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors">
+          <button onClick={openAdd} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold transition-colors shadow-sm">
             <Plus size={13} /> Add Round
           </button>
         )}
@@ -701,6 +701,8 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork }) {
             </div>
           </div>
 
+          <InterviewRoundsSection jobId={job.id} />
+
           <div className="border-t border-navy-100 pt-5">
             <div className="flex items-center gap-2 mb-2">
               <FileText size={14} className="text-navy-400" />
@@ -710,8 +712,6 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork }) {
               {job.notes || <span className="text-navy-300 italic">No notes added.</span>}
             </p>
           </div>
-
-          <InterviewRoundsSection jobId={job.id} />
         </div>
 
         <div className="p-6 border-t border-navy-100 space-y-2">
@@ -2251,9 +2251,20 @@ export default function JobTracker() {
     const payload = { status: 'Interviewing', ...(date && { interview_date: date }) }
     try {
       await jobsApi.update(jobId, payload)
-      if (date) setJobs(prev => prev.map(j => j.id === jobId ? { ...j, interview_date: date } : j))
+      if (date) {
+        setJobs(prev => prev.map(j => j.id === jobId ? { ...j, interview_date: date } : j))
+        // Auto-create Round 1 with the entered date
+        interviewRoundsApi.create(jobId, {
+          round_number: 1,
+          interview_type: 'Screening',
+          scheduled_date: date,
+          interviewer_name: '',
+          interviewer_linkedin: '',
+          notes: '',
+          status: 'Scheduled',
+        }).catch(() => {})
+      }
     } catch {
-      // Rollback optimistic update
       setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: currentStatus } : j))
     }
   }
