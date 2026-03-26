@@ -2895,84 +2895,98 @@ def _location_to_eb_slug(location: str) -> str:
 
 
 async def _fetch_events(location: str = "all") -> list:
-    """Fetch recruitment events using the official Eventbrite API v3."""
-    from datetime import datetime as _dt, timezone as _tz
-
-    EVENTBRITE_API_KEY = os.getenv("EVENTBRITE_API_KEY", "")
-    if not EVENTBRITE_API_KEY:
-        print("[Events] No EVENTBRITE_API_KEY set — skipping fetch")
-        return []
+    """Fetch events by scraping Eventbrite search pages."""
+    import re as _re, json as _json
 
     loc = (location or "all").strip().lower()
     is_virtual = loc in ("virtual", "online", "remote", "all", "")
+    eb_slug = _location_to_eb_slug(loc) if not is_virtual else "online"
 
-    # Map common city names to Eventbrite location strings
-    location_map = {
-        "nyc": "New York, NY", "new york": "New York, NY",
-        "sf": "San Francisco, CA", "san francisco": "San Francisco, CA",
-        "la": "Los Angeles, CA", "los angeles": "Los Angeles, CA",
-        "chicago": "Chicago, IL", "boston": "Boston, MA",
-        "austin": "Austin, TX", "seattle": "Seattle, WA",
-        "dc": "Washington, DC", "washington": "Washington, DC",
-        "miami": "Miami, FL", "denver": "Denver, CO",
-        "atlanta": "Atlanta, GA",
-    }
-    eb_location = location_map.get(loc, location.title()) if not is_virtual else None
+    search_combos = [
+        (eb_slug, "tech-networking"),
+        (eb_slug, "career-fair"),
+        (eb_slug, "recruiting"),
+        (eb_slug, "startup-networking"),
+        (eb_slug, "professional-networking"),
+    ]
+    if not is_virtual:
+        search_combos.append(("online", "tech-networking"))
 
-    queries = ["tech networking", "career fair", "recruiting", "startup networking", "professional networking"]
-
-    headers = {"Authorization": f"Bearer {EVENTBRITE_API_KEY}"}
-    now_iso = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Rotate User-Agents to avoid IP-based blocking on cloud servers
+    import random
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    ]
 
     events = []
-    async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
-        for q in queries:
-            params = {
-                "q": q,
-                "start_date.range_start": now_iso,
-                "expand": "venue,organizer,ticket_classes",
-                "page_size": 50,
-                "sort_by": "date",
-            }
-            if eb_location:
-                params["location.address"] = eb_location
-                params["location.within"] = "25mi"
-            else:
-                params["online_events_only"] = "true"
-
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        for eb_loc, keyword in search_combos:
+            url = f"https://www.eventbrite.com/d/{eb_loc}/{keyword}/"
             try:
-                resp = await client.get("https://www.eventbriteapi.com/v3/events/search/", params=params)
+                headers = {
+                    "User-Agent": random.choice(user_agents),
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Cache-Control": "no-cache",
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Upgrade-Insecure-Requests": "1",
+                }
+                resp = await client.get(url, headers=headers, timeout=12.0)
                 if resp.status_code != 200:
-                    print(f"[Events] API error {resp.status_code}: {resp.text[:200]}")
+                    print(f"[Events] {resp.status_code} for {url}")
                     continue
 
-                data = resp.json()
-                for ev in data.get("events", []):
-                    if ev.get("status") in ("canceled", "cancelled", "draft"):
-                        continue
+                match = _re.search(r'window\.__SERVER_DATA__\s*=\s*(\{.+)', resp.text, _re.DOTALL)
+                if not match:
+                    continue
+                raw = match.group(1)
+                depth, end = 0, 0
+                for i, c in enumerate(raw):
+                    if c == "{": depth += 1
+                    elif c == "}":
+                        depth -= 1
+                        if depth == 0: end = i + 1; break
+                try:
+                    data = _json.loads(raw[:end])
+                except _json.JSONDecodeError:
+                    continue
 
-                    name = (ev.get("name") or {}).get("text", "").strip()
-                    description = (ev.get("description") or {}).get("text", "")[:400]
-                    ev_url = ev.get("url", "")
-                    is_online = ev.get("online_event", False)
-                    is_free = ev.get("is_free", False)
+                results = (data.get("search_data") or {}).get("events", {}).get("results", [])
+                for ev in results:
+                    name = ev.get("name", "").strip()
+                    ev_url = ev.get("url") or ev.get("parent_url", "")
+                    start_date = ev.get("start_date", "")
+                    start_time = ev.get("start_time", "")
+                    end_date = ev.get("end_date", "")
+                    end_time = ev.get("end_time", "")
+                    summary = (ev.get("summary") or "")[:400]
+                    is_online = ev.get("is_online_event", False)
+                    if ev.get("is_cancelled"): continue
 
-                    start = ev.get("start", {})
-                    end = ev.get("end", {})
-                    start_iso = start.get("utc", "") or start.get("local", "")
-                    end_iso = end.get("utc", "") or end.get("local", "")
-
-                    venue_obj = ev.get("venue") or {}
+                    venue_obj = ev.get("primary_venue") or {}
                     addr_obj = venue_obj.get("address") or {}
                     venue_name = venue_obj.get("name", "")
                     city = addr_obj.get("city", "") or ("Virtual" if is_online else "")
                     state = addr_obj.get("region", "")
                     display_addr = f"{venue_name}, {city}" if venue_name and city else (venue_name or city or ("Online" if is_online else ""))
 
-                    organizer = (ev.get("organizer") or {}).get("name", "")
-                    logo = (ev.get("logo") or {}).get("url", "")
+                    start_iso = f"{start_date}T{start_time}" if start_date and start_time else start_date
+                    end_iso = f"{end_date}T{end_time}" if end_date and end_time else end_date
 
-                    text_lower = (name + " " + description).lower()
+                    if not name or not start_date or not ev_url: continue
+
+                    try:
+                        from datetime import datetime as _dt
+                        if _dt.strptime(start_date, "%Y-%m-%d") < _dt.now(): continue
+                    except Exception: pass
+
+                    text_lower = (name + " " + summary).lower()
                     if any(w in text_lower for w in ["career fair", "job fair", "hiring fair"]):
                         etype = "Career Fair"
                     elif any(w in text_lower for w in ["workshop", "bootcamp", "seminar", "webinar", "training"]):
@@ -2984,40 +2998,38 @@ async def _fetch_events(location: str = "all") -> list:
                     else:
                         etype = "Networking"
 
-                    if not name or not ev_url:
-                        continue
+                    img_obj = ev.get("image") or {}
+                    image = (img_obj.get("image_sizes") or {}).get("medium", "") or img_obj.get("url", "")
 
                     events.append({
-                        "id": ev.get("id", ""),
+                        "id": ev.get("id") or ev.get("eid", ""),
                         "title": name,
-                        "description": description,
+                        "description": summary,
                         "start_date": start_iso,
                         "end_date": end_iso,
                         "url": ev_url,
-                        "is_free": is_free,
-                        "capacity": ev.get("capacity"),
+                        "is_free": False,
+                        "capacity": None,
                         "venue": display_addr,
                         "city": f"{city}, {state}".strip(", ") if state else city,
-                        "organizer": organizer,
+                        "organizer": "",
                         "event_type": etype,
                         "source": "Eventbrite",
                         "is_online": is_online,
-                        "image": logo,
+                        "image": image,
                     })
             except Exception as e:
-                print(f"[Events] API error for query '{q}': {e}")
+                print(f"[Events] Error {url}: {e}")
 
-    # Deduplicate by event ID
-    seen = set()
-    unique = []
+    seen, unique = set(), []
     for e in events:
-        key = e["id"] or f"{e['title'].lower()[:60]}|{e['start_date'][:10]}"
+        key = f"{e['title'].lower()[:60]}|{(e['start_date'] or '')[:10]}"
         if key not in seen:
             seen.add(key)
             unique.append(e)
 
     unique.sort(key=lambda x: x.get("start_date", ""))
-    print(f"[Events] {len(unique)} events fetched via API for location='{location}'")
+    print(f"[Events] {len(unique)} events scraped for location='{location}'")
     return unique
 
 
