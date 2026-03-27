@@ -1394,9 +1394,18 @@ export default function JobDiscovery() {
       setMultiPrompt({ type: 'dismiss', job })
       return
     }
-    // No other jobs or inside popup — remove directly
-    setJobs(prev => prev.filter(j => j.id !== job.id))
-    setTotal(prev => prev - 1)
+    if (opts.skipPrompt) {
+      // From popup — decrement count on main list entry for this company
+      setJobs(prev => prev.map(j =>
+        j.company === job.company && j.id !== job.id
+          ? { ...j, other_jobs_count: Math.max(0, (j.other_jobs_count || 1) - 1) }
+          : j
+      ))
+    } else {
+      // No other jobs at company — remove widget entirely
+      setJobs(prev => prev.filter(j => j.id !== job.id))
+      setTotal(prev => prev - 1)
+    }
     try {
       await discoveredApi.update(job.id, { is_active: false })
     } catch (err) {
