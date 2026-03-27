@@ -446,6 +446,21 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
         )}
       </div>
 
+      {/* Deadline warning */}
+      {job.deadline && (() => {
+        const [y,m,d] = job.deadline.split('-').map(Number)
+        const dt = new Date(y, m-1, d)
+        const today = new Date(); today.setHours(0,0,0,0)
+        const delta = Math.round((dt - today) / 86400000)
+        if (delta > 7 || delta < 0) return null
+        return (
+          <p className="text-xs font-semibold text-red-600 flex items-center gap-1 pt-1 border-t border-navy-50">
+            <span>⚠</span>
+            {delta === 0 ? 'Deadline today!' : `Deadline in ${delta} day${delta === 1 ? '' : 's'}`}
+          </p>
+        )
+      })()}
+
       {/* Other jobs at this company */}
       {job.other_jobs_count > 0 && onShowCompanyJobs && (
         <button

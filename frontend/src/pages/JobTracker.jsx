@@ -664,7 +664,7 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork }) {
                 ? new Date(job.date_applied).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
                 : null}
             />
-            {job.deadline && (() => {
+            {job.status === 'Not Applied' && job.deadline && (() => {
               const [y,m,d] = job.deadline.split('-').map(Number)
               const dt = new Date(y, m-1, d)
               const today = new Date(); today.setHours(0,0,0,0)
@@ -863,16 +863,16 @@ function KanbanCard({ job, highlighted, dimmed, onClick, onStar, onDragStart, on
           {job.starred && (
             <Star size={9} className="text-amber-400 fill-amber-400" />
           )}
-          {job.deadline && (() => {
+          {job.status === 'Not Applied' && job.deadline && (() => {
             const [y,m,d] = job.deadline.split('-').map(Number)
             const dt = new Date(y, m-1, d)
             const today = new Date(); today.setHours(0,0,0,0)
             const delta = Math.round((dt - today) / 86400000)
-            const urgent = delta <= 3
+            if (delta > 7) return null
             return (
-              <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${urgent ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
+              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200 w-full mt-1">
                 <AlertCircle size={8} />
-                {delta < 0 ? 'Expired' : delta === 0 ? 'Due today' : `Due ${delta}d`}
+                {delta < 0 ? 'Deadline passed' : delta === 0 ? 'Deadline today!' : `Deadline in ${delta}d`}
               </span>
             )
           })()}
@@ -1524,6 +1524,7 @@ function EmailComposer({ contact, job, onClose, userUniversity }) {
   const [sendResult, setSendResult] = useState(null)
   const [attachments, setAttachments] = useState([])
   const [showPreview, setShowPreview] = useState(false)
+  const attachInputRef = useRef(null)
 
   // Fetch email templates + Gmail status once
   useEffect(() => {
@@ -1771,11 +1772,11 @@ function EmailComposer({ contact, job, onClose, userUniversity }) {
               {/* Attach files */}
               <div className="border border-navy-200 rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-navy-600 cursor-pointer hover:text-navy-800 transition-colors">
+                  <button onClick={() => attachInputRef.current?.click()} className="flex items-center gap-1.5 text-xs font-semibold text-navy-600 cursor-pointer hover:text-navy-800 transition-colors">
                     <Paperclip size={12} className="text-navy-400" />
                     Attach Files
-                    <input type="file" multiple className="hidden" onChange={handleFileSelect} />
-                  </label>
+                  </button>
+                  <input ref={attachInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
                   <span className="text-[10px] text-navy-300">Optional</span>
                 </div>
                 {attachments.length > 0 && (
