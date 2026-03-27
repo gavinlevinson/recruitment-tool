@@ -342,7 +342,7 @@ function CongratsModal({ job, onClose }) {
         </div>
         <p className="text-xs text-navy-400">All your hard work paid off. This is a huge deal — enjoy it!</p>
         <button onClick={onClose} className="btn-primary w-full justify-center mt-2">
-          Thanks! 🚀
+          Thanks!
         </button>
       </div>
     </div>
