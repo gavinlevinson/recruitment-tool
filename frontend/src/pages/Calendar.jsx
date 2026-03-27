@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   ChevronLeft, ChevronRight, CalendarDays, Briefcase,
-  Clock, Bell, X, ExternalLink, Download, Zap, RefreshCw,
+  Clock, Bell, X, ExternalLink, Download, Zap, RefreshCw, Users,
 } from 'lucide-react'
 import { calendarApi, jobsApi } from '../api'
 import { useNavigate } from 'react-router-dom'
@@ -41,6 +41,15 @@ const EVENT_CONFIG = {
     dot:    'bg-sky-500',
     pill:   'bg-sky-600 text-white',
     Icon:   Bell,
+  },
+  networking: {
+    label:  'Event',
+    bg:     'bg-emerald-100',
+    text:   'text-emerald-700',
+    border: 'border-emerald-200',
+    dot:    'bg-emerald-500',
+    pill:   'bg-emerald-600 text-white',
+    Icon:   Users,
   },
 }
 
@@ -186,12 +195,23 @@ function EventPopover({ event, onClose }) {
 
           {/* Actions */}
           <div className="px-5 pb-5 flex gap-2">
-            <button
-              onClick={() => { navigate('/tracker'); onClose() }}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors"
-            >
-              <ExternalLink size={13} /> View in Tracker
-            </button>
+            {event.type === 'networking' ? (
+              event.url ? (
+                <button
+                  onClick={() => { window.open(event.url, '_blank', 'noopener,noreferrer'); onClose() }}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors"
+                >
+                  <ExternalLink size={13} /> Open Event
+                </button>
+              ) : null
+            ) : (
+              <button
+                onClick={() => { navigate('/tracker'); onClose() }}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors"
+              >
+                <ExternalLink size={13} /> View in Tracker
+              </button>
+            )}
             <button
               onClick={() => exportIcs(event)}
               title="Export to Google Calendar / Apple Calendar"

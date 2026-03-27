@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  MapPin, Clock, Calendar, ExternalLink, Plus, Users, Tag, Zap, X, Search,
+  MapPin, Clock, Calendar, ExternalLink, Plus, Users, Tag, Zap, X, Search, Check,
 } from 'lucide-react'
 import { eventsApi } from '../api'
 
@@ -86,7 +86,7 @@ function SkeletonCard() {
 }
 
 // ── Event card ────────────────────────────────────────────────────────────────
-function EventCard({ event }) {
+function EventCard({ event, isRsvped, onToggleRsvp }) {
   const meta  = EVENT_TYPE_META[event.event_type] || DEFAULT_TYPE_META
   const start = parseDateParts(event.start_date)
   const end   = parseDateParts(event.end_date)
@@ -168,13 +168,24 @@ function EventCard({ event }) {
 
         {/* RSVP button */}
         {event.url && (
-          <div className="mt-1">
+          <div className="mt-1 flex items-center gap-2">
             <button
               onClick={() => window.open(event.url, '_blank', 'noopener,noreferrer')}
               className="btn-primary inline-flex items-center gap-1.5 text-xs py-1.5 px-3 h-auto"
             >
               RSVP
               <ExternalLink size={11} />
+            </button>
+            <button
+              onClick={() => onToggleRsvp && onToggleRsvp(event)}
+              title={isRsvped ? 'Remove from calendar' : 'Add to my calendar'}
+              className={`inline-flex items-center gap-1.5 text-xs py-1.5 px-3 h-auto rounded-lg border font-medium transition-colors ${
+                isRsvped
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                  : 'bg-white text-navy-500 border-navy-200 hover:bg-navy-50'
+              }`}
+            >
+              {isRsvped ? <><Check size={11} /> Saved</> : <><Calendar size={11} /> Save</>}
             </button>
           </div>
         )}
@@ -336,6 +347,7 @@ export default function Events() {
   const [events, setEvents]               = useState([])
   const [loading, setLoading]             = useState(false)
   const [showModal, setShowModal]         = useState(false)
+  const [rsvpedIds, setRsvpedIds]         = useState(new Set())
   const [manualEvents, setManualEvents]   = useState(() => {
     try { return JSON.parse(localStorage.getItem('recruitiq_manual_events') || '[]') } catch { return [] }
   })
@@ -359,10 +371,39 @@ export default function Events() {
     }
   }, [])
 
+  // Load RSVPed event IDs on mount
+  useEffect(() => {
+    eventsApi.getRsvped().then(res => {
+      setRsvpedIds(new Set(res.data?.event_ids || []))
+    }).catch(() => {})
+  }, [])
+
   // Check if Eventbrite key is configured on mount
   useEffect(() => {
     fetchEvents('', 'all')
   }, [fetchEvents])
+
+  const handleToggleRsvp = async (event) => {
+    const id = String(event.id || event.title)
+    try {
+      const res = await eventsApi.rsvp({
+        event_id: id,
+        title: event.title,
+        start_date: event.start_date,
+        url: event.url,
+        venue: event.venue,
+        city: event.city,
+        event_type: event.event_type,
+        organizer: event.organizer,
+      })
+      setRsvpedIds(prev => {
+        const next = new Set(prev)
+        if (res.data.rsvped) next.add(id)
+        else next.delete(id)
+        return next
+      })
+    } catch {}
+  }
 
   function handleSearch(e) {
     e?.preventDefault()
@@ -510,7 +551,11 @@ export default function Events() {
           ) : (
             allEvents.map(event => (
               <div key={event.id || event.title} className="relative group">
-                <EventCard event={event} />
+                <EventCard
+                  event={event}
+                  isRsvped={rsvpedIds.has(String(event.id || event.title))}
+                  onToggleRsvp={handleToggleRsvp}
+                />
                 {event.source === 'Manual' && (
                   <button
                     onClick={() => removeManual(event.id)}

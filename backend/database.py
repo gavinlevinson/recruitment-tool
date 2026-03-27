@@ -235,6 +235,22 @@ class InterviewRound(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class EventRsvp(Base):
+    """Stores events a user has RSVPed to — surfaces them on the calendar."""
+    __tablename__ = "event_rsvps"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    event_id = Column(String, index=True)
+    title = Column(String)
+    start_date = Column(String)   # YYYY-MM-DD
+    url = Column(String, nullable=True)
+    venue = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    event_type = Column(String, nullable=True)
+    organizer = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def get_db():

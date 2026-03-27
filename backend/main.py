@@ -16,7 +16,7 @@ from database import (
     get_db, init_db, Job, Contact, DiscoveredJob, Recruiter,
     UserPreferences, JobCollection, JobCollectionItem,
     User, UserProfile, CoverLetterTemplate, EmailTemplate,
-    InterviewRound,
+    InterviewRound, EventRsvp,
 )
 from auth import (
     hash_password, verify_password, create_access_token,
@@ -696,9 +696,75 @@ def get_calendar_events(
                 "title": j.company, "date": r.scheduled_date, "round_info": round_info,
             })
 
+    # Include RSVPed events
+    if current_user:
+        rsvps = db.query(EventRsvp).filter(EventRsvp.user_id == current_user.id).all()
+        for r in rsvps:
+            if r.start_date:
+                events.append({
+                    "id": f"rsvp-{r.event_id}",
+                    "type": "networking",
+                    "title": r.title,
+                    "date": r.start_date[:10],
+                    "url": r.url,
+                    "venue": r.venue,
+                    "city": r.city,
+                    "event_type": r.event_type,
+                    "organizer": r.organizer,
+                })
+
     # Sort by date ascending
     events.sort(key=lambda e: e["date"])
     return events
+
+
+# ─────────────────────────────────────────────
+# EVENT RSVPs
+# ─────────────────────────────────────────────
+
+@app.post("/api/events/rsvp")
+def toggle_event_rsvp(
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    event_id = str(payload.get("event_id", ""))
+    if not event_id:
+        raise HTTPException(status_code=400, detail="event_id required")
+
+    existing = db.query(EventRsvp).filter(
+        EventRsvp.user_id == current_user.id,
+        EventRsvp.event_id == event_id,
+    ).first()
+
+    if existing:
+        db.delete(existing)
+        db.commit()
+        return {"rsvped": False}
+
+    rsvp = EventRsvp(
+        user_id=current_user.id,
+        event_id=event_id,
+        title=payload.get("title", ""),
+        start_date=(payload.get("start_date") or "")[:10],
+        url=payload.get("url"),
+        venue=payload.get("venue"),
+        city=payload.get("city"),
+        event_type=payload.get("event_type"),
+        organizer=payload.get("organizer"),
+    )
+    db.add(rsvp)
+    db.commit()
+    return {"rsvped": True}
+
+
+@app.get("/api/events/rsvped")
+def get_rsvped_event_ids(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rsvps = db.query(EventRsvp).filter(EventRsvp.user_id == current_user.id).all()
+    return {"event_ids": [r.event_id for r in rsvps]}
 
 
 # ─────────────────────────────────────────────

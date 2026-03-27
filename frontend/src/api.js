@@ -144,7 +144,9 @@ export const collectionsApi = {
 }
 
 export const eventsApi = {
-  getAll: (params) => api.get('/events', { params }),
+  getAll:     (params) => api.get('/events', { params }),
+  rsvp:       (data)   => api.post('/events/rsvp', data),
+  getRsvped:  ()       => api.get('/events/rsvped'),
 }
 
 export const newsApi = {
