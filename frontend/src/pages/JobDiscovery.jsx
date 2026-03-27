@@ -1116,15 +1116,8 @@ export default function JobDiscovery() {
   const [running, setRunning] = useState(false)
   const [runElapsed, setRunElapsed] = useState(0)
 
-  // Preferences
-  const [preferences, setPreferences] = useState({
-    locations: [],
-    funding_stages: [],
-    employee_ranges: [],
-    preferred_roles: null,
-    preferred_work_types: null,
-    years_experience: null,
-  })
+  // Preferences — null until loaded from API (prevents double-fetch with wrong filters)
+  const [preferences, setPreferences] = useState(null)
   const [prefsPanelOpen, setPrefsPanelOpen] = useState(false)
 
   // Company jobs popup
@@ -1158,11 +1151,11 @@ export default function JobDiscovery() {
     return () => clearTimeout(debounceRef.current)
   }, [search])
 
-  // Load preferences on mount
+  // Load preferences on mount — jobs don't fetch until this resolves
   useEffect(() => {
     preferencesApi.get()
       .then(res => setPreferences(res.data))
-      .catch(() => {})
+      .catch(() => setPreferences({ locations: [], funding_stages: [], employee_ranges: [], preferred_roles: null, preferred_work_types: null, years_experience: null }))
   }, [])
 
   const [hasResume, setHasResume] = useState(true)   // assume true until checked
@@ -1186,7 +1179,11 @@ export default function JobDiscovery() {
     const curSearch = opts.search !== undefined ? opts.search : debouncedSearch
     const curRole   = opts.role   !== undefined ? opts.role   : roleFilter
     const curHide   = opts.hide   !== undefined ? opts.hide   : hideAdded
-    const curPrefs  = opts.prefs  !== undefined ? opts.prefs  : preferences
+    const curPrefs  = (opts.prefs !== undefined ? opts.prefs : preferences) || {
+      locations: [], funding_stages: [], employee_ranges: [],
+      preferred_roles: null, preferred_work_types: null, years_experience: null,
+    }
+    if (preferences === null && opts.prefs === undefined) return // wait for prefs to load
 
     setLoading(true)
     setError(null)

@@ -127,10 +127,12 @@ export const calendarApi = {
 }
 
 export const interviewRoundsApi = {
-  getAll:  (jobId)         => api.get(`/jobs/${jobId}/interviews`),
-  create:  (jobId, data)   => api.post(`/jobs/${jobId}/interviews`, data),
-  update:  (roundId, data) => api.put(`/interviews/${roundId}`, data),
-  delete:  (roundId)       => api.delete(`/interviews/${roundId}`),
+  getAll:      (jobId)         => api.get(`/jobs/${jobId}/interviews`),
+  create:      (jobId, data)   => api.post(`/jobs/${jobId}/interviews`, data),
+  update:      (roundId, data) => api.put(`/interviews/${roundId}`, data),
+  delete:      (roundId)       => api.delete(`/interviews/${roundId}`),
+  setThankYou: (roundId)       => api.patch(`/interviews/${roundId}/thank-you`),
+  getToday:    ()              => api.get('/interviews/today'),
 }
 
 export const collectionsApi = {

@@ -232,6 +232,7 @@ class InterviewRound(Base):
     interviewer_linkedin = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     status = Column(String, default="Scheduled")       # Scheduled, Completed, Cancelled
+    thank_you_sent = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -295,6 +296,7 @@ def run_migrations():
         "ALTER TABLE user_profiles ADD COLUMN context_roles TEXT",
         "ALTER TABLE user_profiles ADD COLUMN context_locations TEXT",
         "ALTER TABLE user_profiles ADD COLUMN context_skills TEXT",
+        "ALTER TABLE interview_rounds ADD COLUMN thank_you_sent INTEGER DEFAULT 0",
     ]
     with engine.connect() as conn:
         for sql in migrations:

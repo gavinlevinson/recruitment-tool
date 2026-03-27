@@ -4,7 +4,7 @@ import {
   Briefcase, Zap, RefreshCw, ChevronRight,
   Users, Plus, Check, Mail, AlertCircle,
 } from 'lucide-react'
-import { jobsApi, contactsApi, discoveredApi, statsApi, nylasApi } from '../api'
+import { jobsApi, contactsApi, discoveredApi, statsApi, nylasApi, interviewRoundsApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -226,8 +226,9 @@ export default function Dashboard() {
   const [discovered, setDiscovered] = useState([])
   const [stats,      setStats]      = useState(null)
   const [loading,    setLoading]    = useState(true)
-  const [adding,     setAdding]     = useState({}) // { [discoveredId]: 'loading' | 'done' }
-  const [replyCount, setReplyCount] = useState(0)  // Gmail reply alerts
+  const [adding,        setAdding]        = useState({}) // { [discoveredId]: 'loading' | 'done' }
+  const [replyCount,    setReplyCount]    = useState(0)  // Gmail reply alerts
+  const [todayRounds,   setTodayRounds]   = useState([]) // Interview rounds happening today
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -263,6 +264,22 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
+
+  // Load today's interviews — show thank-you reminder at 8pm
+  useEffect(() => {
+    interviewRoundsApi.getToday()
+      .then(res => setTodayRounds(res.data?.rounds || []))
+      .catch(() => {})
+  }, [])
+
+  const handleThankYou = async (roundId) => {
+    try {
+      const res = await interviewRoundsApi.setThankYou(roundId)
+      setTodayRounds(prev => prev.map(r =>
+        r.id === roundId ? { ...r, thank_you_sent: res.data.thank_you_sent } : r
+      ))
+    } catch {}
+  }
 
   const handleAddToTracker = async (jobId) => {
     setAdding(prev => ({ ...prev, [jobId]: 'loading' }))
@@ -617,6 +634,36 @@ export default function Dashboard() {
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>
+
+      {/* Thank-you email reminder — shown at 8pm on interview days */}
+      {todayRounds.length > 0 && new Date().getHours() >= 20 && (
+        <div className="card p-5 border-l-4 border-amber-400">
+          <div className="flex items-start gap-3">
+            <Mail size={18} className="text-amber-500 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-navy-800">Don't forget to send thank-you emails!</p>
+              <p className="text-xs text-navy-400 mt-0.5 mb-3">You had {todayRounds.length} interview{todayRounds.length !== 1 ? 's' : ''} today. A quick thank-you goes a long way.</p>
+              <div className="space-y-2">
+                {todayRounds.map(r => (
+                  <label key={r.id} className="flex items-center gap-3 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={r.thank_you_sent}
+                      onChange={() => handleThankYou(r.id)}
+                      className="w-4 h-4 rounded accent-violet-600 cursor-pointer"
+                    />
+                    <span className={`text-sm ${r.thank_you_sent ? 'line-through text-navy-300' : 'text-navy-700'}`}>
+                      <span className="font-medium">{r.company}</span>
+                      {r.interviewer_name && <span className="text-navy-400"> · {r.interviewer_name}</span>}
+                      <span className="text-navy-400 ml-1">(Round {r.round_number})</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New jobs banner */}
       {!loading && newToday > 0 && (

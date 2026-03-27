@@ -394,7 +394,7 @@ const TYPE_COLORS = {
   'Other':            'bg-slate-100 text-slate-600 border-slate-200',
 }
 
-function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing }) {
+function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoundsChange }) {
   const [rounds, setRounds]     = useState([])
   const [loading, setLoading]   = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -408,10 +408,12 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing }) {
   const loadRounds = useCallback(async () => {
     try {
       const res = await interviewRoundsApi.getAll(jobId)
-      setRounds(res.data || [])
+      const data = res.data || []
+      setRounds(data)
+      onRoundsChange?.(data)
     } catch {}
     finally { setLoading(false) }
-  }, [jobId])
+  }, [jobId]) // eslint-disable-line
 
   useEffect(() => { loadRounds() }, [loadRounds])
 
@@ -612,8 +614,9 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing }) {
 // ── Detail Panel ──────────────────────────────────────────────────────────────
 function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToInterviewing }) {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [roundDates, setRoundDates] = useState([])
 
-  useEffect(() => { setDeleteConfirm(false) }, [job?.id])
+  useEffect(() => { setDeleteConfirm(false); setRoundDates([]) }, [job?.id])
 
   if (!job) return null
 
@@ -690,6 +693,34 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToIn
               )
             })()}
             {job.status === 'Interviewing' && (() => {
+              const datesFromRounds = roundDates.filter(r => r.scheduled_date)
+              if (datesFromRounds.length > 0) {
+                return (
+                  <div className="flex items-start gap-3">
+                    <Calendar size={15} className="text-violet-500 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-navy-400 uppercase tracking-wide font-semibold">Interview Dates</p>
+                      <div className="mt-1 space-y-0.5">
+                        {datesFromRounds.map(r => {
+                          const [y,m,d] = r.scheduled_date.split('-').map(Number)
+                          const dt = new Date(y, m-1, d)
+                          const today = new Date(); today.setHours(0,0,0,0)
+                          const delta = Math.round((dt - today) / 86400000)
+                          const label = delta < 0 ? `${Math.abs(delta)}d ago` : delta === 0 ? 'Today' : `in ${delta}d`
+                          const color = delta < 0 ? 'text-navy-400' : delta <= 3 ? 'text-amber-600' : 'text-violet-600'
+                          return (
+                            <p key={r.id} className="text-sm text-navy-700">
+                              <span className="font-medium text-violet-600">Round {r.round_number}:</span>{' '}
+                              {dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                              <span className={`ml-1.5 text-xs font-semibold ${color}`}>({label})</span>
+                            </p>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
               if (!job.interview_date) return (
                 <div className="flex items-start gap-3">
                   <Calendar size={15} className="text-navy-300 mt-0.5 shrink-0" />
@@ -758,6 +789,7 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToIn
             jobId={job.id}
             jobStatus={job.status}
             onMoveToInterviewing={onMoveToInterviewing}
+            onRoundsChange={setRoundDates}
           />
 
           <div className="border-t border-navy-100 pt-5">

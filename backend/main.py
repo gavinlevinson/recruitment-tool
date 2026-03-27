@@ -868,6 +868,51 @@ def delete_interview_round(
     return {"ok": True}
 
 
+@app.patch("/api/interviews/{round_id}/thank-you")
+def toggle_thank_you(
+    round_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    r = db.query(InterviewRound).filter(
+        InterviewRound.id == round_id,
+        InterviewRound.user_id == current_user.id,
+    ).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Round not found")
+    r.thank_you_sent = not bool(r.thank_you_sent)
+    db.commit()
+    return {"thank_you_sent": r.thank_you_sent}
+
+
+@app.get("/api/interviews/today")
+def get_todays_interviews(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    rounds = db.query(InterviewRound).filter(
+        InterviewRound.user_id == current_user.id,
+        InterviewRound.scheduled_date == today,
+        InterviewRound.status != "Cancelled",
+    ).all()
+    result = []
+    for r in rounds:
+        job = db.query(Job).filter(Job.id == r.job_id).first()
+        result.append({
+            "id": r.id,
+            "job_id": r.job_id,
+            "company": job.company if job else "",
+            "role": job.role if job else "",
+            "round_number": r.round_number,
+            "interview_type": r.interview_type,
+            "interviewer_name": r.interviewer_name,
+            "thank_you_sent": bool(r.thank_you_sent),
+        })
+    return {"rounds": result}
+
+
 # ─────────────────────────────────────────────
 # CONTACTS / NETWORKING (Page 2)
 # ─────────────────────────────────────────────
