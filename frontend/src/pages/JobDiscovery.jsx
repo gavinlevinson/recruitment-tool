@@ -1288,18 +1288,27 @@ export default function JobDiscovery() {
 
   // Add to tracker — folder auto-assigned by backend, toast shows result
   const handleAddToTracker = async (job, opts = {}) => {
+    const otherCount = job.other_jobs_count || 0
+    // Show prompt FIRST — don't call API until user confirms
+    if (!opts.skipPrompt && otherCount > 0) {
+      setMultiPrompt({ type: 'add', job })
+      return
+    }
     try {
       const res = await discoveredApi.addToTracker(job.id, {})
       const folder = res.data?.folder || 'Unfiled'
-      setToast({ folder })
+      setToast({ folder, role: job.role })
       setTimeout(() => setToast(null), 3500)
 
-      const otherCount = job.other_jobs_count || 0
-      if (!opts.skipPrompt && otherCount > 0) {
-        // Show prompt — don't update list yet
-        setMultiPrompt({ type: 'add', job })
+      if (opts.skipPrompt) {
+        // From popup — decrement count on main list entry for this company
+        setJobs(prev => prev.map(j =>
+          j.company === job.company && j.id !== job.id
+            ? { ...j, other_jobs_count: Math.max(0, (j.other_jobs_count || 1) - 1) }
+            : j
+        ))
       } else {
-        // No other jobs or inside a popup — remove widget entirely
+        // No other jobs — remove widget entirely
         setJobs(prev => prev.filter(j => j.id !== job.id))
         setTotal(prev => prev - 1)
       }
@@ -1313,10 +1322,39 @@ export default function JobDiscovery() {
     setMultiPrompt(null)
     if (type === 'add') {
       if (action === 'keep') {
-        // Mark as added but leave remaining jobs visible
-        setJobs(prev => prev.map(j => j.id === job.id ? { ...j, added_to_tracker: true } : j))
+        // Call API now that user confirmed
+        try {
+          const res = await discoveredApi.addToTracker(job.id, {})
+          const folder = res.data?.folder || 'Unfiled'
+          setToast({ folder, role: job.role })
+          setTimeout(() => setToast(null), 3500)
+        } catch { return }
+        // Replace widget with next best job at company
+        try {
+          const res = await discoveredApi.getNextAtCompany(job.company, job.id, lastFilterParams.current)
+          const list = res.data?.jobs || []
+          const next = list.find(j => j.id !== job.id)
+          if (next) {
+            setJobs(prev => prev.map(j => j.id === job.id
+              ? { ...next, other_jobs_count: Math.max(0, (job.other_jobs_count || 1) - 1) }
+              : j
+            ))
+          } else {
+            setJobs(prev => prev.filter(j => j.id !== job.id))
+            setTotal(prev => prev - 1)
+          }
+        } catch {
+          setJobs(prev => prev.filter(j => j.id !== job.id))
+          setTotal(prev => prev - 1)
+        }
       } else {
-        // Remove all at company
+        // remove_all — call API then dismiss all at company
+        try {
+          const res = await discoveredApi.addToTracker(job.id, {})
+          const folder = res.data?.folder || 'Unfiled'
+          setToast({ folder, role: job.role })
+          setTimeout(() => setToast(null), 3500)
+        } catch {}
         setJobs(prev => prev.filter(j => j.company !== job.company))
         setTotal(prev => prev - 1)
         discoveredApi.dismissCompany(job.company).catch(() => {})
@@ -1657,7 +1695,7 @@ export default function JobDiscovery() {
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 bg-navy-900 text-white rounded-xl shadow-2xl text-sm font-medium pointer-events-none">
           <Check size={15} className="text-emerald-400 shrink-0" />
-          Added to Tracker
+          {toast.role ? <span className="max-w-[200px] truncate">{toast.role}</span> : 'Added to Tracker'}
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-violet-500 text-white">
             {toast.folder}
           </span>
