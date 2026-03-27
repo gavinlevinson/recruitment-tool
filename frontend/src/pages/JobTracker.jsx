@@ -440,9 +440,9 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing }) {
         await interviewRoundsApi.update(editId, form)
       } else {
         await interviewRoundsApi.create(jobId, form)
-        // Auto-move to Interviewing if job is Not Applied, null/undefined, or Under Review
+        // Auto-move to Interviewing if job is Not Applied (or null) or Under Review
         const effectiveStatus = jobStatus || 'Not Applied'
-        if ((effectiveStatus === 'Not Applied' || effectiveStatus === 'Under Review') && onMoveToInterviewing) {
+        if (effectiveStatus !== 'Interviewing' && effectiveStatus !== 'Accepted' && effectiveStatus !== 'Rejected' && onMoveToInterviewing) {
           onMoveToInterviewing()
         }
       }

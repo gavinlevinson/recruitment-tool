@@ -258,15 +258,15 @@ export default function Profile() {
   const handleNylasConnect = async () => {
     setNylasLoading(true)
     setNylasMsg(null)
-    // Open a blank window immediately (within the click gesture) so Chrome doesn't block it,
-    // then redirect it once we have the URL from the API.
     const popup = window.open('', '_self')
     try {
       const res = await nylasApi.getAuthUrl()
+      if (!popup) throw new Error('Could not open auth window.')
+      setNylasLoading(false)
       popup.location.href = res.data.url
     } catch (err) {
-      popup.close()
-      const detail = err?.response?.data?.detail || 'Could not start Gmail connection.'
+      if (popup) popup.close()
+      const detail = err?.response?.data?.detail || err?.message || 'Could not start Gmail connection.'
       setNylasMsg({ type: 'error', text: detail })
       setNylasLoading(false)
     }
@@ -292,6 +292,7 @@ export default function Profile() {
       const res = await profileApi.updateParsed({ custom_context: customContext })
       setProfile(p => ({ ...p, ...res.data }))
       setContextSaved(true)
+      setTimeout(() => setContextSaved(false), 4000)
     } catch {}
     finally { setContextSaving(false) }
   }

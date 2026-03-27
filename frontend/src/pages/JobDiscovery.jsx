@@ -1355,12 +1355,14 @@ export default function JobDiscovery() {
           setToast({ folder, role: job.role })
           setTimeout(() => setToast(null), 3500)
         } catch {}
+        const removedCount = (job.other_jobs_count || 0) + 1
         setJobs(prev => prev.filter(j => j.company !== job.company))
-        setTotal(prev => prev - 1)
+        setTotal(prev => Math.max(0, prev - removedCount))
         discoveredApi.dismissCompany(job.company).catch(() => {})
       }
     } else {
-      // dismiss type
+      // dismiss type — call API now that user confirmed
+      discoveredApi.update(job.id, { is_active: false }).catch(() => {})
       if (action === 'just_this') {
         // Fetch next job at company, replace widget
         try {
@@ -1378,9 +1380,10 @@ export default function JobDiscovery() {
           setTotal(prev => prev - 1)
         }
       } else {
-        // Remove all at company
+        // Remove all at company — decrement total by all jobs at company
+        const removedCount = (job.other_jobs_count || 0) + 1
         setJobs(prev => prev.filter(j => j.company !== job.company))
-        setTotal(prev => prev - 1)
+        setTotal(prev => Math.max(0, prev - removedCount))
         discoveredApi.dismissCompany(job.company).catch(() => {})
       }
     }
@@ -1389,8 +1392,7 @@ export default function JobDiscovery() {
   const handleDismiss = async (job, opts = {}) => {
     const otherCount = job.other_jobs_count || 0
     if (!opts.skipPrompt && otherCount > 0) {
-      // Show prompt first — dismiss happens in confirm handler
-      await discoveredApi.update(job.id, { is_active: false })
+      // Show prompt FIRST — API call happens in confirm handler (same pattern as add)
       setMultiPrompt({ type: 'dismiss', job })
       return
     }
