@@ -218,19 +218,29 @@ def compute_personal_score(
     career_stage = user_profile.get("career_stage", "college_senior")
 
     # ── Role match (0-35 pts) ───────────────────────────────────────────────────
+    # Title matches score full points; description-only matches are capped at 10.
     roles_to_check = user_roles if user_roles else ROLE_KEYWORDS
-    role_matches = [kw for kw in roles_to_check if kw.lower() in combined]
-    unique_matches = list(dict.fromkeys(role_matches))  # dedupe preserving order
-    match_count = len(unique_matches)
-    if match_count >= 3:
+    title_matches = list(dict.fromkeys(
+        kw for kw in roles_to_check if kw.lower() in job_role_lower
+    ))
+    desc_only_matches = list(dict.fromkeys(
+        kw for kw in roles_to_check
+        if kw.lower() in job_desc_lower and kw.lower() not in job_role_lower
+    ))
+
+    title_count = len(title_matches)
+    if title_count >= 3:
         role_score = 35
-        reasons.append(f"Strong role match ({match_count} keywords)")
-    elif match_count == 2:
+        reasons.append(f"Strong role match ({title_count} title keywords)")
+    elif title_count == 2:
         role_score = 28
-        reasons.append(f"Good role match ({match_count} keywords)")
-    elif match_count == 1:
+        reasons.append(f"Good role match ({title_count} title keywords)")
+    elif title_count == 1:
         role_score = 20
-        reasons.append(f"Partial role match: {unique_matches[0]}")
+        reasons.append(f"Partial role match: {title_matches[0]}")
+    elif desc_only_matches:
+        role_score = min(10, len(desc_only_matches) * 4)
+        reasons.append(f"Weak role signal ({len(desc_only_matches)} desc-only)")
     else:
         role_score = 0
     score += role_score
