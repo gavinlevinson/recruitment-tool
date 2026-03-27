@@ -394,7 +394,7 @@ const TYPE_COLORS = {
   'Other':            'bg-slate-100 text-slate-600 border-slate-200',
 }
 
-function InterviewRoundsSection({ jobId }) {
+function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing }) {
   const [rounds, setRounds]     = useState([])
   const [loading, setLoading]   = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -440,6 +440,10 @@ function InterviewRoundsSection({ jobId }) {
         await interviewRoundsApi.update(editId, form)
       } else {
         await interviewRoundsApi.create(jobId, form)
+        // Auto-move to Interviewing if job is Not Applied or Under Review
+        if ((jobStatus === 'Not Applied' || jobStatus === 'Under Review') && onMoveToInterviewing) {
+          onMoveToInterviewing()
+        }
       }
       setShowForm(false)
       setEditId(null)
@@ -605,7 +609,7 @@ function InterviewRoundsSection({ jobId }) {
 }
 
 // ── Detail Panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork }) {
+function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToInterviewing }) {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 
   useEffect(() => { setDeleteConfirm(false) }, [job?.id])
@@ -749,7 +753,11 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork }) {
             </div>
           </div>
 
-          <InterviewRoundsSection jobId={job.id} />
+          <InterviewRoundsSection
+            jobId={job.id}
+            jobStatus={job.status}
+            onMoveToInterviewing={onMoveToInterviewing}
+          />
 
           <div className="border-t border-navy-100 pt-5">
             <div className="flex items-center gap-2 mb-2">
@@ -2497,6 +2505,12 @@ export default function JobTracker() {
         onEdit={job => { openEdit(job); setSelectedJob(null) }}
         onDelete={handleDelete}
         onViewNetwork={job => { setNetworkJob(job); setSelectedJob(null) }}
+        onMoveToInterviewing={() => {
+          if (!selectedJob) return
+          setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: 'Interviewing' } : j))
+          setSelectedJob(prev => ({ ...prev, status: 'Interviewing' }))
+          jobsApi.update(selectedJob.id, { status: 'Interviewing' }).catch(() => {})
+        }}
       />
 
       {/* Network modal */}
