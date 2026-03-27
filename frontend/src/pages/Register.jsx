@@ -3,44 +3,26 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   Zap, User, Mail, Lock, Eye, EyeOff, RefreshCw, AlertCircle,
   GraduationCap, ChevronRight, ChevronLeft, Check,
-  Briefcase, TrendingUp, Rocket, Linkedin, FileText, Upload,
-  X, Sparkles,
+  BookOpen, Linkedin, FileText, Upload, X, Sparkles, Minus, Plus,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { profileApi, preferencesApi } from '../api'
 
-const EXPERIENCE_OPTIONS = [
-  {
-    career_stage: 'college_senior',
-    years_experience: '0+',
-    label: 'Student / New Grad',
-    sublabel: '0–1 years',
-    Icon: GraduationCap,
-  },
-  {
-    career_stage: 'early_career',
-    years_experience: '1-2',
-    label: '1–2 Years',
-    sublabel: 'Early career',
-    Icon: Rocket,
-  },
-  {
-    career_stage: 'mid_career',
-    years_experience: '3-5',
-    label: '3–5 Years',
-    sublabel: 'Mid-level',
-    Icon: Briefcase,
-  },
-  {
-    career_stage: 'senior',
-    years_experience: '5-10',
-    label: '5+ Years',
-    sublabel: 'Senior level',
-    Icon: TrendingUp,
-  },
-]
+const STEPS = ['Account', 'Background', 'Resume']
 
-const STEPS = ['Account', 'Experience', 'Resume']
+function yearsToStage(n) {
+  if (n <= 0) return 'college_senior'
+  if (n <= 2) return 'early_career'
+  if (n <= 5) return 'mid_career'
+  return 'senior'
+}
+
+const STAGE_LABELS = {
+  college_senior: { label: 'Student / New Grad', color: 'bg-violet-100 text-violet-700' },
+  early_career:   { label: 'Early Career',        color: 'bg-blue-100 text-blue-700' },
+  mid_career:     { label: 'Mid-Level',            color: 'bg-amber-100 text-amber-700' },
+  senior:         { label: 'Senior',               color: 'bg-emerald-100 text-emerald-700' },
+}
 
 export default function Register() {
   const { register } = useAuth()
@@ -51,20 +33,34 @@ export default function Register() {
   const [loading, setLoading] = useState(false)
   const [error, setError]   = useState(null)
   const [showPw, setShowPw] = useState(false)
-  const [resumeFile, setResumeFile]   = useState(null)
-  const [dragOver, setDragOver]       = useState(false)
-  const [uploadStatus, setUploadStatus] = useState(null) // 'uploading' | 'done' | 'error'
+  const [resumeFile, setResumeFile]     = useState(null)
+  const [dragOver, setDragOver]         = useState(false)
+  const [uploadStatus, setUploadStatus] = useState(null)
 
   const [form, setForm] = useState({
     name: '',
     email: '',
     password: '',
+    years_num: 0,           // freeform years — drives career_stage
     career_stage: 'college_senior',
-    years_experience: '0+',
+    years_experience: '0',
     linkedin_url: '',
+    university: '',
+    major: '',
+    minor: '',
   })
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const setYears = (n) => {
+    const clamped = Math.max(0, Math.min(40, n))
+    setForm(f => ({
+      ...f,
+      years_num: clamped,
+      years_experience: String(clamped),
+      career_stage: yearsToStage(clamped),
+    }))
+  }
 
   const validateStep = () => {
     if (step === 0) {
@@ -104,17 +100,14 @@ export default function Register() {
     setError(null)
     setLoading(true)
     try {
-      // 1. Create account
       await register(form)
 
-      // 2. Upload resume if provided (non-blocking — failure just skips)
       if (resumeFile) {
         setUploadStatus('uploading')
         try {
           const fd = new FormData()
           fd.append('file', resumeFile)
           await profileApi.uploadFile(fd)
-          // Trigger a rescore so discovery preferences update immediately
           await preferencesApi.rescore()
           setUploadStatus('done')
         } catch {
@@ -129,6 +122,8 @@ export default function Register() {
       setLoading(false)
     }
   }
+
+  const stageInfo = STAGE_LABELS[form.career_stage]
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -221,50 +216,92 @@ export default function Register() {
             </div>
           )}
 
-          {/* ── Step 1: Experience ── */}
+          {/* ── Step 1: Background ── */}
           {step === 1 && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="text-center">
-                <h2 className="text-xl font-semibold text-navy-900">Where are you in your career?</h2>
-                <p className="text-sm text-navy-400 mt-1">We'll tailor job discovery to your experience level.</p>
+                <h2 className="text-xl font-semibold text-navy-900">Tell us about yourself</h2>
+                <p className="text-sm text-navy-400 mt-1">Helps us personalize your job discovery.</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                {EXPERIENCE_OPTIONS.map(option => {
-                  const isSelected = form.career_stage === option.career_stage
-                  return (
+              {/* Years of experience */}
+              <div>
+                <label className="block text-xs font-semibold text-navy-500 mb-0.5 uppercase tracking-wide">
+                  Years of professional experience
+                </label>
+                <p className="text-xs text-navy-400 mb-3">Include internships, co-ops, and part-time roles</p>
+
+                <div className="flex items-center gap-4">
+                  {/* Stepper */}
+                  <div className="flex items-center gap-2">
                     <button
-                      key={option.career_stage}
                       type="button"
-                      onClick={() => {
-                        set('career_stage', option.career_stage)
-                        set('years_experience', option.years_experience)
-                      }}
-                      className={`flex flex-col items-start gap-2 p-3 rounded-xl border-2 text-left transition-all ${
-                        isSelected
-                          ? 'border-violet-500 bg-violet-50'
-                          : 'border-navy-200 bg-white hover:border-navy-300'
-                      }`}
-                      style={isSelected ? { borderColor: '#8b6bbf' } : {}}
+                      onClick={() => setYears(form.years_num - 1)}
+                      className="w-9 h-9 rounded-lg border border-navy-200 bg-white flex items-center justify-center text-navy-600 hover:bg-navy-50 transition-colors"
                     >
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                        isSelected ? 'bg-violet-100' : 'bg-navy-100'
-                      }`}>
-                        <option.Icon size={15} className={isSelected ? 'text-violet-600' : 'text-navy-500'}
-                          style={isSelected ? { color: '#8b6bbf' } : {}} />
-                      </div>
-                      <div>
-                        <p className={`text-sm font-semibold leading-tight ${isSelected ? 'text-violet-700' : 'text-navy-800'}`}
-                          style={isSelected ? { color: '#8b6bbf' } : {}}>
-                          {option.label}
-                        </p>
-                        <p className="text-xs text-navy-400 mt-0.5">{option.sublabel}</p>
-                      </div>
+                      <Minus size={14} />
                     </button>
-                  )
-                })}
+                    <input
+                      type="number"
+                      min="0"
+                      max="40"
+                      value={form.years_num}
+                      onChange={e => setYears(parseInt(e.target.value) || 0)}
+                      className="w-16 text-center input font-semibold text-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setYears(form.years_num + 1)}
+                      className="w-9 h-9 rounded-lg border border-navy-200 bg-white flex items-center justify-center text-navy-600 hover:bg-navy-50 transition-colors"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+
+                  {/* Dynamic level badge */}
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${stageInfo.color}`}>
+                    {stageInfo.label}
+                  </span>
+                </div>
               </div>
 
+              {/* University */}
+              <div>
+                <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
+                  University <span className="text-navy-300 font-normal normal-case">(optional)</span>
+                </label>
+                <div className="relative">
+                  <GraduationCap size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
+                  <input className="input pl-9" placeholder="e.g. University of Michigan"
+                    value={form.university} onChange={e => set('university', e.target.value)} />
+                </div>
+              </div>
+
+              {/* Major + Minor */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
+                    Major <span className="text-navy-300 font-normal normal-case">(optional)</span>
+                  </label>
+                  <div className="relative">
+                    <BookOpen size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
+                    <input className="input pl-9" placeholder="e.g. Finance, CS"
+                      value={form.major} onChange={e => set('major', e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
+                    Minor <span className="text-navy-300 font-normal normal-case">(optional)</span>
+                  </label>
+                  <div className="relative">
+                    <BookOpen size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
+                    <input className="input pl-9" placeholder="e.g. Statistics"
+                      value={form.minor} onChange={e => set('minor', e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              {/* LinkedIn */}
               <div>
                 <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
                   LinkedIn URL <span className="text-navy-300 font-normal normal-case">(optional)</span>
