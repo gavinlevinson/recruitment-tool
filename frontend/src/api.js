@@ -69,6 +69,10 @@ export const discoveredApi = {
     api.get('/company-summary', { params: { company, description: (description || '').slice(0, 1500) } }),
   getDismissed:   ()       => api.get('/discovered-jobs/dismissed'),
   addFromUrl:     (data)   => api.post('/tracker/add-from-url', data),
+  dismissCompany: (company) => api.post('/discovered-jobs/dismiss-company', { company }),
+  getNextAtCompany: (company, excludeId, params) => api.get('/discovered-jobs', {
+    params: { ...params, company_filter: company, is_active: true, limit: 2, offset: 0 }
+  }),
 }
 
 export const recruitersApi = {

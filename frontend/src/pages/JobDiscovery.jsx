@@ -160,6 +160,45 @@ function getExpRequired(description) {
 }
 
 // ── Company Jobs Popup Modal ───────────────────────────────────────────────────
+// ── Multi-job prompt modal ────────────────────────────────────────────────────
+function MultiJobPrompt({ type, company, otherCount, onConfirm, onCancel }) {
+  // type: 'add' | 'dismiss'
+  const isAdd = type === 'add'
+  return (
+    <>
+      <div className="fixed inset-0 bg-navy-900/50 backdrop-blur-sm z-[60]" onClick={onCancel} />
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 pointer-events-none">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm pointer-events-auto p-6 space-y-4">
+          <div>
+            <h3 className="text-base font-bold text-navy-900">
+              {isAdd ? `${otherCount} other role${otherCount !== 1 ? 's' : ''} at ${company}` : `Multiple jobs at ${company}`}
+            </h3>
+            <p className="text-sm text-navy-500 mt-1">
+              {isAdd
+                ? `Keep the remaining ${otherCount} role${otherCount !== 1 ? 's' : ''} in your Discovery feed?`
+                : 'Do you want to remove just this posting, or all jobs at this company?'}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {isAdd ? (
+              <>
+                <button onClick={() => onConfirm('keep')} className="flex-1 btn-primary justify-center text-sm">Keep them</button>
+                <button onClick={() => onConfirm('remove_all')} className="flex-1 btn-secondary justify-center text-sm text-red-600 border-red-200 hover:bg-red-50">Remove all</button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => onConfirm('just_this')} className="flex-1 btn-secondary justify-center text-sm">Just this one</button>
+                <button onClick={() => onConfirm('remove_all')} className="flex-1 btn-secondary justify-center text-sm text-red-600 border-red-200 hover:bg-red-50">All at {company}</button>
+              </>
+            )}
+          </div>
+          <button onClick={onCancel} className="w-full text-xs text-navy-400 hover:text-navy-600 text-center">Cancel</button>
+        </div>
+      </div>
+    </>
+  )
+}
+
 function CompanyJobsModal({ company, filterParams, onClose, onAddToTracker, onDismiss }) {
   const [jobs, setJobs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -178,6 +217,16 @@ function CompanyJobsModal({ company, filterParams, onClose, onAddToTracker, onDi
       setJobs(list)
     }).catch(() => {}).finally(() => setLoading(false))
   }, [company]) // eslint-disable-line
+
+  const handleLocalAdd = async (job) => {
+    setJobs(prev => prev.filter(j => j.id !== job.id))
+    await onAddToTracker(job, { skipPrompt: true })
+  }
+
+  const handleLocalDismiss = async (job) => {
+    setJobs(prev => prev.filter(j => j.id !== job.id))
+    await onDismiss(job, { skipPrompt: true })
+  }
 
   return (
     <>
@@ -217,8 +266,8 @@ function CompanyJobsModal({ company, filterParams, onClose, onAddToTracker, onDi
                   <JobCard
                     key={job.id}
                     job={job}
-                    onAddToTracker={onAddToTracker}
-                    onDismiss={onDismiss}
+                    onAddToTracker={handleLocalAdd}
+                    onDismiss={handleLocalDismiss}
                   />
                 ))}
               </div>
@@ -1082,6 +1131,9 @@ export default function JobDiscovery() {
   const [companyPopup, setCompanyPopup] = useState(null) // { company, otherCount }
   const lastFilterParams = useRef({})
 
+  // Multi-job prompt
+  const [multiPrompt, setMultiPrompt] = useState(null) // { type, job } or null
+
   // Toast notification after adding to tracker
   const [toast, setToast] = useState(null) // { folder } or null
 
@@ -1235,19 +1287,76 @@ export default function JobDiscovery() {
   }
 
   // Add to tracker — folder auto-assigned by backend, toast shows result
-  const handleAddToTracker = async (job) => {
+  const handleAddToTracker = async (job, opts = {}) => {
     try {
       const res = await discoveredApi.addToTracker(job.id, {})
-      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, added_to_tracker: true } : j))
       const folder = res.data?.folder || 'Unfiled'
       setToast({ folder })
       setTimeout(() => setToast(null), 3500)
+
+      const otherCount = job.other_jobs_count || 0
+      if (!opts.skipPrompt && otherCount > 0) {
+        // Show prompt — don't update list yet
+        setMultiPrompt({ type: 'add', job })
+      } else {
+        // No other jobs or inside a popup — remove widget entirely
+        setJobs(prev => prev.filter(j => j.id !== job.id))
+        setTotal(prev => prev - 1)
+      }
     } catch (err) {
       console.error('Failed to add to tracker:', err)
     }
   }
 
-  const handleDismiss = async (job) => {
+  const handleMultiPromptConfirm = async (action) => {
+    const { type, job } = multiPrompt
+    setMultiPrompt(null)
+    if (type === 'add') {
+      if (action === 'keep') {
+        // Mark as added but leave remaining jobs visible
+        setJobs(prev => prev.map(j => j.id === job.id ? { ...j, added_to_tracker: true } : j))
+      } else {
+        // Remove all at company
+        setJobs(prev => prev.filter(j => j.company !== job.company))
+        setTotal(prev => prev - 1)
+        discoveredApi.dismissCompany(job.company).catch(() => {})
+      }
+    } else {
+      // dismiss type
+      if (action === 'just_this') {
+        // Fetch next job at company, replace widget
+        try {
+          const res = await discoveredApi.getNextAtCompany(job.company, job.id, lastFilterParams.current)
+          const list = res.data?.jobs || []
+          const next = list.find(j => j.id !== job.id)
+          if (next) {
+            setJobs(prev => prev.map(j => j.id === job.id ? { ...next, other_jobs_count: (job.other_jobs_count || 1) - 1 } : j))
+          } else {
+            setJobs(prev => prev.filter(j => j.id !== job.id))
+            setTotal(prev => prev - 1)
+          }
+        } catch {
+          setJobs(prev => prev.filter(j => j.id !== job.id))
+          setTotal(prev => prev - 1)
+        }
+      } else {
+        // Remove all at company
+        setJobs(prev => prev.filter(j => j.company !== job.company))
+        setTotal(prev => prev - 1)
+        discoveredApi.dismissCompany(job.company).catch(() => {})
+      }
+    }
+  }
+
+  const handleDismiss = async (job, opts = {}) => {
+    const otherCount = job.other_jobs_count || 0
+    if (!opts.skipPrompt && otherCount > 0) {
+      // Show prompt first — dismiss happens in confirm handler
+      await discoveredApi.update(job.id, { is_active: false })
+      setMultiPrompt({ type: 'dismiss', job })
+      return
+    }
+    // No other jobs or inside popup — remove directly
     setJobs(prev => prev.filter(j => j.id !== job.id))
     setTotal(prev => prev - 1)
     try {
@@ -1530,7 +1639,17 @@ export default function JobDiscovery() {
           filterParams={lastFilterParams.current}
           onClose={() => setCompanyPopup(null)}
           onAddToTracker={handleAddToTracker}
-          onDismiss={(job) => { handleDismiss(job); }}
+          onDismiss={handleDismiss}
+        />
+      )}
+
+      {multiPrompt && (
+        <MultiJobPrompt
+          type={multiPrompt.type}
+          company={multiPrompt.job.company}
+          otherCount={multiPrompt.job.other_jobs_count || 0}
+          onConfirm={handleMultiPromptConfirm}
+          onCancel={() => setMultiPrompt(null)}
         />
       )}
 

@@ -1257,6 +1257,22 @@ def get_discovered_jobs(
             page_jobs = [discovered_to_dict(j) for j in jobs]
         return {"total": total, "jobs": page_jobs}
 
+@app.post("/api/discovered-jobs/dismiss-company")
+def dismiss_company_jobs(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Dismiss all active discovered jobs at a given company."""
+    company = payload.get("company", "")
+    if not company:
+        raise HTTPException(status_code=400, detail="company required")
+    updated = db.query(DiscoveredJob).filter(
+        DiscoveredJob.company == company,
+        DiscoveredJob.is_active == True,
+    ).all()
+    for job in updated:
+        job.is_active = False
+    db.commit()
+    return {"dismissed": len(updated)}
+
+
 @app.put("/api/discovered-jobs/{job_id}")
 def update_discovered_job(job_id: int, update: DiscoveredJobUpdate, db: Session = Depends(get_db)):
     job = db.query(DiscoveredJob).filter(DiscoveredJob.id == job_id).first()
