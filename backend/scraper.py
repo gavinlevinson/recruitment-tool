@@ -220,22 +220,33 @@ def score_job(company: str, role: str, location: str = "", description: str = ""
     if _is_hard_excluded(role):
         return 0, []
 
-    text = f"{role} {description}".lower()
+    role_lower = role.lower()
+    desc_lower_full = description.lower()
+    text = f"{role_lower} {desc_lower_full}"
     loc_text = (location + " " + description).lower()
     co = company.lower()
 
-    # 1. Role match (0-35 pts)
-    matched = [r for r in TARGET_ROLES if r in text]
-    if not matched:
-        return 0, []  # Zero matching keywords = reject
+    # 1. Role match (0-35 pts) — title matches count fully; desc-only matches count partially
+    title_matched = [r for r in TARGET_ROLES if r in role_lower]
+    desc_only_matched = [r for r in TARGET_ROLES if r not in role_lower and r in desc_lower_full]
 
-    if len(matched) >= 3:
-        role_pts = 35
-    elif len(matched) == 2:
-        role_pts = 28
+    if not title_matched and not desc_only_matched:
+        return 0, []  # No keyword match at all — reject
+
+    # Weight: title matches = 2pts each, desc-only = 0.5pts each (capped at equivalent of 2 title hits)
+    effective_matches = len(title_matched) + min(len(desc_only_matched) * 0.5, 1)
+
+    if title_matched:
+        if effective_matches >= 3:
+            role_pts = 35
+        elif effective_matches >= 2:
+            role_pts = 28
+        else:
+            role_pts = 20
     else:
-        role_pts = 20
-    reasons.append(f"Role: {', '.join(matched[:3])}")
+        # Only description matches — weak signal
+        role_pts = 10
+    reasons.append(f"Role: {', '.join((title_matched + desc_only_matched)[:3])}")
 
     # 2. Location (0-25 pts)
     loc_lower = loc_text
@@ -257,7 +268,7 @@ def score_job(company: str, role: str, location: str = "", description: str = ""
 
     # 3. Entry-level signals (0-30 pts)
     # Check description for experience requirements FIRST — these override positive signals.
-    desc_lower = description.lower()
+    desc_lower = desc_lower_full
 
     # ── Experience gate — check full description for any 5+ year requirement ──────
     # Multiple patterns to catch "7+ years", "7-10 years", "minimum 7 years", "7 or more years"
