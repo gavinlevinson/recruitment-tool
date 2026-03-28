@@ -265,41 +265,44 @@ export default function Register() {
                 </div>
               </div>
 
-              {/* University */}
-              <div>
-                <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
-                  University <span className="text-navy-300 font-normal normal-case">(optional)</span>
-                </label>
-                <div className="relative">
-                  <GraduationCap size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
-                  <input className="input pl-9" placeholder="e.g. University of Michigan"
-                    value={form.university} onChange={e => set('university', e.target.value)} />
-                </div>
-              </div>
+              {/* University / Major / Minor — only relevant for students & new grads */}
+              {form.years_num < 3 && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
+                      University <span className="text-navy-300 font-normal normal-case">(optional)</span>
+                    </label>
+                    <div className="relative">
+                      <GraduationCap size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
+                      <input className="input pl-9" placeholder="e.g. University of Michigan"
+                        value={form.university} onChange={e => set('university', e.target.value)} />
+                    </div>
+                  </div>
 
-              {/* Major + Minor */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
-                    Major <span className="text-navy-300 font-normal normal-case">(optional)</span>
-                  </label>
-                  <div className="relative">
-                    <BookOpen size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
-                    <input className="input pl-9" placeholder="e.g. Finance, CS"
-                      value={form.major} onChange={e => set('major', e.target.value)} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
+                        Major <span className="text-navy-300 font-normal normal-case">(optional)</span>
+                      </label>
+                      <div className="relative">
+                        <BookOpen size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
+                        <input className="input pl-9" placeholder="e.g. Finance, CS"
+                          value={form.major} onChange={e => set('major', e.target.value)} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
+                        Minor <span className="text-navy-300 font-normal normal-case">(optional)</span>
+                      </label>
+                      <div className="relative">
+                        <BookOpen size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
+                        <input className="input pl-9" placeholder="e.g. Statistics"
+                          value={form.minor} onChange={e => set('minor', e.target.value)} />
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
-                    Minor <span className="text-navy-300 font-normal normal-case">(optional)</span>
-                  </label>
-                  <div className="relative">
-                    <BookOpen size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
-                    <input className="input pl-9" placeholder="e.g. Statistics"
-                      value={form.minor} onChange={e => set('minor', e.target.value)} />
-                  </div>
-                </div>
-              </div>
+                </>
+              )}
 
               {/* LinkedIn */}
               <div>
