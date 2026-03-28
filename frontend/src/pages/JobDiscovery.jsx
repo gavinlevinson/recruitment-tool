@@ -1464,7 +1464,7 @@ export default function JobDiscovery() {
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-navy-400 mr-1">Sources:</span>
-              {(preferences.enabled_sources === null
+              {(preferences?.enabled_sources == null
                 ? ALL_SOURCE_BADGES
                 : ALL_SOURCE_BADGES.filter(b => (preferences.enabled_sources || []).includes(b.id))
               ).map(s => (
@@ -1572,23 +1572,23 @@ export default function JobDiscovery() {
 
           {/* Row 3: active filters display */}
           <div className="flex flex-wrap items-center gap-2">
-            {preferences.locations && preferences.locations.length > 0 && (
+            {preferences?.locations && preferences.locations.length > 0 && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 text-xs">
                 <MapPin size={10} />
                 {preferences.locations.join(', ')}
               </span>
             )}
-            {preferences.funding_stages && preferences.funding_stages.length < 4 && (
+            {preferences?.funding_stages && preferences.funding_stages.length < 4 && (
               <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 text-xs">
                 {preferences.funding_stages.join(', ')}
               </span>
             )}
-            {preferences.employee_ranges && preferences.employee_ranges.length < 4 && (
+            {preferences?.employee_ranges && preferences.employee_ranges.length < 4 && (
               <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-xs">
                 {preferences.employee_ranges.join(', ')} emp
               </span>
             )}
-            {preferences.years_experience && (
+            {preferences?.years_experience && (
               <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs">
                 {preferences.years_experience} yrs exp
               </span>

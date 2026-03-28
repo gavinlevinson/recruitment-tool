@@ -400,6 +400,7 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId]     = useState(null)
   const [saving, setSaving]     = useState(false)
+  const formRef = useRef(null)
   const [form, setForm] = useState({
     round_number: 1, interview_type: 'Screening', scheduled_date: '',
     interviewer_name: '', interviewer_linkedin: '', notes: '', status: 'Scheduled',
@@ -422,6 +423,7 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
       interviewer_name: '', interviewer_linkedin: '', notes: '', status: 'Scheduled' })
     setEditId(null)
     setShowForm(true)
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50)
   }
 
   const openEdit = (r) => {
@@ -540,7 +542,7 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
       )}
 
       {showForm && (
-        <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-3">
+        <div ref={formRef} className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-3">
           <p className="text-xs font-semibold text-navy-700">{editId ? 'Edit Round' : 'New Round'}</p>
 
           <div className="grid grid-cols-2 gap-2">
