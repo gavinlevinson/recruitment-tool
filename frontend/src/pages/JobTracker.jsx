@@ -412,7 +412,7 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
       const data = res.data || []
       setRounds(data)
       onRoundsChange?.(data)
-    } catch {}
+    } catch (e) { console.error('[loadRounds]', e) }
     finally { setLoading(false) }
   }, [jobId]) // eslint-disable-line
 
@@ -453,7 +453,10 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
       setShowForm(false)
       setEditId(null)
       await loadRounds()
-    } catch {}
+    } catch (e) {
+      console.error('[handleSave round]', e)
+      alert('Failed to save interview round. Please try again.')
+    }
     finally { setSaving(false) }
   }
 
@@ -461,7 +464,10 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
     try {
       await interviewRoundsApi.delete(id)
       setRounds(prev => prev.filter(r => r.id !== id))
-    } catch {}
+    } catch (e) {
+      console.error('[handleDelete round]', e)
+      alert('Failed to delete interview round. Please try again.')
+    }
   }
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -1662,7 +1668,7 @@ function EmailComposer({ contact, job, onClose, userUniversity }) {
       setSaved(true)
       setShowSave(false)
       setTimeout(() => setSaved(false), 2500)
-    } catch { /* silent */ }
+    } catch (e) { console.error('[saveTemplate]', e) }
   }
 
   return (

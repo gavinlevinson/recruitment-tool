@@ -45,7 +45,7 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
       setShowPreview(false)
       const res = await profileApi.get()
       onUploaded(res.data)
-    } catch { /* ignore */ }
+    } catch (e) { console.error('[handleRemove file]', e) }
     finally { setRemoving(false) }
   }
 
@@ -251,7 +251,10 @@ export default function Profile() {
       await authApi.updateMe(infoForm)
       await refreshUser()
       setEditInfo(false)
-    } catch {}
+    } catch (e) {
+      console.error('[handleSaveInfo]', e)
+      alert('Failed to save profile. Please try again.')
+    }
     finally { setSavingInfo(false) }
   }
 
@@ -293,7 +296,10 @@ export default function Profile() {
       setProfile(p => ({ ...p, ...res.data }))
       setContextSaved(true)
       setTimeout(() => setContextSaved(false), 4000)
-    } catch {}
+    } catch (e) {
+      console.error('[handleSaveContext]', e)
+      alert('Failed to save context. Please try again.')
+    }
     finally { setContextSaving(false) }
   }
 

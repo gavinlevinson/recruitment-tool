@@ -364,7 +364,8 @@ export default function Events() {
       const res  = await eventsApi.getAll(params)
       const list = res.data?.events || []
       setEvents(list)
-    } catch {
+    } catch (e) {
+      console.error('[fetchEvents]', e)
       setEvents([])
     } finally {
       setLoading(false)
@@ -375,7 +376,7 @@ export default function Events() {
   useEffect(() => {
     eventsApi.getRsvped().then(res => {
       setRsvpedIds(new Set(res.data?.event_ids || []))
-    }).catch(() => {})
+    }).catch(e => console.error('[getRsvped]', e))
   }, [])
 
   // Check if Eventbrite key is configured on mount
@@ -402,7 +403,7 @@ export default function Events() {
         else next.delete(id)
         return next
       })
-    } catch {}
+    } catch (e) { console.error('[handleToggleRsvp]', e) }
   }
 
   function handleSearch(e) {

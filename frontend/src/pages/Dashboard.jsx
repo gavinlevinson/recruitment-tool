@@ -278,7 +278,7 @@ export default function Dashboard() {
       setTodayRounds(prev => prev.map(r =>
         r.id === roundId ? { ...r, thank_you_sent: res.data.thank_you_sent } : r
       ))
-    } catch {}
+    } catch (e) { console.error('[handleThankYou]', e) }
   }
 
   const handleAddToTracker = async (jobId) => {

@@ -671,7 +671,7 @@ function DismissedJobsPanel({ onRestore }) {
     try {
       const res = await discoveredApi.getDismissed()
       setJobs(res.data?.jobs || [])
-    } catch {}
+    } catch (e) { console.error('[loadDismissed]', e) }
     finally { setLoading(false) }
   }
 
@@ -687,7 +687,7 @@ function DismissedJobsPanel({ onRestore }) {
       await discoveredApi.update(job.id, { is_active: true })
       setJobs(prev => prev.filter(j => j.id !== job.id))
       onRestore?.()
-    } catch {}
+    } catch (e) { console.error('[restoreDismissed]', e) }
     finally { setRestoring(null) }
   }
 

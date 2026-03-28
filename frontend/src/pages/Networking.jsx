@@ -495,7 +495,7 @@ function EmailComposerModal({ isOpen, onClose, contact, templates, userUniversit
       setSavedAsTemplate(true)
       setShowTemplateSave(false)
       setTimeout(() => setSavedAsTemplate(false), 2500)
-    } catch { /* silent */ }
+    } catch (e) { console.error('[saveAsTemplate]', e) }
   }
 
   if (!isOpen) return null
