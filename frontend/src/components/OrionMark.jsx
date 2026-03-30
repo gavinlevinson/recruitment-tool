@@ -14,7 +14,7 @@ export default function OrionMark({ className = 'w-8 h-8', light = false }) {
     <img
       src="/orion-logo.png"
       alt="Orion"
-      className={`${className} object-contain shrink-0 ${light ? 'invert' : ''}`}
+      className={`${className} object-contain shrink-0 ${light ? 'invert mix-blend-screen' : ''}`}
       onError={() => setFailed(true)}
     />
   )
@@ -37,7 +37,7 @@ export function OrionLogo({ className = 'h-16 w-auto', light = false }) {
     <img
       src="/orion-logo.png"
       alt="Orion"
-      className={`${className} object-contain shrink-0 ${light ? 'invert' : ''}`}
+      className={`${className} object-contain shrink-0 ${light ? 'invert mix-blend-screen' : ''}`}
       onError={() => setFailed(true)}
     />
   )

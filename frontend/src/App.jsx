@@ -34,7 +34,7 @@ function Sidebar() {
     <aside className="fixed left-0 top-0 h-screen w-56 bg-navy-900 flex flex-col z-30 shadow-matte-lg">
       {/* Logo */}
       <div className="px-4 py-5">
-        <OrionMark className="w-10 h-10" light />
+        <OrionMark className="w-20 h-20" light />
         <p className="text-navy-300 text-xs mt-2 truncate">
           {user ? user.name.split(' ')[0] : 'Guest'}
         </p>
