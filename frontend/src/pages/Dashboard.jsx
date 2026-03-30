@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Briefcase, Zap, RefreshCw, ChevronRight,
+  Briefcase, RefreshCw, ChevronRight,
   Users, Plus, Check, Mail, AlertCircle,
 } from 'lucide-react'
 import { jobsApi, contactsApi, discoveredApi, statsApi, nylasApi, interviewRoundsApi } from '../api'
+import OrionMark from '../components/OrionMark'
 import { useAuth } from '../context/AuthContext'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -672,7 +673,7 @@ export default function Dashboard() {
           style={{ background: 'linear-gradient(135deg, #8b6bbf 0%, #6a4fa3 100%)' }}>
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-              <Zap size={17} className="text-white" />
+              <OrionMark className="w-4 h-4" light />
             </div>
             <div>
               <p className="text-sm font-semibold">{newToday} new job{newToday !== 1 ? 's' : ''} discovered in the last 24 hours</p>

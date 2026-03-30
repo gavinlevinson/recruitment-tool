@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Upload, FileText, Check, RefreshCw, User, GraduationCap, BookOpen,
-  MapPin, Briefcase, Zap, AlertCircle, ChevronDown, Sparkles, X,
+  MapPin, Briefcase, AlertCircle, ChevronDown, Sparkles, X,
   Download, Eye, EyeOff, Mail, Link2, Link2Off, Save, MessageSquare, Trash2,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'

@@ -1,16 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Newspaper, RefreshCw, ExternalLink, Clock, Tag,
-  TrendingUp, Zap, AlertCircle,
+  TrendingUp, Sparkles, AlertCircle,
 } from 'lucide-react'
 import { newsApi } from '../api'
 
 // ── Topic filter config ───────────────────────────────────────────────────────
 const TOPICS = [
   { id: 'all',         label: 'All',         icon: TrendingUp,  active: 'bg-navy-800 text-white border-navy-800',         inactive: 'bg-white text-navy-600 border-navy-200 hover:bg-navy-50' },
-  { id: 'funding',     label: 'Funding',     icon: Zap,         active: 'bg-emerald-600 text-white border-emerald-600',   inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
+  { id: 'funding',     label: 'Funding',     icon: Sparkles,         active: 'bg-emerald-600 text-white border-emerald-600',   inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
   { id: 'hiring',      label: 'Hiring',      icon: Tag,         active: 'bg-sky-600 text-white border-sky-600',           inactive: 'bg-white text-sky-700 border-sky-200 hover:bg-sky-50' },
-  { id: 'ai_research', label: 'AI Research', icon: Zap,         active: 'bg-violet-DEFAULT text-white border-violet-DEFAULT', inactive: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50' },
+  { id: 'ai_research', label: 'AI Research', icon: Sparkles,         active: 'bg-violet-DEFAULT text-white border-violet-DEFAULT', inactive: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50' },
   { id: 'products',    label: 'Products',    icon: Tag,         active: 'bg-amber-500 text-white border-amber-500',       inactive: 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50' },
   { id: 'policy',      label: 'Policy',      icon: AlertCircle, active: 'bg-rose-600 text-white border-rose-600',         inactive: 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50' },
 ]

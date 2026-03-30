@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   FileText, Sparkles, ChevronDown, ChevronUp, Copy, Check,
   Loader2, AlertTriangle, BookOpen, Lightbulb, RotateCcw,
-  Star, Zap, Target, Building2, MessageSquare,
+  Star, Target, Building2, MessageSquare,
 } from 'lucide-react'
 import { coachApi, jobsApi, profileApi } from '../api'
 
@@ -116,12 +116,12 @@ const SEVERITY = {
 
 const CATEGORY_ICONS = {
   impact:      <Target size={11} />,
-  specificity: <Zap size={11} />,
+  specificity: <Star size={11} />,
   relevance:   <Star size={11} />,
   keyword:     <BookOpen size={11} />,
   format:      <FileText size={11} />,
   tone:        <MessageSquare size={11} />,
-  opening:     <Zap size={11} />,
+  opening:     <Target size={11} />,
   connection:  <Star size={11} />,
   closing:     <Target size={11} />,
 }

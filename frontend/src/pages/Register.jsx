@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Zap, User, Mail, Lock, Eye, EyeOff, RefreshCw, AlertCircle,
+  User, Mail, Lock, Eye, EyeOff, RefreshCw, AlertCircle,
   GraduationCap, ChevronRight, ChevronLeft, Check,
   BookOpen, Linkedin, FileText, Upload, X, Sparkles, Minus, Plus,
 } from 'lucide-react'
@@ -412,7 +412,7 @@ export default function Register() {
                   ) : resumeFile ? (
                     <><Check size={15} /> Upload & Get Started</>
                   ) : (
-                    <><Zap size={15} /> Create Account</>
+                    <><OrionMark className="w-4 h-4 inline-block" /> Create Account</>
                   )}
                 </button>
               </div>

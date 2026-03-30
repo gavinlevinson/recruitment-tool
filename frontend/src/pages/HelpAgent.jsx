@@ -171,7 +171,7 @@ export default function HelpAgent() {
             {loading && (
               <div className="flex items-start gap-2 justify-start">
                 <div className="w-7 h-7 rounded-full bg-violet-100 flex items-center justify-center shrink-0 mt-0.5">
-                  <Zap size={12} className="text-violet-600" />
+                  <OrionMark className="w-3 h-3" />
                 </div>
                 <div className="bg-navy-50 border border-navy-100 rounded-2xl rounded-tl-sm px-3 py-2.5 flex gap-1 items-center">
                   <span className="w-2 h-2 rounded-full bg-navy-300 animate-bounce" style={{ animationDelay: '0ms' }} />

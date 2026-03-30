@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  MapPin, Clock, Calendar, ExternalLink, Plus, Users, Tag, Zap, X, Search, Check,
+  MapPin, Clock, Calendar, ExternalLink, Plus, Users, Tag, Wifi, X, Search, Check,
 } from 'lucide-react'
 import { eventsApi } from '../api'
 
@@ -117,7 +117,7 @@ function EventCard({ event, isRsvped, onToggleRsvp }) {
           <div className="flex items-center gap-1.5">
             {event.is_online && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200">
-                <Zap size={10} />
+                <Wifi size={10} />
                 Online
               </span>
             )}

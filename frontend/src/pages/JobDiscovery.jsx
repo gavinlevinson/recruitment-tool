@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   RefreshCw, Search, ExternalLink, Check, ChevronDown, ChevronUp,
-  Info, Zap, X, ChevronLeft, ChevronRight, SlidersHorizontal,
+  Info, X, ChevronLeft, ChevronRight, SlidersHorizontal,
   Settings, Save, MapPin, AlertCircle, Loader2, Sparkles,
 } from 'lucide-react'
 import { discoveredApi, preferencesApi, profileApi } from '../api'
 import { useAuth } from '../context/AuthContext'
+import OrionMark from '../components/OrionMark'
 
 // ── Source badge metadata ─────────────────────────────────────────────────────
 const SOURCE_META = [
@@ -1094,7 +1095,7 @@ function PreferencesPanel({ open, onClose, preferences, onSave }) {
             {rescoring ? (
               <><RefreshCw size={14} className="animate-spin" /> Re-scoring Jobs...</>
             ) : (
-              <><Zap size={14} /> Re-score All Jobs</>
+              <><OrionMark className="w-3.5 h-3.5 inline-block" /> Re-score All Jobs</>
             )}
           </button>
           {rescoring && (
@@ -1433,7 +1434,7 @@ export default function JobDiscovery() {
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-navy-900 flex items-center gap-2">
-            <Zap size={24} className="text-violet-DEFAULT" />
+            <OrionMark className="w-6 h-6" />
             Job Discovery Agent
           </h1>
           <p className="text-sm text-navy-400 mt-0.5">Intelligent daily job discovery tailored to your profile</p>
@@ -1626,7 +1627,7 @@ export default function JobDiscovery() {
             </p>
           </div>
           <button onClick={handleRunAgent} disabled={running} className="btn-primary">
-            {running ? <><RefreshCw size={15} className="animate-spin" /> Running Agent…</> : <><Zap size={15} /> Run Discovery Agent</>}
+            {running ? <><RefreshCw size={15} className="animate-spin" /> Running Agent…</> : <><OrionMark className="w-4 h-4 inline-block" /> Run Discovery Agent</>}
           </button>
         </div>
       ) : jobs.length === 0 ? (
