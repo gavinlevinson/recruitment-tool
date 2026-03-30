@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   ChevronLeft, ChevronRight, CalendarDays, Briefcase,
-  Clock, Bell, X, ExternalLink, Download, Zap, RefreshCw, Users, Plus, Trash2,
+  Clock, Bell, X, ExternalLink, Download, RefreshCw, Users, Plus, Trash2,
 } from 'lucide-react'
 import { calendarApi } from '../api'
 import { useNavigate } from 'react-router-dom'
@@ -140,22 +140,24 @@ function exportIcs(event) {
 
 // ── Event Popover ─────────────────────────────────────────────────────────────
 
-function EventPopover({ event, onClose }) {
+function EventPopover({ event, onClose, onDelete }) {
   const navigate = useNavigate()
   if (!event) return null
   const cfg     = EVENT_CONFIG[event.type] || EVENT_CONFIG.reminder
   const delta   = daysUntil(event.date)
   const deltaLabel =
-    delta === 0  ? 'Today'         :
-    delta === 1  ? 'Tomorrow'      :
-    delta === -1 ? 'Yesterday'     :
-    delta < 0   ? `${Math.abs(delta)} days ago` :
-                   `In ${delta} days`
+    delta === null ? ''              :
+    delta === 0    ? 'Today'         :
+    delta === 1    ? 'Tomorrow'      :
+    delta === -1   ? 'Yesterday'     :
+    delta < 0      ? `${Math.abs(delta)} days ago` :
+                     `In ${delta} days`
   const deltaColor =
-    delta < 0   ? 'text-red-600'    :
-    delta <= 3  ? 'text-amber-600'  :
-    delta <= 7  ? 'text-sky-600'    :
-                  'text-navy-500'
+    delta === null  ? ''              :
+    delta < 0       ? 'text-red-600'  :
+    delta <= 3      ? 'text-amber-600':
+    delta <= 7      ? 'text-sky-600'  :
+                      'text-navy-500'
 
   return (
     <>
@@ -169,6 +171,9 @@ function EventPopover({ event, onClose }) {
                 <cfg.Icon size={11} />
                 {cfg.label}
               </span>
+              {event.manual && (
+                <span className="text-[10px] font-medium text-navy-400 bg-white/60 px-1.5 py-0.5 rounded">manual</span>
+              )}
             </div>
             <button onClick={onClose} className={`p-1 rounded-lg ${cfg.text} hover:bg-white/40 transition-colors`}>
               <X size={16} />
@@ -181,11 +186,12 @@ function EventPopover({ event, onClose }) {
               <p className="text-lg font-bold text-navy-900 leading-tight">{event.title}</p>
               {event.round_info && <p className="text-xs font-semibold text-violet-600 mt-0.5">{event.round_info}</p>}
               {event.role && <p className="text-sm text-navy-500 mt-0.5">{event.role}</p>}
+              {event.notes && <p className="text-sm text-navy-500 mt-0.5 italic">{event.notes}</p>}
             </div>
 
             <div className="flex items-center justify-between">
               <p className="text-sm text-navy-600">{formatDisplayDate(event.date)}</p>
-              <span className={`text-xs font-semibold ${deltaColor}`}>{deltaLabel}</span>
+              {deltaLabel && <span className={`text-xs font-semibold ${deltaColor}`}>{deltaLabel}</span>}
             </div>
 
             {event.status && (
@@ -198,7 +204,14 @@ function EventPopover({ event, onClose }) {
 
           {/* Actions */}
           <div className="px-5 pb-5 flex gap-2">
-            {event.type === 'networking' ? (
+            {event.manual ? (
+              <button
+                onClick={() => onDelete && onDelete(event)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-red-50 text-red-600 border border-red-200 text-sm font-medium hover:bg-red-100 transition-colors"
+              >
+                <Trash2 size={13} /> Delete
+              </button>
+            ) : event.type === 'networking' ? (
               event.url ? (
                 <button
                   onClick={() => { window.open(event.url, '_blank', 'noopener,noreferrer'); onClose() }}
@@ -215,14 +228,121 @@ function EventPopover({ event, onClose }) {
                 <ExternalLink size={13} /> View in Tracker
               </button>
             )}
-            <button
-              onClick={() => exportIcs(event)}
-              title="Export to Google Calendar / Apple Calendar"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-navy-200 text-navy-600 text-sm font-medium hover:bg-navy-50 transition-colors"
-            >
-              <Download size={13} /> .ics
+            {event.date && (
+              <button
+                onClick={() => exportIcs(event)}
+                title="Export to Google Calendar / Apple Calendar"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-navy-200 text-navy-600 text-sm font-medium hover:bg-navy-50 transition-colors"
+              >
+                <Download size={13} /> .ics
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── Add Event Modal ───────────────────────────────────────────────────────────
+
+function AddEventModal({ onClose, onSave, defaultDate }) {
+  const [title, setTitle]       = useState('')
+  const [date, setDate]         = useState(defaultDate || todayStr())
+  const [type, setType]         = useState('reminder')
+  const [notes, setNotes]       = useState('')
+  const [saving, setSaving]     = useState(false)
+  const [error, setError]       = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!title.trim()) { setError('Title is required'); return }
+    if (!date)         { setError('Date is required');  return }
+    setSaving(true)
+    setError('')
+    try {
+      await onSave({ title: title.trim(), date, type, notes: notes.trim() || undefined })
+      onClose()
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Failed to save event')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+        <div className="relative bg-white rounded-2xl shadow-2xl border border-navy-100 w-full max-w-sm pointer-events-auto">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-navy-100">
+            <h2 className="text-sm font-bold text-navy-900">Add Calendar Event</h2>
+            <button onClick={onClose} className="p-1 rounded-lg text-navy-400 hover:bg-navy-50 transition-colors">
+              <X size={16} />
             </button>
           </div>
+          <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-navy-600 mb-1">Title *</label>
+              <input
+                type="text"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="e.g. Follow-up with recruiter"
+                className="w-full px-3 py-2 rounded-lg border border-navy-200 text-sm text-navy-800 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-navy-600 mb-1">Date *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-navy-200 text-sm text-navy-800 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-navy-600 mb-1">Type</label>
+              <select
+                value={type}
+                onChange={e => setType(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-navy-200 text-sm text-navy-800 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+              >
+                <option value="reminder">Reminder</option>
+                <option value="deadline">Deadline</option>
+                <option value="interview">Interview</option>
+                <option value="networking">Event / Networking</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-navy-600 mb-1">Notes (optional)</label>
+              <textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="Any additional details…"
+                rows={2}
+                className="w-full px-3 py-2 rounded-lg border border-navy-200 text-sm text-navy-800 focus:outline-none focus:ring-2 focus:ring-violet-300 resize-none"
+              />
+            </div>
+            {error && <p className="text-xs text-red-600">{error}</p>}
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-3 py-2 rounded-lg border border-navy-200 text-sm font-medium text-navy-600 hover:bg-navy-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex-1 px-3 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Add Event'}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </>
@@ -245,7 +365,7 @@ function EventChip({ event, onClick }) {
 
 // ── Upcoming Sidebar ──────────────────────────────────────────────────────────
 
-function UpcomingSidebar({ events, onEventClick }) {
+function UpcomingSidebar({ events, onEventClick, loadError }) {
   const today = todayStr()
   const upcoming = events
     .filter(e => e.date && e.date >= today)
@@ -260,7 +380,10 @@ function UpcomingSidebar({ events, onEventClick }) {
     <aside className="w-64 shrink-0 bg-white border border-navy-100 rounded-2xl p-4 flex flex-col gap-4 h-full overflow-y-auto">
       <h3 className="text-xs font-semibold text-navy-400 uppercase tracking-wide">Upcoming</h3>
 
-      {upcoming.length === 0 && (
+      {loadError && (
+        <p className="text-xs text-red-500 italic">{loadError}</p>
+      )}
+      {!loadError && upcoming.length === 0 && (
         <p className="text-xs text-navy-300 italic">No upcoming events. Add interview dates or deadlines to your jobs in the Tracker.</p>
       )}
 
@@ -475,28 +598,53 @@ function WeekView({ anchor, events, onEventClick }) {
 
 export default function Calendar() {
   const today = new Date()
-  const [anchor, setAnchor] = useState(today)   // drives both month and week navigation
-  const [view, setView]     = useState('month')  // 'month' | 'week'
-  const [events, setEvents] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState(null)
+  const [anchor, setAnchor]       = useState(today)   // drives both month and week navigation
+  const [view, setView]           = useState('month')  // 'month' | 'week'
+  const [events, setEvents]       = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const [selected, setSelected]   = useState(null)
+  const [showAddModal, setShowAddModal] = useState(false)
 
   const year  = anchor.getFullYear()
   const month = anchor.getMonth()
 
   const fetchEvents = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await calendarApi.getEvents()
       setEvents(res.data || [])
     } catch (err) {
       console.error('Failed to load calendar events', err)
+      setLoadError('Could not load events. Check that the backend is running.')
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => { fetchEvents() }, [fetchEvents])
+
+  const handleSaveManualEvent = async (data) => {
+    const res = await calendarApi.createEvent(data)
+    setEvents(prev => [...prev, res.data].sort((a, b) => {
+      const da = a.date || '9999-99-99'
+      const db_ = b.date || '9999-99-99'
+      return da < db_ ? -1 : da > db_ ? 1 : 0
+    }))
+  }
+
+  const handleDeleteManualEvent = async (event) => {
+    // event.id is "manual-{n}" — extract the numeric part
+    const numericId = String(event.id).replace('manual-', '')
+    try {
+      await calendarApi.deleteManualEvent(numericId)
+      setEvents(prev => prev.filter(e => e.id !== event.id))
+      setSelected(null)
+    } catch (err) {
+      console.error('Failed to delete manual event', err)
+    }
+  }
 
   // Navigation
   const prev = () => {
@@ -576,20 +724,34 @@ export default function Calendar() {
           </div>
         </div>
 
-        <div className="w-32" /> {/* spacer to center title */}
+        <div className="w-32 flex justify-end">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 transition-colors"
+          >
+            <Plus size={13} /> Add Event
+          </button>
+        </div>
       </div>
 
       {/* Body */}
       <div className="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
         {/* Sidebar */}
-        <UpcomingSidebar events={events} onEventClick={setSelected} />
+        <UpcomingSidebar events={events} onEventClick={setSelected} loadError={loadError} />
 
         {/* Calendar grid */}
         <div className="flex-1 bg-white border border-navy-100 rounded-2xl overflow-hidden flex flex-col min-h-0">
           {loading && events.length === 0 ? (
             <div className="flex-1 flex items-center justify-center gap-3 text-navy-400">
-              <Zap size={18} className="text-violet-400 animate-pulse" />
+              <RefreshCw size={18} className="text-violet-400 animate-spin" />
               <span className="text-sm">Loading calendar…</span>
+            </div>
+          ) : loadError ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8">
+              <CalendarDays size={36} className="text-red-200" />
+              <p className="text-sm font-medium text-red-500">Failed to load events</p>
+              <p className="text-xs text-navy-400 text-center max-w-xs">{loadError}</p>
+              <button onClick={fetchEvents} className="text-xs text-violet-600 hover:underline">Try again</button>
             </div>
           ) : events.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-navy-400 p-8">
@@ -618,7 +780,21 @@ export default function Calendar() {
       </div>
 
       {/* Event Popover */}
-      {selected && <EventPopover event={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <EventPopover
+          event={selected}
+          onClose={() => setSelected(null)}
+          onDelete={handleDeleteManualEvent}
+        />
+      )}
+
+      {/* Add Event Modal */}
+      {showAddModal && (
+        <AddEventModal
+          onClose={() => setShowAddModal(false)}
+          onSave={handleSaveManualEvent}
+        />
+      )}
     </div>
   )
 }
