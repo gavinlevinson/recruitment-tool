@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { MessageCircle, X, Send, Zap, ChevronDown, RotateCcw } from 'lucide-react'
+import { MessageCircle, X, Send, ChevronDown, RotateCcw } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 import { helpApi } from '../api'
+import OrionMark from '../components/OrionMark'
 
 const QUICK_PROMPTS = [
   "How does Job Discovery work?",
@@ -34,7 +35,7 @@ export default function HelpAgent() {
   const inputRef = useRef(null)
   const location = useLocation()
 
-  const currentPage = PAGE_LABELS[location.pathname] || 'RecruitIQ'
+  const currentPage = PAGE_LABELS[location.pathname] || 'Orion'
 
   useEffect(() => {
     if (open) {
@@ -97,7 +98,7 @@ export default function HelpAgent() {
           {/* Header */}
           <div className="flex items-center gap-2.5 px-4 py-3 shrink-0" style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)' }}>
             <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-              <Zap size={15} className="text-white" />
+              <OrionMark className="w-5 h-5" light />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-white">Orion Assistant</p>
@@ -128,7 +129,7 @@ export default function HelpAgent() {
               <div className="space-y-3">
                 <div className="flex items-start gap-2.5">
                   <div className="w-7 h-7 rounded-full bg-violet-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <Zap size={12} className="text-violet-600" />
+                    <OrionMark className="w-4 h-4" />
                   </div>
                   <div className="bg-navy-50 border border-navy-100 rounded-2xl rounded-tl-sm px-3 py-2.5 text-sm text-navy-700 leading-relaxed">
                     Hi! I can help you navigate Orion and get the most out of your job search. What would you like to know?
@@ -152,7 +153,7 @@ export default function HelpAgent() {
               <div key={i} className={`flex items-start gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
                   <div className="w-7 h-7 rounded-full bg-violet-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <Zap size={12} className="text-violet-600" />
+                    <OrionMark className="w-4 h-4" />
                   </div>
                 )}
                 <div

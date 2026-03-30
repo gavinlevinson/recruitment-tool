@@ -1,31 +1,13 @@
 import { useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  User, Mail, Lock, Eye, EyeOff, RefreshCw, AlertCircle,
+  Zap, User, Mail, Lock, Eye, EyeOff, RefreshCw, AlertCircle,
   GraduationCap, ChevronRight, ChevronLeft, Check,
   BookOpen, Linkedin, FileText, Upload, X, Sparkles, Minus, Plus,
 } from 'lucide-react'
-
-function OrionMark() {
-  const [failed, setFailed] = useState(false)
-  if (failed) {
-    return (
-      <div className="w-12 h-12 rounded-xl bg-navy-900 flex items-center justify-center shrink-0">
-        <span className="text-white font-bold text-xl leading-none">O</span>
-      </div>
-    )
-  }
-  return (
-    <img
-      src="/orion-logo.png"
-      alt="Orion"
-      className="w-12 h-12 object-contain shrink-0"
-      onError={() => setFailed(true)}
-    />
-  )
-}
 import { useAuth } from '../context/AuthContext'
 import { profileApi, preferencesApi } from '../api'
+import OrionMark from '../components/OrionMark'
 
 const STEPS = ['Account', 'Background', 'Resume']
 
@@ -150,7 +132,7 @@ export default function Register() {
 
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8">
-          <OrionMark />
+          <OrionMark className="w-12 h-12" />
           <div>
             <h1 className="text-2xl font-bold text-navy-900">Orion</h1>
             <p className="text-xs text-navy-400">AI-Powered Job Search</p>
