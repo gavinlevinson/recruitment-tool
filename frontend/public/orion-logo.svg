@@ -1,37 +1,126 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 240" fill="none">
-  <!-- Head -->
-  <ellipse cx="163" cy="34" rx="21" ry="26" fill="#0c1a2e"/>
-  <!-- Neck -->
-  <rect x="148" y="53" width="22" height="14" rx="4" fill="#0c1a2e"/>
-  <!-- Body / torso -->
-  <path d="M 45 72 C 52 60 68 52 88 48 C 108 44 130 46 150 54 C 162 58 170 68 170 82 C 170 92 166 100 160 108 C 152 116 142 120 135 126 C 129 134 126 146 124 158 C 120 168 112 172 102 170 C 92 172 80 166 70 158 C 60 148 54 134 50 118 C 47 104 46 88 45 72 Z" fill="#0c1a2e"/>
-  <!-- Left arm -->
-  <path d="M 45 78 C 36 75 24 73 15 78 C 9 81 9 89 16 92 C 25 95 37 91 47 86 Z" fill="#0c1a2e"/>
-  <!-- Bow -->
-  <path d="M 170 18 C 200 38 212 70 210 100 C 207 128 194 148 174 162" stroke="#0c1a2e" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 510 575">
+
+  <!-- White background so it looks correct on all surfaces -->
+  <rect width="510" height="575" fill="white"/>
+
+  <!-- ══════════════════════════════════════════
+       ORION ARCHER SILHOUETTE  (#0d1b2e)
+       ══════════════════════════════════════════ -->
+
+  <!-- ── HEAD: clear right-facing profile ── -->
+  <path fill="#0d1b2e" d="
+    M 256 66
+    C 266 58 282 54 298 54
+    C 316 54 332 62 344 76
+    C 350 84 354 94 354 104
+    C 356 104 360 106 362 110
+    C 363 116 356 120 350 123
+    C 348 130 348 137 352 144
+    C 348 154 336 162 322 165
+    C 306 170 286 169 270 161
+    C 255 153 246 140 244 125
+    C 241 108 246 91 256 78
+    C 256 74 255 70 256 66 Z
+  "/>
+
+  <!-- ── NECK (connects head to body) ── -->
+  <path fill="#0d1b2e" d="M 258 154 Q 282 150 312 154 L 315 182 Q 280 180 254 182 Z"/>
+
+  <!-- ── MAIN TORSO — broad muscular back ── -->
+  <path fill="#0d1b2e" d="
+    M 158 182
+    L 345 176
+    C 366 176 384 190 386 212
+    C 388 234 378 254 368 270
+    C 360 282 355 296 356 312
+    C 357 328 363 342 360 358
+    C 357 374 345 388 328 402
+    C 312 416 290 426 268 430
+    C 246 434 222 430 205 418
+    C 188 406 178 386 175 365
+    C 172 345 177 326 174 308
+    C 171 289 162 270 156 251
+    C 151 232 150 210 155 194
+    C 156 190 157 186 158 182 Z
+  "/>
+
+  <!-- ── PULLING ARM (archer's right arm: bent up, pulling string to chin) ── -->
+  <path fill="#0d1b2e" d="
+    M 158 182
+    C 146 166 133 148 126 130
+    C 117 108 122 86 138 70
+    C 152 56 172 50 190 52
+    C 204 54 214 64 213 78
+    C 200 86 190 100 188 116
+    C 186 130 192 144 200 154
+    C 190 164 176 174 158 182 Z
+  "/>
+
+  <!-- ── BOW ARM (archer's left arm: straight out to the right, holds bow grip) ── -->
+  <path fill="#0d1b2e" d="
+    M 382 202
+    C 404 195 428 193 452 195
+    C 464 196 474 202 474 209
+    C 473 216 462 220 450 219
+    C 427 218 405 212 385 208
+    Z
+  "/>
+
+  <!-- ── BOW (recurve D-curve) ── -->
+  <path fill="none" stroke="#0d1b2e" stroke-width="12" stroke-linecap="round"
+    d="M 470 56
+       C 510 96 520 152 517 202
+       C 514 250 500 292 483 320
+       C 474 336 464 350 456 356"/>
+
   <!-- Bow string -->
-  <line x1="170" y1="18" x2="174" y2="162" stroke="#0c1a2e" stroke-width="2.5"/>
-  <!-- Arrow shaft -->
-  <line x1="15" y1="86" x2="162" y2="80" stroke="#0c1a2e" stroke-width="2.5" stroke-linecap="round"/>
-  <!-- Arrowhead -->
-  <polygon points="162,76 178,80 162,84" fill="#0c1a2e"/>
-  <!-- Constellation: shoulder stars -->
-  <circle cx="76" cy="78" r="3.5" fill="white"/>
-  <circle cx="96" cy="76" r="3.5" fill="white"/>
-  <!-- Belt stars -->
-  <circle cx="80" cy="97" r="3.5" fill="white"/>
-  <circle cx="87" cy="94" r="3.5" fill="white"/>
-  <circle cx="94" cy="97" r="3.5" fill="white"/>
-  <!-- Lower stars -->
-  <circle cx="78" cy="114" r="3.5" fill="white"/>
-  <circle cx="96" cy="112" r="3.5" fill="white"/>
-  <!-- Constellation lines -->
-  <line x1="76" y1="78"  x2="80" y2="97"  stroke="white" stroke-width="1.8"/>
-  <line x1="96" y1="76"  x2="94" y2="97"  stroke="white" stroke-width="1.8"/>
-  <line x1="80" y1="97"  x2="87" y2="94"  stroke="white" stroke-width="1.8"/>
-  <line x1="87" y1="94"  x2="94" y2="97"  stroke="white" stroke-width="1.8"/>
-  <line x1="80" y1="97"  x2="78" y2="114" stroke="white" stroke-width="1.8"/>
-  <line x1="94" y1="97"  x2="96" y2="112" stroke="white" stroke-width="1.8"/>
-  <!-- ORION wordmark -->
-  <text x="110" y="228" text-anchor="middle" font-family="'Arial Black','Arial Bold',Arial,sans-serif" font-size="38" font-weight="900" fill="#0c1a2e" letter-spacing="5">ORION</text>
+  <line x1="470" y1="56" x2="456" y2="356"
+    stroke="#0d1b2e" stroke-width="2.5"/>
+
+  <!-- ── ARROW ── -->
+  <line x1="208" y1="206" x2="470" y2="206"
+    stroke="#0d1b2e" stroke-width="3" stroke-linecap="round"/>
+  <!-- Slim elongated arrowhead -->
+  <polygon points="470,200 492,206 470,212" fill="#0d1b2e"/>
+
+  <!-- ══════════════════════════════════════════
+       ORION CONSTELLATION on back (white)
+       ══════════════════════════════════════════ -->
+  <g fill="white" stroke="white" stroke-width="2.5" stroke-linecap="round">
+    <!-- Betelgeuse (upper-left shoulder) -->
+    <circle cx="204" cy="208" r="6"/>
+    <!-- Bellatrix (upper-right shoulder) -->
+    <circle cx="248" cy="200" r="6"/>
+    <!-- Belt: Alnitak / Alnilam / Mintaka -->
+    <circle cx="200" cy="244" r="6"/>
+    <circle cx="216" cy="237" r="6"/>
+    <circle cx="232" cy="230" r="6"/>
+    <!-- Saiph (lower-left foot) -->
+    <circle cx="196" cy="278" r="6"/>
+    <!-- Rigel (lower-right foot) -->
+    <circle cx="234" cy="268" r="6"/>
+    <!-- Lines: shoulders to belt -->
+    <line x1="204" y1="208" x2="200" y2="244"/>
+    <line x1="248" y1="200" x2="232" y2="230"/>
+    <!-- Belt stars -->
+    <line x1="200" y1="244" x2="216" y2="237"/>
+    <line x1="216" y1="237" x2="232" y2="230"/>
+    <!-- Belt to feet -->
+    <line x1="200" y1="244" x2="196" y2="278"/>
+    <line x1="232" y1="230" x2="234" y2="268"/>
+  </g>
+
+  <!-- ══════════════════════════════════════════
+       ORION WORDMARK
+       ══════════════════════════════════════════ -->
+  <text
+    x="255" y="530"
+    text-anchor="middle"
+    font-family="'Arial Black','Helvetica Neue',Arial,sans-serif"
+    font-size="92"
+    font-weight="900"
+    fill="#0d1b2e"
+    letter-spacing="6"
+  >ORION</text>
+
 </svg>

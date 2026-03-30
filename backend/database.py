@@ -252,6 +252,19 @@ class EventRsvp(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class ManualCalendarEvent(Base):
+    """Manually added calendar events (reminders, deadlines, custom events)."""
+    __tablename__ = "manual_calendar_events"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    title = Column(String, nullable=False)
+    date = Column(String, nullable=False)   # YYYY-MM-DD
+    type = Column(String, default="reminder")  # interview | deadline | reminder | networking
+    notes = Column(Text, nullable=True)
+    url = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def get_db():

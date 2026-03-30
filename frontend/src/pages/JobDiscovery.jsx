@@ -427,7 +427,7 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
             {job.location}
           </span>
         )}
-        {workType && (
+        {workType && !(job.location || '').toLowerCase().includes(workType.toLowerCase()) && (
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${WORK_TYPE_CLASSES[workType]}`}>
             {workType}
           </span>
