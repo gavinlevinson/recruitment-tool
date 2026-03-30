@@ -1,7 +1,26 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Zap, Mail, Lock, Eye, EyeOff, RefreshCw, AlertCircle } from 'lucide-react'
+import { Mail, Lock, Eye, EyeOff, RefreshCw, AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+
+function OrionMark() {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <div className="w-12 h-12 rounded-xl bg-navy-900 flex items-center justify-center shrink-0">
+        <span className="text-white font-bold text-xl leading-none">O</span>
+      </div>
+    )
+  }
+  return (
+    <img
+      src="/orion-logo.png"
+      alt="Orion"
+      className="w-12 h-12 object-contain shrink-0"
+      onError={() => setFailed(true)}
+    />
+  )
+}
 
 export default function Login() {
   const { login } = useAuth()
@@ -34,7 +53,7 @@ export default function Login() {
 
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8">
-          <img src="/orion-logo.png" alt="Orion" className="w-12 h-12 object-contain" />
+          <OrionMark />
           <div>
             <h1 className="text-2xl font-bold text-navy-900">Orion</h1>
             <p className="text-xs text-navy-400">AI-Powered Job Search</p>

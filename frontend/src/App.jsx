@@ -1,7 +1,28 @@
+import { useState } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, Briefcase, Search, Zap, User, LogOut, CalendarDays, GraduationCap, MapPin, Newspaper,
+  LayoutDashboard, Briefcase, Search, User, LogOut, CalendarDays, GraduationCap, MapPin, Newspaper,
 } from 'lucide-react'
+
+// Orion logo — shows the image if it loads, falls back to a styled mark if not
+function OrionMark({ className = 'w-8 h-8' }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <div className={`${className} rounded-lg bg-navy-800 border border-navy-700 flex items-center justify-center shrink-0`}>
+        <span className="text-white font-bold text-sm leading-none">O</span>
+      </div>
+    )
+  }
+  return (
+    <img
+      src="/orion-logo.png"
+      alt="Orion"
+      className={`${className} object-contain shrink-0`}
+      onError={() => setFailed(true)}
+    />
+  )
+}
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Dashboard    from './pages/Dashboard'
 import JobTracker   from './pages/JobTracker'
@@ -34,11 +55,7 @@ function Sidebar() {
       {/* Logo */}
       <div className="px-5 py-6 border-b border-navy-800">
         <div className="flex items-center gap-2.5">
-          <img
-            src="/orion-logo.png"
-            alt="Orion"
-            className="w-8 h-8 object-contain shrink-0"
-          />
+          <OrionMark className="w-8 h-8" />
           <div>
             <p className="text-white font-semibold text-sm leading-tight">Orion</p>
             <p className="text-navy-300 text-xs truncate max-w-[120px]">
