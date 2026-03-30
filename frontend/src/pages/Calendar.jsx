@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   ChevronLeft, ChevronRight, CalendarDays, Briefcase,
-  Clock, Bell, X, ExternalLink, Download, Zap, RefreshCw, Users,
+  Clock, Bell, X, ExternalLink, Download, Zap, RefreshCw, Users, Plus, Trash2,
 } from 'lucide-react'
-import { calendarApi, jobsApi } from '../api'
+import { calendarApi } from '../api'
 import { useNavigate } from 'react-router-dom'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -83,8 +83,10 @@ function getMonthGrid(year, month) {
   for (let d = 1; d <= daysInMonth; d++) {
     cells.push({ date: new Date(year, month, d), current: true })
   }
+  // Use an independent counter for overflow days so the day number is always correct
+  let overflowDay = 1
   while (cells.length < 42) {
-    cells.push({ date: new Date(year, month + 1, cells.length - firstDayOfWeek - daysInMonth + 1), current: false })
+    cells.push({ date: new Date(year, month + 1, overflowDay++), current: false })
   }
   return cells
 }
@@ -115,6 +117,7 @@ function daysUntil(str) {
 // ── ICS export ────────────────────────────────────────────────────────────────
 
 function exportIcs(event) {
+  if (!event.date) return   // guard: can't export an event with no date
   const ds  = event.date.replace(/-/g, '')
   const ics = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//EN',
@@ -245,11 +248,11 @@ function EventChip({ event, onClick }) {
 function UpcomingSidebar({ events, onEventClick }) {
   const today = todayStr()
   const upcoming = events
-    .filter(e => e.date >= today)
+    .filter(e => e.date && e.date >= today)
     .slice(0, 10)
 
   const past = events
-    .filter(e => e.date < today)
+    .filter(e => e.date && e.date < today)
     .slice(-3)
     .reverse()
 

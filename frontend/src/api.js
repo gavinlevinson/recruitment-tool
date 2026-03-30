@@ -123,7 +123,9 @@ export const coachApi = {
 }
 
 export const calendarApi = {
-  getEvents: () => api.get('/calendar/events'),
+  getEvents:         ()          => api.get('/calendar/events'),
+  createEvent:       (data)      => api.post('/calendar/events', data),
+  deleteManualEvent: (eventId)   => api.delete(`/calendar/events/manual/${eventId}`),
 }
 
 export const interviewRoundsApi = {

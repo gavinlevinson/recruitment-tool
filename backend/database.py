@@ -310,6 +310,7 @@ def run_migrations():
         "ALTER TABLE user_profiles ADD COLUMN context_locations TEXT",
         "ALTER TABLE user_profiles ADD COLUMN context_skills TEXT",
         "ALTER TABLE interview_rounds ADD COLUMN thank_you_sent INTEGER DEFAULT 0",
+        # manual_calendar_events table is created via create_all, no ALTER needed
     ]
     with engine.connect() as conn:
         for sql in migrations:

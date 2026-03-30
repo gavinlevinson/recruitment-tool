@@ -16,7 +16,7 @@ from database import (
     get_db, init_db, Job, Contact, DiscoveredJob, Recruiter,
     UserPreferences, JobCollection, JobCollectionItem,
     User, UserProfile, CoverLetterTemplate, EmailTemplate,
-    InterviewRound, EventRsvp,
+    InterviewRound, EventRsvp, ManualCalendarEvent,
 )
 from auth import (
     hash_password, verify_password, create_access_token,
@@ -665,7 +665,10 @@ def get_calendar_events(
     events = []
     for j in jobs:
         base = {"job_id": j.id, "company": j.company, "role": j.role or "", "status": j.status}
-        if getattr(j, 'interview_date', None) and j.id not in jobs_with_rounds and j.status == 'Interviewing':
+        # Show interview_date for any job that has one and has no individual rounds yet
+        # (previously this was limited to status=='Interviewing', which silently dropped
+        #  interview dates set while a job was in Phone Screen, Offer, etc.)
+        if getattr(j, 'interview_date', None) and j.id not in jobs_with_rounds:
             events.append({**base, "id": f"interview-{j.id}", "type": "interview",
                            "title": j.company, "date": j.interview_date})
         if getattr(j, 'deadline', None):
@@ -676,14 +679,18 @@ def get_calendar_events(
                            "title": j.company, "date": j.reminder_date})
 
     # Include individual interview rounds
+    # Note: SQLAlchemy on SQLite does not reliably filter != "" at the DB layer,
+    # so we only filter for NOT NULL here and strip blank strings in Python below.
     if current_user:
         rounds = db.query(InterviewRound).filter(
             InterviewRound.user_id == current_user.id,
             InterviewRound.scheduled_date != None,
-            InterviewRound.scheduled_date != "",
             InterviewRound.status != "Cancelled",
         ).all()
         for r in rounds:
+            # Skip rounds where scheduled_date is an empty string (DB filter can't catch this)
+            if not r.scheduled_date or not r.scheduled_date.strip():
+                continue
             j = job_map.get(r.job_id)
             if not j:
                 continue
@@ -713,9 +720,82 @@ def get_calendar_events(
                     "organizer": r.organizer,
                 })
 
+    # Include manually added calendar events
+    if current_user:
+        manual = db.query(ManualCalendarEvent).filter(
+            ManualCalendarEvent.user_id == current_user.id
+        ).all()
+        for m in manual:
+            if m.date and m.date.strip():
+                events.append({
+                    "id": f"manual-{m.id}",
+                    "type": m.type or "reminder",
+                    "title": m.title,
+                    "date": m.date,
+                    "notes": m.notes or "",
+                    "url": m.url or "",
+                    "manual": True,
+                })
+
     # Sort by date ascending — null-safe so a missing date never crashes the sort
     events.sort(key=lambda e: (e.get("date") or "9999-99-99"))
     return events
+
+
+@app.post("/api/calendar/events")
+def create_manual_calendar_event(
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create a manual calendar event (reminder, deadline, custom)."""
+    title = (payload.get("title") or "").strip()
+    date  = (payload.get("date") or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+    if not date:
+        raise HTTPException(status_code=400, detail="date is required")
+    event_type = payload.get("type", "reminder")
+    if event_type not in ("interview", "deadline", "reminder", "networking"):
+        event_type = "reminder"
+    ev = ManualCalendarEvent(
+        user_id=current_user.id,
+        title=title,
+        date=date,
+        type=event_type,
+        notes=payload.get("notes") or None,
+        url=payload.get("url") or None,
+    )
+    db.add(ev)
+    db.commit()
+    db.refresh(ev)
+    return {
+        "id": f"manual-{ev.id}",
+        "type": ev.type,
+        "title": ev.title,
+        "date": ev.date,
+        "notes": ev.notes or "",
+        "url": ev.url or "",
+        "manual": True,
+    }
+
+
+@app.delete("/api/calendar/events/manual/{event_id}")
+def delete_manual_calendar_event(
+    event_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a manual calendar event."""
+    ev = db.query(ManualCalendarEvent).filter(
+        ManualCalendarEvent.id == event_id,
+        ManualCalendarEvent.user_id == current_user.id,
+    ).first()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+    db.delete(ev)
+    db.commit()
+    return {"deleted": True}
 
 
 # ─────────────────────────────────────────────
