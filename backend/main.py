@@ -48,7 +48,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 UPLOADS_DIR = pathlib.Path(os.environ.get("UPLOADS_DIR", str(pathlib.Path(__file__).parent / "uploads")))
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="RecruitIQ API")
+app = FastAPI(title="Orion API")
 
 # Track when the last scrape was triggered (in-memory; resets on restart)
 _last_scrape_triggered: Optional[str] = None
@@ -62,7 +62,7 @@ _allow_origins = [
     "http://localhost:5173",
     "http://localhost:3000",
     "https://recruitment-tool-orcin.vercel.app",
-    "https://recruitiq.vercel.app",
+    "https://orion-app.vercel.app",
 ]
 if _frontend_url and _frontend_url not in _allow_origins:
     _allow_origins.append(_frontend_url)
@@ -713,8 +713,8 @@ def get_calendar_events(
                     "organizer": r.organizer,
                 })
 
-    # Sort by date ascending
-    events.sort(key=lambda e: e["date"])
+    # Sort by date ascending — null-safe so a missing date never crashes the sort
+    events.sort(key=lambda e: (e.get("date") or "9999-99-99"))
     return events
 
 
@@ -1330,6 +1330,8 @@ def get_discovered_jobs(
             d["match_score"] = p_score
             d["match_reasons"] = "; ".join(p_reasons) if p_reasons else ""
             scored.append(d)
+        # Hard floor: always strip score=0 jobs (hard-excluded / zero relevance)
+        scored = [d for d in scored if (d["match_score"] or 0) > 0]
         if min_score is not None:
             scored = [d for d in scored if (d["match_score"] or 0) >= min_score]
         if sort == "score":
@@ -1346,7 +1348,8 @@ def get_discovered_jobs(
         return {"total": total, "jobs": page_jobs}
     else:
         # Non-personalized: DB handles filtering and pagination
-        # Include jobs with null scores (not yet scored) alongside scored jobs
+        # Hard floor: never show score=0 (hard-excluded) jobs; keep nulls (unscored)
+        q = q.filter(or_(DiscoveredJob.match_score == None, DiscoveredJob.match_score > 0))
         if min_score is not None and min_score > 0:
             q = q.filter(or_(
                 DiscoveredJob.match_score == None,
@@ -3254,7 +3257,7 @@ async def _fetch_news() -> list:
     articles = []
 
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers={
-        "User-Agent": "Mozilla/5.0 (compatible; RecruitIQ/1.0; +https://recruitiq.app)",
+        "User-Agent": "Mozilla/5.0 (compatible; Orion/1.0; +https://orion-app.io)",
         "Accept": "application/rss+xml, application/xml, text/xml, */*",
     }) as client:
         for feed in feeds:
@@ -3382,7 +3385,7 @@ async def _fetch_news() -> list:
 
 @app.post("/api/help-chat")
 async def help_chat(payload: dict, current_user: User = Depends(get_current_user)):
-    """AI assistant for navigating RecruitIQ."""
+    """AI assistant for navigating Orion."""
     message = (payload.get("message") or "").strip()
     context = payload.get("context") or {}
     if not message:
@@ -3391,9 +3394,9 @@ async def help_chat(payload: dict, current_user: User = Depends(get_current_user
     if not ANTHROPIC_API_KEY:
         return {"reply": "The AI assistant is not configured yet. Ask your admin to add an ANTHROPIC_API_KEY."}
 
-    system_prompt = """You are a concise, friendly assistant built into RecruitIQ — an AI-powered job search platform for early-career candidates.
+    system_prompt = """You are a concise, friendly assistant built into Orion — an AI-powered job search platform for early-career candidates.
 
-RecruitIQ features:
+Orion features:
 - **Dashboard**: Stats overview, recent activity, quick actions
 - **Job Tracker**: Kanban board for applications. Statuses: Not Applied → Applied → Phone Screen → Interviewing → Offer → Accepted/Rejected/Withdrawn. Features: interview rounds (Screening, Technical, Behavioral, Case Study, Final Round, Offer Discussion), deadlines, interview dates (shown on Calendar), reminders, folders, starred jobs, drag-and-drop status changes
 - **Job Discovery**: AI-scored jobs from 12+ sources (Greenhouse, Lever, Ashby, HN Who's Hiring, Ali Rohde Newsletter, Remote OK, Wellfound, YC Jobs, Himalayas, We Work Remotely, VC Portfolio boards). Click "Run Discovery Agent" to scrape fresh listings. Filter by location, funding stage, company size. Upload a resume for personalized scores.
@@ -3409,7 +3412,7 @@ Helpful tips to share:
 - After uploading a resume → encourage running Job Discovery for personalized results
 - When in Interviewing status → add interview rounds with details (type, date, interviewer)
 - Calendar reflects all interview rounds automatically
-- Gmail integration lets you send networking emails without leaving RecruitIQ
+- Gmail integration lets you send networking emails without leaving Orion
 
 Keep replies SHORT (2-4 sentences). Be specific and actionable. Never make up features that don't exist."""
 

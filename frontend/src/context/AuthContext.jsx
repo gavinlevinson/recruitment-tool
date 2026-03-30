@@ -5,7 +5,7 @@ const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null)
-  const [token, setToken]     = useState(() => localStorage.getItem('recruitiq_token'))
+  const [token, setToken]     = useState(() => localStorage.getItem('orion_token'))
   const [loading, setLoading] = useState(true)   // checking stored token
 
   // On mount, verify stored token
@@ -13,13 +13,13 @@ export function AuthProvider({ children }) {
     if (!token) { setLoading(false); return }
     authApi.me()
       .then(res => setUser(res.data))
-      .catch(() => { localStorage.removeItem('recruitiq_token'); setToken(null) })
+      .catch(() => { localStorage.removeItem('orion_token'); setToken(null) })
       .finally(() => setLoading(false))
   }, []) // eslint-disable-line
 
   const _persist = (tok, usr) => {
-    localStorage.setItem('recruitiq_token', tok)
-    localStorage.setItem('recruitiq_user', JSON.stringify(usr))
+    localStorage.setItem('orion_token', tok)
+    localStorage.setItem('orion_user', JSON.stringify(usr))
     setToken(tok)
     setUser(usr)
   }
@@ -37,8 +37,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem('recruitiq_token')
-    localStorage.removeItem('recruitiq_user')
+    localStorage.removeItem('orion_token')
+    localStorage.removeItem('orion_user')
     setToken(null)
     setUser(null)
   }, [])

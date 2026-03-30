@@ -6,7 +6,7 @@ const api = axios.create({ baseURL: BASE })
 
 // Attach JWT token from localStorage to every request
 api.interceptors.request.use(config => {
-  const token = localStorage.getItem('recruitiq_token')
+  const token = localStorage.getItem('orion_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
@@ -16,8 +16,8 @@ api.interceptors.response.use(
   res => res,
   err => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('recruitiq_token')
-      localStorage.removeItem('recruitiq_user')
+      localStorage.removeItem('orion_token')
+      localStorage.removeItem('orion_user')
     }
     return Promise.reject(err)
   }
@@ -117,7 +117,7 @@ export const coachApi = {
   coverLetter:         (data) => api.post('/coach/cover-letter', data),
   applicationQuestion: (data) => api.post('/coach/application-question', data),
   resumeDownloadUrl:   () => {
-    const token = localStorage.getItem('recruitiq_token') || ''
+    const token = localStorage.getItem('orion_token') || ''
     return `${BASE}/profile/resume/download?token=${encodeURIComponent(token)}`
   },
 }

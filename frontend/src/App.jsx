@@ -34,11 +34,13 @@ function Sidebar() {
       {/* Logo */}
       <div className="px-5 py-6 border-b border-navy-800">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-violet-DEFAULT flex items-center justify-center">
-            <Zap size={16} className="text-white" />
-          </div>
+          <img
+            src="/orion-logo.png"
+            alt="Orion"
+            className="w-8 h-8 object-contain shrink-0"
+          />
           <div>
-            <p className="text-white font-semibold text-sm leading-tight">RecruitIQ</p>
+            <p className="text-white font-semibold text-sm leading-tight">Orion</p>
             <p className="text-navy-300 text-xs truncate max-w-[120px]">
               {user ? user.name.split(' ')[0] : 'Guest'}
             </p>

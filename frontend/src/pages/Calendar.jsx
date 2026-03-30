@@ -117,9 +117,9 @@ function daysUntil(str) {
 function exportIcs(event) {
   const ds  = event.date.replace(/-/g, '')
   const ics = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//RecruitIQ//EN',
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//EN',
     'BEGIN:VEVENT',
-    `UID:${event.id}@recruitiq`,
+    `UID:${event.id}@orion`,
     `DTSTART;VALUE=DATE:${ds}`,
     `DTEND;VALUE=DATE:${ds}`,
     `SUMMARY:${EVENT_CONFIG[event.type]?.label} — ${event.title}`,

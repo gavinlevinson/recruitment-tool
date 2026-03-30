@@ -10,7 +10,7 @@ import { profileApi, authApi, nylasApi } from '../api'
 
 const BASE_API = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api'
 function fileDownloadUrl(fileType) {
-  const token = localStorage.getItem('recruitiq_token') || ''
+  const token = localStorage.getItem('orion_token') || ''
   const path = fileType === 'cover_letter' ? 'cover-letter' : fileType
   return `${BASE_API}/profile/${path}/download?token=${encodeURIComponent(token)}`
 }
@@ -332,7 +332,7 @@ export default function Profile() {
         <div className="card p-4 flex items-start gap-3" style={{ background: 'linear-gradient(135deg, #f5f0ff 0%, #e8f4ff 100%)', borderColor: '#c4b0e8' }}>
           <Sparkles size={18} className="text-violet-DEFAULT shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-semibold text-navy-800">Welcome to RecruitIQ</p>
+            <p className="text-sm font-semibold text-navy-800">Welcome to Orion</p>
             <p className="text-sm text-navy-600 mt-0.5">
               Upload your resume below and we'll automatically discover jobs matching your background,
               skills, and location preferences.
@@ -537,7 +537,7 @@ export default function Profile() {
                   Connected{nylasStatus.email ? ` · ${nylasStatus.email}` : ''}
                 </p>
               ) : (
-                <p className="text-xs text-navy-400">Send networking emails directly from RecruitIQ</p>
+                <p className="text-xs text-navy-400">Send networking emails directly from Orion</p>
               )}
             </div>
           </div>
@@ -593,7 +593,7 @@ export default function Profile() {
             )}
             {nylasConfig?.configured && !showNylasDebug && (
               <p className="text-xs text-navy-400">
-                Connect Gmail to send networking emails directly from RecruitIQ.{' '}
+                Connect Gmail to send networking emails directly from Orion.{' '}
                 <button onClick={() => setShowNylasDebug(true)} className="text-violet-500 hover:underline">Having trouble?</button>
               </p>
             )}

@@ -77,8 +77,8 @@ export default function HelpAgent() {
         onClick={() => setOpen(prev => !prev)}
         className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-xl hover:shadow-2xl active:scale-95 transition-all flex items-center justify-center"
         style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)' }}
-        title="RecruitIQ Assistant"
-        aria-label={open ? 'Close assistant' : 'Open RecruitIQ Assistant'}
+        title="Orion Assistant"
+        aria-label={open ? 'Close assistant' : 'Open Orion Assistant'}
       >
         <div className="relative">
           {open ? <X size={22} className="text-white" /> : <MessageCircle size={22} className="text-white" />}
@@ -100,7 +100,7 @@ export default function HelpAgent() {
               <Zap size={15} className="text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white">RecruitIQ Assistant</p>
+              <p className="text-sm font-semibold text-white">Orion Assistant</p>
               <p className="text-[11px] text-violet-200 truncate">On: {currentPage}</p>
             </div>
             <div className="flex items-center gap-1">
@@ -131,7 +131,7 @@ export default function HelpAgent() {
                     <Zap size={12} className="text-violet-600" />
                   </div>
                   <div className="bg-navy-50 border border-navy-100 rounded-2xl rounded-tl-sm px-3 py-2.5 text-sm text-navy-700 leading-relaxed">
-                    Hi! I can help you navigate RecruitIQ and get the most out of your job search. What would you like to know?
+                    Hi! I can help you navigate Orion and get the most out of your job search. What would you like to know?
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5 pl-9">

@@ -650,7 +650,7 @@ function EmailComposerModal({ isOpen, onClose, contact, templates, userUniversit
               ) : gmailConnected === false ? (
                 <p className="text-xs text-center text-navy-400">
                   <a href="/profile" className="text-violet-DEFAULT hover:underline font-medium">Connect Gmail in Profile</a>{' '}
-                  to send directly from RecruitIQ
+                  to send directly from Orion
                 </p>
               ) : null}
             </div>

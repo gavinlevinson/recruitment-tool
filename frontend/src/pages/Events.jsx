@@ -349,7 +349,7 @@ export default function Events() {
   const [showModal, setShowModal]         = useState(false)
   const [rsvpedIds, setRsvpedIds]         = useState(new Set())
   const [manualEvents, setManualEvents]   = useState(() => {
-    try { return JSON.parse(localStorage.getItem('recruitiq_manual_events') || '[]') } catch { return [] }
+    try { return JSON.parse(localStorage.getItem('orion_manual_events') || '[]') } catch { return [] }
   })
   const inputRef = useRef(null)
 
@@ -428,14 +428,14 @@ export default function Events() {
   function saveManual(event) {
     const updated = [event, ...manualEvents]
     setManualEvents(updated)
-    localStorage.setItem('recruitiq_manual_events', JSON.stringify(updated))
+    localStorage.setItem('orion_manual_events', JSON.stringify(updated))
     setShowModal(false)
   }
 
   function removeManual(id) {
     const updated = manualEvents.filter(e => e.id !== id)
     setManualEvents(updated)
-    localStorage.setItem('recruitiq_manual_events', JSON.stringify(updated))
+    localStorage.setItem('orion_manual_events', JSON.stringify(updated))
   }
 
   // Filter manual events to match current location/type

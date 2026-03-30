@@ -34,11 +34,9 @@ export default function Login() {
 
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#8b6bbf' }}>
-            <Zap size={20} className="text-white" />
-          </div>
+          <img src="/orion-logo.png" alt="Orion" className="w-12 h-12 object-contain" />
           <div>
-            <h1 className="text-2xl font-bold text-navy-900">RecruitIQ</h1>
+            <h1 className="text-2xl font-bold text-navy-900">Orion</h1>
             <p className="text-xs text-navy-400">AI-Powered Job Search</p>
           </div>
         </div>

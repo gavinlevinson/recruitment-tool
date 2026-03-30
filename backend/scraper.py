@@ -79,6 +79,14 @@ GREENHOUSE_COMPANIES = [
     ("cognition", "Cognition AI"), ("magic", "Magic Dev"), ("augment", "Augment Code"),
     ("devin-ai", "Devin AI"), ("factory-ai", "Factory AI"), ("sweep-ai", "Sweep"),
     ("codeium", "Codeium"), ("tabnine", "Tabnine"),
+    # Added from topstartups.io AI listings
+    ("doppel", "Doppel"), ("vivodyne", "Vivodyne"), ("cresta", "Cresta"),
+    ("heygen", "HeyGen"), ("instawork", "Instawork"), ("assemblyai", "AssemblyAI"),
+    ("memorahealth", "Memora Health"), ("tavus", "Tavus"), ("mindsdb", "MindsDB"),
+    ("spotai", "Spot AI"), ("fathom", "Fathom"), ("AMPRobotics", "AMP Robotics"),
+    ("optimaldynamics", "Optimal Dynamics"), ("Vizai", "Viz"), ("Veriff", "Veriff"),
+    ("labelbox", "Labelbox"), ("ambiencehealthcare", "Ambience Healthcare"),
+    ("pika", "Pika Labs"), ("xbow", "XBOW"),
 ]
 
 # AI startups and tech companies known to use Ashby
@@ -118,6 +126,21 @@ ASHBY_COMPANIES = [
     ("sierra", "Sierra AI"),
     ("aisera", "Aisera"),
     ("cohere", "Cohere"),
+    # Added from topstartups.io AI listings
+    ("pylon-labs", "Pylon"), ("adaptivesecurity", "Adaptive Security"),
+    ("traba", "Traba"), ("Harmonic", "Harmonic"), ("tennr", "Tennr"),
+    ("xbowcareers", "XBOW"), ("openrouter", "OpenRouter"), ("harvey", "Harvey"),
+    ("Abridge", "Abridge"), ("prepared911", "Prepared"), ("ataraxis-ai", "Ataraxis AI"),
+    ("graphite", "Graphite"), ("claylabs", "Clay"), ("radai", "Rad AI"),
+    ("basis-ai", "Basis AI"), ("speak", "Speak"), ("decagon", "Decagon"),
+    ("worldlabs", "World Labs"), ("SlingshotAI", "Slingshot AI"), ("allium", "Allium"),
+    ("ema", "Ema"), ("captions", "Captions"), ("fieldguide", "Fieldguide"),
+    ("quilter", "Quilter"), ("rasa", "Rasa"), ("lilt", "Lilt"),
+    ("Deepgram", "Deepgram"), ("Sahara", "Sahara AI"), ("openai", "OpenAI"),
+    ("Blossom-Health", "Blossom Health"), ("omnea", "Omnea"),
+    ("listenlabs", "Listen Labs"), ("ssi", "Safe Superintelligence"),
+    ("nooks", "Nooks"), ("hebbia", "Hebbia"), ("cresta", "Cresta"),
+    ("cognition", "Cognition AI"), ("descript", "Descript"),
 ]
 
 # Companies known to use Workable ATS
@@ -136,6 +159,7 @@ WORKABLE_COMPANIES = [
     ("brightflag", "Brightflag"),
     ("lokalise", "Lokalise"),
     ("bonsai", "Bonsai"),
+    ("poly-ai", "PolyAI"),
 ]
 
 # AI startups known to use Lever
@@ -144,6 +168,10 @@ LEVER_COMPANIES = [
     ("covariant", "Covariant"), ("typeface", "Typeface"),
     ("together", "Together AI"), ("fireworks-ai", "Fireworks AI"),
     ("cognition-labs", "Cognition"), ("imbue", "Imbue"),
+    # Added from topstartups.io AI listings
+    ("shieldai", "Shield AI"), ("kumo", "Kumo"), ("tecton", "Tecton"),
+    ("builtrobotics", "Built Robotics"), ("hyperscience", "HyperScience"),
+    ("mistral", "Mistral AI"),
 ]
 
 
@@ -261,10 +289,10 @@ def score_job(company: str, role: str, location: str = "", description: str = ""
         loc_pts = 25
         reasons.append("Location: SF")
     elif any(h in loc_lower for h in remote_hits):
-        loc_pts = 8
+        loc_pts = 15   # raised: remote/hybrid roles are competitive targets
         reasons.append("Remote/Hybrid")
     else:
-        loc_pts = 0
+        loc_pts = 5    # small credit for unknown location — don't hard-penalise good matches
 
     # 3. Entry-level signals (0-30 pts)
     # Check description for experience requirements FIRST — these override positive signals.
@@ -306,7 +334,7 @@ def score_job(company: str, role: str, location: str = "", description: str = ""
             entry_pts = 30
             reasons.append("Entry-level friendly")
         else:
-            entry_pts = 15
+            entry_pts = 20  # no explicit signals — many startups simply don't state requirements
 
     # 4. AI/startup signals (0-10 pts)
     ai_hit = [k for k in AI_SIGNALS if k in text or k in co]
@@ -1330,6 +1358,169 @@ async def scrape_apify_indeed(api_key: str) -> List[Dict]:
 
 
 # ─────────────────────────────────────────────
+# SOURCE: topstartups.io (dynamic discovery)
+# Scrapes the AI company list and hits each
+# company's Greenhouse / Ashby / Lever board.
+# ─────────────────────────────────────────────
+
+def _slug_to_name(slug: str) -> str:
+    """Convert an ATS URL slug to a readable company name."""
+    slug = slug.split('?')[0].rstrip('/').split('/')[0]
+    return ' '.join(w.capitalize() for w in re.split(r'[-_.]', slug) if w)
+
+
+async def scrape_topstartups() -> List[Dict]:
+    """
+    Dynamically scrapes topstartups.io AI company listings (8 pages ≈ 140 companies)
+    and pulls jobs from their Greenhouse / Ashby / Lever boards. Only fetches boards
+    for companies NOT already in our hardcoded lists — so no duplicates.
+    """
+    jobs = []
+    GH_RE    = re.compile(
+        r'(?:boards|job-boards)\.greenhouse\.io/(?:embed/job_board\?for=)?([A-Za-z0-9_\-]+)',
+        re.IGNORECASE,
+    )
+    ASHBY_RE = re.compile(r'jobs\.ashbyhq\.com/([A-Za-z0-9_.\-]+)', re.IGNORECASE)
+    LEVER_RE = re.compile(r'jobs\.lever\.co/([A-Za-z0-9_\-]+)',      re.IGNORECASE)
+
+    ASHBY_Q = (
+        "query ApiJobBoardWithTeams($organizationHostedJobsPageName: String!) {"
+        "  jobBoard: jobBoardWithTeams(organizationHostedJobsPageName: $organizationHostedJobsPageName) {"
+        "    organization { name }"
+        "    jobPostings { id title locationName descriptionHtml }"
+        "  }"
+        "}"
+    )
+
+    # Build sets of already-known slugs so we skip duplication
+    existing_gh    = {s.lower() for s, _ in GREENHOUSE_COMPANIES + GREENHOUSE_COMPANIES_EXTRA}
+    existing_ashby = {s.lower() for s, _ in ASHBY_COMPANIES + ASHBY_COMPANIES_EXTRA}
+    existing_lever = {s.lower() for s, _ in LEVER_COMPANIES}
+
+    gh_slugs    = {}   # slug → display name
+    ashby_slugs = {}
+    lever_slugs = {}
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            for page in range(1, 9):  # 8 pages ≈ 144 AI companies
+                try:
+                    resp = await client.get(
+                        f"https://topstartups.io/?industries=Artificial%20Intelligence&page={page}",
+                        timeout=15.0,
+                    )
+                    if resp.status_code != 200:
+                        break
+                    html = resp.text
+                    for href in re.findall(r'href=["\']([^"\']{10,})["\']', html):
+                        m = GH_RE.search(href)
+                        if m:
+                            slug = m.group(1).rstrip('/')
+                            if slug and slug.lower() not in existing_gh and slug not in gh_slugs:
+                                gh_slugs[slug] = _slug_to_name(slug)
+                            continue
+                        m = ASHBY_RE.search(href)
+                        if m:
+                            slug = m.group(1).rstrip('/')
+                            if slug and slug.lower() not in existing_ashby and slug not in ashby_slugs:
+                                ashby_slugs[slug] = _slug_to_name(slug)
+                            continue
+                        m = LEVER_RE.search(href)
+                        if m:
+                            slug = m.group(1).rstrip('/')
+                            if slug and slug.lower() not in existing_lever and slug not in lever_slugs:
+                                lever_slugs[slug] = _slug_to_name(slug)
+                    await asyncio.sleep(0.3)
+                except Exception as e:
+                    print(f"[TopStartups] Page {page} error: {e}")
+    except Exception as e:
+        print(f"[TopStartups] Scrape error: {e}")
+
+    print(f"[TopStartups] New boards: {len(gh_slugs)} GH | {len(ashby_slugs)} Ashby | {len(lever_slugs)} Lever")
+
+    async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
+
+        async def fetch_gh(slug, name):
+            try:
+                r = await client.get(
+                    f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
+                    timeout=10.0,
+                )
+                if r.status_code != 200:
+                    return []
+                return [
+                    make_job(
+                        name, j.get("title", ""),
+                        j.get("location", {}).get("name", ""),
+                        j.get("absolute_url", ""),
+                        "TopStartups (Greenhouse)",
+                        re.sub(r"<[^>]+>", " ", j.get("content", "") or ""),
+                    )
+                    for j in r.json().get("jobs", [])
+                ]
+            except Exception:
+                return []
+
+        async def fetch_ashby(slug, name_hint):
+            try:
+                r = await client.post(
+                    "https://jobs.ashbyhq.com/api/non-user-graphql",
+                    json={"operationName": "ApiJobBoardWithTeams",
+                          "variables": {"organizationHostedJobsPageName": slug},
+                          "query": ASHBY_Q},
+                    timeout=10.0,
+                )
+                if r.status_code != 200:
+                    return []
+                board = r.json().get("data", {}).get("jobBoard", {}) or {}
+                name  = (board.get("organization", {}) or {}).get("name", "") or name_hint
+                return [
+                    make_job(
+                        name, j.get("title", ""), j.get("locationName", ""),
+                        f"https://jobs.ashbyhq.com/{slug}/{j.get('id', '')}",
+                        "TopStartups (Ashby)",
+                        re.sub(r"<[^>]+>", " ", j.get("descriptionHtml", "") or ""),
+                    )
+                    for j in (board.get("jobPostings") or [])
+                ]
+            except Exception:
+                return []
+
+        async def fetch_lever(slug, name):
+            try:
+                r = await client.get(
+                    f"https://api.lever.co/v0/postings/{slug}?mode=json",
+                    timeout=10.0,
+                )
+                if r.status_code != 200:
+                    return []
+                return [
+                    make_job(
+                        name, p.get("text", ""),
+                        p.get("categories", {}).get("location", "") or p.get("workplaceType", ""),
+                        p.get("hostedUrl", ""),
+                        "TopStartups (Lever)",
+                        p.get("description", "") or "",
+                    )
+                    for p in r.json()
+                ]
+            except Exception:
+                return []
+
+        tasks = (
+            [fetch_gh(s, n)    for s, n in gh_slugs.items()] +
+            [fetch_ashby(s, n) for s, n in ashby_slugs.items()] +
+            [fetch_lever(s, n) for s, n in lever_slugs.items()]
+        )
+        for r in await asyncio.gather(*tasks, return_exceptions=True):
+            if isinstance(r, list):
+                jobs.extend(r)
+
+    print(f"[TopStartups] {len(jobs)} jobs found from dynamic boards")
+    return jobs
+
+
+# ─────────────────────────────────────────────
 # AGGREGATE + DEDUPLICATE
 # ─────────────────────────────────────────────
 async def scrape_all_sources() -> List[Dict]:
@@ -1349,6 +1540,7 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_himalayas(),
         scrape_weworkremotely(),
         scrape_vc_boards(),
+        scrape_topstartups(),   # dynamic discovery from topstartups.io AI list
         return_exceptions=True,
     )
 

@@ -1858,7 +1858,7 @@ function EmailComposer({ contact, job, onClose, userUniversity }) {
               ) : (
                 <p className="text-xs text-center text-navy-400">
                   <a href="/profile" className="text-violet underline font-medium">Connect Gmail in Profile</a>{' '}
-                  to send directly from RecruitIQ
+                  to send directly from Orion
                 </p>
               )}
             </div>
