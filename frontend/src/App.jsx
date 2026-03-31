@@ -33,11 +33,8 @@ function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 h-screen w-56 bg-navy-900 flex flex-col z-30 shadow-matte-lg">
       {/* Logo */}
-      <div className="px-4 py-5">
-        <OrionMark className="w-20 h-20" light />
-        <p className="text-navy-300 text-xs mt-2 truncate">
-          {user ? user.name.split(' ')[0] : 'Guest'}
-        </p>
+      <div className="px-4 pt-6 pb-2">
+        <OrionMark className="w-24 h-24" light />
       </div>
 
       {/* Nav */}
@@ -61,7 +58,7 @@ function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer: profile + logout */}
+      {/* Footer: profile + logout + user info */}
       <div className="px-3 pb-4 border-t border-navy-800 pt-3 space-y-1">
         <NavLink
           to="/profile"
@@ -82,14 +79,17 @@ function Sidebar() {
           Sign Out
         </button>
 
-        {user?.university && (
-          <div className="px-3 pt-2">
+        <div className="px-3 pt-2">
+          {user && (
+            <p className="text-navy-300 text-sm font-medium truncate">{user.name.split(' ')[0]}</p>
+          )}
+          {user?.university && (
             <p className="text-navy-500 text-xs truncate">{user.university}</p>
-            {user.graduation_year && (
-              <p className="text-navy-600 text-xs">Class of {user.graduation_year}</p>
-            )}
-          </div>
-        )}
+          )}
+          {user?.graduation_year && (
+            <p className="text-navy-600 text-xs">Class of {user.graduation_year}</p>
+          )}
+        </div>
       </div>
     </aside>
   )
