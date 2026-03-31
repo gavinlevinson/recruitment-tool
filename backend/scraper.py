@@ -679,7 +679,9 @@ async def scrape_hn_who_is_hiring() -> List[Dict]:
 
                 company = parts[0]
                 role = parts[1] if len(parts) > 1 else ""
-                location = parts[2] if len(parts) > 2 else ""
+                # Guard against long description text being mistaken for location
+                raw_loc = parts[2] if len(parts) > 2 else ""
+                location = raw_loc if len(raw_loc) <= 60 else ""
                 job_type = parts[3] if len(parts) > 3 else ""
                 description = f"{first_line} {rest}"
 

@@ -437,7 +437,7 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
       {/* Location + work type */}
       <div className="flex flex-wrap items-center gap-2">
         {job.location && (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border border-navy-200 text-navy-600 bg-white">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border border-navy-200 text-navy-600 bg-white max-w-[220px] truncate">
             {job.location}
           </span>
         )}
