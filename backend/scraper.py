@@ -335,9 +335,9 @@ def score_job(company: str, role: str, location: str = "", description: str = ""
     """
     reasons = []
 
-    # Hard exclude check
+    # Hard exclude check — return -1 so scrapers using `if score >= 0` skip saving entirely
     if _is_hard_excluded(role):
-        return 0, []
+        return -1, []
 
     role_lower = role.lower()
     desc_lower_full = description.lower()
@@ -350,7 +350,10 @@ def score_job(company: str, role: str, location: str = "", description: str = ""
     desc_only_matched = [r for r in TARGET_ROLES if r not in role_lower and r in desc_lower_full]
 
     if not title_matched and not desc_only_matched:
-        return 0, []  # No keyword match at all — reject
+        # No keyword match — still save with a low score (1) so relevant roles
+        # like "Account Manager" aren't silently dropped just because the exact
+        # keyword wasn't in TARGET_ROLES. These rank below keyword-matched jobs.
+        return 1, ["Business role (unclassified)"]
 
     # Weight: title matches = 2pts each, desc-only = 0.5pts each (capped at equivalent of 2 title hits)
     effective_matches = len(title_matched) + min(len(desc_only_matched) * 0.5, 1)
@@ -394,7 +397,7 @@ def score_job(company: str, role: str, location: str = "", description: str = ""
     desc_min_years = extract_min_years(desc_lower)
 
     if desc_min_years is not None and desc_min_years >= 5:
-        return 0, []
+        return -1, []  # Hard exclude: 5+ year requirements — don't save to DB
     elif desc_min_years is not None and desc_min_years in (3, 4):
         entry_pts = 5
         reasons.append(f"{desc_min_years}+ yrs exp required (reach)")

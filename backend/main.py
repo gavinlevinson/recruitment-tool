@@ -1413,10 +1413,11 @@ def get_discovered_jobs(
         if user_profile_obj and (user_profile_obj.parsed_roles or user_profile_obj.context_roles):
             user_profile_dict = build_user_profile_for_scoring(current_user, user_profile_obj)
 
-    # Hard floor: exclude jobs that were explicitly hard-excluded (score=0) during scraping.
-    # This applies to both personalized and non-personalized paths — score=0 means
-    # hard-excluded at scrape time (VP/Director roles, 5+ year requirements, etc.)
-    q = q.filter(or_(DiscoveredJob.match_score == None, DiscoveredJob.match_score > 0))
+    # Floor: hide jobs with score=-1 (hard-excluded: VP/Director/5+ yr roles that
+    # were saved before the -1 convention was introduced). Score=0 jobs are now
+    # allowed through — they represent business roles that missed TARGET_ROLES keywords
+    # but are still relevant (e.g. "Account Manager"). score=1 = unclassified but valid.
+    q = q.filter(or_(DiscoveredJob.match_score == None, DiscoveredJob.match_score >= 0))
 
     # Experience preference: penalty per year OVER the preferred ceiling
     # Jobs still appear (hard cutoff above) but rank lower if they overshoot
@@ -1447,8 +1448,9 @@ def get_discovered_jobs(
             d["match_score"] = adjusted
             d["match_reasons"] = "; ".join(p_reasons) if p_reasons else ""
             scored.append(d)
-        # Hard floor: always strip score=0 jobs (hard-excluded / zero relevance)
-        scored = [d for d in scored if (d["match_score"] or 0) > 0]
+        # Floor: strip score < 0 jobs only (hard-excluded roles saved before -1 convention)
+        # score=0 and score=1 jobs are valid business roles that missed keyword matching
+        scored = [d for d in scored if (d["match_score"] or 0) >= 0]
         if min_score is not None:
             scored = [d for d in scored if (d["match_score"] or 0) >= min_score]
         if sort == "score":
@@ -1769,20 +1771,38 @@ def get_new_today_jobs(db: Session = Depends(get_db)):
         .filter(
             DiscoveredJob.scraped_at >= today_midnight,
             DiscoveredJob.is_active == True,
-            or_(DiscoveredJob.match_score == None, DiscoveredJob.match_score > 0),
+            or_(DiscoveredJob.match_score == None, DiscoveredJob.match_score >= 0),
         )
         .order_by(DiscoveredJob.scraped_at.desc())
-        .limit(200)
+        .limit(2000)
         .all()
     )
-    # Deduplicate by company — one entry per company, same as main feed
-    seen = set()
+    # Deduplicate by company AND cap at 15 jobs per source for diversity
+    seen_companies = set()
+    source_counts: dict = {}
     unique = []
     for j in jobs:
-        key = (j.company or "").lower().strip()
-        if key and key not in seen:
-            seen.add(key)
-            unique.append(discovered_to_dict(j))
+        company_key = (j.company or "").lower().strip()
+        if not company_key or company_key in seen_companies:
+            continue
+        # Normalize source to broad category for capping
+        src = (j.source or "").lower()
+        if "sequoia" in src or "a16z" in src or "vc portfolio" in src or "founders fund" in src \
+                or "greylock" in src or "lightspeed" in src or "gv" in src or "true ventures" in src:
+            src_key = "vc_portfolio"
+        elif "yc" in src or "y combinator" in src:
+            src_key = "yc"
+        elif "linkedin" in src:
+            src_key = "linkedin"
+        elif "forbes" in src:
+            src_key = "forbes"
+        else:
+            src_key = src[:30]
+        if source_counts.get(src_key, 0) >= 15:
+            continue
+        seen_companies.add(company_key)
+        source_counts[src_key] = source_counts.get(src_key, 0) + 1
+        unique.append(discovered_to_dict(j))
     return {"jobs": unique, "count": len(unique)}
 
 
