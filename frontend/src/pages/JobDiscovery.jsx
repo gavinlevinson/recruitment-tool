@@ -1505,8 +1505,8 @@ export default function JobDiscovery() {
         const statusRes = await discoveredApi.getStatus().catch(() => null)
         const status = statusRes?.data
         if (status && !status.is_running) {
-          // Scrape finished — refresh jobs and show result
-          await fetchJobs({ page: 1 })
+          // Scrape finished — silently refresh without resetting the user's current page/filters
+          fetchJobs()
           const saved = status.last_saved ?? 0
           setRunResult(saved > 0
             ? `${saved} new job${saved === 1 ? '' : 's'} added`
@@ -1514,8 +1514,6 @@ export default function JobDiscovery() {
           )
           break
         }
-        // Refresh the list while scraping so counts update live
-        if (i % 2 === 1) await fetchJobs({ page: 1 })
       }
     } catch (err) {
       console.error('Scrape failed:', err)
