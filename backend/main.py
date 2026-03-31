@@ -1352,8 +1352,8 @@ def get_discovered_jobs(
             q = q.filter(or_(*loc_conditions))
 
     # Years of experience filter
-    if years_experience and years_experience not in ("10+", "0+"):
-        max_years_map = {"1-2": 2, "3-5": 5, "5-10": 10}
+    if years_experience and years_experience != "10+":
+        max_years_map = {"0+": 3, "1-2": 2, "3-5": 5, "5-10": 10}
         user_max = max_years_map.get(years_experience)
         if user_max is not None:
             # Show jobs where experience requirement is unknown (null) OR within user's range
