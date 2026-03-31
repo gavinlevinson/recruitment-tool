@@ -3683,12 +3683,75 @@ async def google_status(current_user: User = Depends(get_current_user), db: Sess
 
 @app.delete("/api/google/disconnect")
 async def google_disconnect(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Clear Google tokens."""
+    """Clear Google tokens and wipe all doc links from the user's contacts."""
+    # Clear tokens
     current_user.google_access_token  = None
     current_user.google_refresh_token = None
     current_user.google_token_expiry  = None
+
+    # Remove all doc links from every contact belonging to this user
+    user_contacts = db.query(Contact).filter(Contact.user_id == current_user.id).all()
+    for contact in user_contacts:
+        if getattr(contact, 'doc_links', None):
+            contact.doc_links = None
+
     db.commit()
     return {"ok": True}
+
+
+def _extract_drive_file_id(url: str):
+    """Pull the Google Drive file ID out of a docs.google.com or drive.google.com URL."""
+    import re
+    m = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
+    return m.group(1) if m else None
+
+
+@app.post("/api/google/drive/prune-dead-docs")
+async def prune_dead_docs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check every doc link across all contacts for this user.
+    Silently remove any that are no longer accessible in Google Drive (deleted/moved/unshared).
+    Returns a count of how many links were pruned.
+    """
+    if not current_user.google_access_token:
+        return {"pruned": 0}
+
+    token = await _google_get_valid_token(current_user, db)
+    user_contacts = db.query(Contact).filter(Contact.user_id == current_user.id).all()
+
+    total_pruned = 0
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for contact in user_contacts:
+            if not getattr(contact, 'doc_links', None):
+                continue
+            links = json.loads(contact.doc_links)
+            live_links = []
+            for doc in links:
+                file_id = _extract_drive_file_id(doc.get("url", ""))
+                if not file_id:
+                    live_links.append(doc)  # can't verify — keep it
+                    continue
+                try:
+                    resp = await client.get(
+                        f"https://www.googleapis.com/drive/v3/files/{file_id}",
+                        headers={"Authorization": f"Bearer {token}"},
+                        params={"fields": "id,trashed"},
+                    )
+                    if resp.status_code == 200 and not resp.json().get("trashed"):
+                        live_links.append(doc)  # still exists
+                    # 404, 403, or trashed=true → drop it
+                    else:
+                        total_pruned += 1
+                except Exception:
+                    live_links.append(doc)  # network error — keep it, try next time
+
+            if len(live_links) != len(links):
+                contact.doc_links = json.dumps(live_links) if live_links else None
+
+    db.commit()
+    return {"pruned": total_pruned}
 
 
 # ── Contact Google Doc routes ──────────────────────────────────────────────────

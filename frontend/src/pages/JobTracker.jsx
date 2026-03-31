@@ -2085,9 +2085,14 @@ function NetworkModal({ job, onClose }) {
 
   useEffect(() => {
     googleDocsApi.getStatus()
-      .then(res => setGoogleConnected(res.data?.connected || false))
+      .then(res => {
+        const connected = res.data?.connected || false
+        setGoogleConnected(connected)
+        // Silently prune any deleted Drive docs from all contacts
+        if (connected) googleDocsApi.pruneDeadDocs().then(() => loadContacts()).catch(() => {})
+      })
       .catch(() => setGoogleConnected(false))
-  }, [])
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreateDoc = async (contactId) => {
     setDocCreating(contactId)

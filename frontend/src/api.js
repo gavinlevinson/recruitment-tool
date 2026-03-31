@@ -174,7 +174,8 @@ export const googleDocsApi = {
   createDoc:   (contactId, data)       => api.post(`/contacts/${contactId}/docs/create`, data),
   linkDoc:     (contactId, data)       => api.post(`/contacts/${contactId}/docs/link`, data),
   unlinkDoc:   (contactId, docIndex)   => api.delete(`/contacts/${contactId}/docs/${docIndex}`),
-  driveFiles:  (folderId = 'root')     => api.get(`/google/drive/files?folder_id=${folderId}`),
+  driveFiles:    (folderId = 'root')   => api.get(`/google/drive/files?folder_id=${folderId}`),
+  pruneDeadDocs: ()                    => api.post('/google/drive/prune-dead-docs'),
 }
 
 export const helpApi = {
