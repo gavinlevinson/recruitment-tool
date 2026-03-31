@@ -1043,7 +1043,27 @@ function PreferencesPanel({ open, onClose, preferences, onSave }) {
 
           {/* Sources */}
           <div>
-            <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide mb-1">Sources</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide">Sources</p>
+              {(() => {
+                const enabledArr = local.enabled_sources === null
+                  ? ALL_SOURCES.map(s => s.id)
+                  : (local.enabled_sources || ALL_SOURCES.map(s => s.id))
+                const allOn = enabledArr.length === ALL_SOURCES.length
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setLocal(prev => ({
+                      ...prev,
+                      enabled_sources: allOn ? [] : null,
+                    }))}
+                    className="text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors"
+                  >
+                    {allOn ? 'Deselect All' : 'Select All'}
+                  </button>
+                )
+              })()}
+            </div>
             <p className="text-xs text-navy-400 mb-3">Toggle which job boards are included</p>
             <div className="space-y-1">
               {ALL_SOURCES.map(source => {
