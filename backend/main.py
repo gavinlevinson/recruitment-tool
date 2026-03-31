@@ -1781,7 +1781,8 @@ async def trigger_scrape(background_tasks: BackgroundTasks):
 
 @app.get("/api/scrape/status")
 def get_scrape_status(db: Session = Depends(get_db)):
-    last_scraped = _last_scrape_triggered
+    # Show completion time when available (more meaningful than trigger time)
+    last_scraped = _scrape_completed_at or _last_scrape_triggered
     if not last_scraped:
         latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
         last_scraped = latest.scraped_at.isoformat() if latest else None
