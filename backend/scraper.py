@@ -30,6 +30,7 @@ TARGET_ROLES = [
     "biz ops", "bizops", "revenue operations", "revops", "partnerships",
     "program manager", "implementation", "launch", "account management",
     "customer success", "sales", "account executive",
+    "marketing",  # catch product marketing, growth marketing, marketing manager, etc.
 ]
 ENTRY_SIGNALS = [
     "entry level", "entry-level", "new grad", "new graduate", "0-1 year",
@@ -230,6 +231,42 @@ def _is_hard_excluded(role: str) -> bool:
         return True
 
     return False
+
+
+# Tech/engineering role keywords that are NOT relevant for Gavin (used in VC scraper filter)
+_VC_TECH_EXCLUSIONS = [
+    "software engineer", "swe", "ml engineer", "machine learning engineer",
+    "data scientist", "devops", "backend engineer", "frontend engineer",
+    "fullstack engineer", "full-stack engineer", "full stack engineer",
+    "site reliability", "security engineer", "mobile engineer",
+    "ios developer", "android developer", "infrastructure engineer",
+    "data engineer", "platform engineer", "cloud engineer",
+    "firmware engineer", "embedded engineer", "research scientist",
+    "applied scientist", "systems engineer", "network engineer",
+    "hardware engineer", "electrical engineer", "mechanical engineer",
+]
+
+
+def _make_vc_job(company: str, role: str, location: str, url: str,
+                 source: str, description: str = ""):
+    """
+    Build a job dict for VC portfolio sources.
+    Returns None if the role should be excluded (hard-seniority or explicit tech role).
+    For all other roles, ensures match_score >= 1 so the endpoint's `match_score > 0`
+    hard floor never hides legitimate business/ops/marketing/etc. roles that don't
+    happen to contain an exact TARGET_ROLES keyword.
+    """
+    if _is_hard_excluded(role):
+        return None
+    role_lower = role.lower()
+    if any(exc in role_lower for exc in _VC_TECH_EXCLUSIONS):
+        return None
+    job = make_job(company, role, location, url, source, description)
+    # Guarantee the job survives the endpoint's hard floor even when score_job
+    # returns 0 (no TARGET_ROLES keyword match, e.g. "Marketing Manager")
+    if not job.get("match_score"):
+        job["match_score"] = 1
+    return job
 
 
 def score_job(company: str, role: str, location: str = "", description: str = ""):
@@ -1468,9 +1505,9 @@ async def scrape_vc_boards() -> List[Dict]:
                         location = job.get("location", {}).get("name", "")
                         url      = job.get("absolute_url", "")
                         content  = re.sub(r"<[^>]+>", " ", job.get("content", "") or "")
-                        score, _ = score_job(name, role, location, content)
-                        if score > 0:   # >0 excludes hard-rejected (score==0) roles
-                            results.append(make_job(name, role, location, url, "VC Portfolio (Greenhouse)", content))
+                        j = _make_vc_job(name, role, location, url, "VC Portfolio (Greenhouse)", content)
+                        if j:
+                            results.append(j)
                     return results
                 except Exception:
                     return []
@@ -1492,9 +1529,9 @@ async def scrape_vc_boards() -> List[Dict]:
                         desc     = job.get("descriptionPlain", "") or re.sub(
                             r"<[^>]+>", " ", job.get("descriptionHtml", "") or ""
                         )
-                        score, _ = score_job(name, role, location, desc)
-                        if score > 0:
-                            results.append(make_job(name, role, location, url, "VC Portfolio (Ashby)", desc))
+                        j = _make_vc_job(name, role, location, url, "VC Portfolio (Ashby)", desc)
+                        if j:
+                            results.append(j)
                     return results
                 except Exception:
                     return []
@@ -1519,9 +1556,9 @@ async def scrape_vc_boards() -> List[Dict]:
                         desc     = job.get("descriptionPlain", "") or re.sub(
                             r"<[^>]+>", " ", job.get("description", "") or ""
                         )
-                        score, _ = score_job(name, role, location, desc)
-                        if score > 0:
-                            results.append(make_job(name, role, location, url, "VC Portfolio (Lever)", desc))
+                        j = _make_vc_job(name, role, location, url, "VC Portfolio (Lever)", desc)
+                        if j:
+                            results.append(j)
                     return results
                 except Exception:
                     return []
@@ -1642,12 +1679,10 @@ async def scrape_getro_vc_boards() -> List[Dict]:
                                 location = job.get("location", {}).get("name", "")
                                 url      = job.get("absolute_url", "")
                                 content  = re.sub(r"<[^>]+>", " ", job.get("content", "") or "")
-                                score, _ = score_job(company_name, role, location, content)
-                                if score > 0:   # >0 excludes hard-rejected roles
-                                    found_jobs.append(make_job(
-                                        company_name, role, location, url,
-                                        f"VC Portfolio ({firm_name})", content
-                                    ))
+                                j = _make_vc_job(company_name, role, location, url,
+                                                 f"VC Portfolio ({firm_name})", content)
+                                if j:
+                                    found_jobs.append(j)
                             if found_jobs:
                                 return found_jobs
                     except Exception:
@@ -1673,12 +1708,10 @@ async def scrape_getro_vc_boards() -> List[Dict]:
                                 desc = job.get("descriptionPlain", "") or re.sub(
                                     r"<[^>]+>", " ", job.get("description", "") or ""
                                 )
-                                score, _ = score_job(company_name, role, location, desc)
-                                if score > 0:
-                                    found_jobs.append(make_job(
-                                        company_name, role, location, url,
-                                        f"VC Portfolio ({firm_name})", desc
-                                    ))
+                                j = _make_vc_job(company_name, role, location, url,
+                                                 f"VC Portfolio ({firm_name})", desc)
+                                if j:
+                                    found_jobs.append(j)
                             if found_jobs:
                                 return found_jobs
                     except Exception:
@@ -1700,12 +1733,10 @@ async def scrape_getro_vc_boards() -> List[Dict]:
                                 desc     = job.get("descriptionPlain", "") or re.sub(
                                     r"<[^>]+>", " ", job.get("descriptionHtml", "") or ""
                                 )
-                                score, _ = score_job(company_name, role, location, desc)
-                                if score > 0:
-                                    found_jobs.append(make_job(
-                                        company_name, role, location, url,
-                                        f"VC Portfolio ({firm_name})", desc
-                                    ))
+                                j = _make_vc_job(company_name, role, location, url,
+                                                 f"VC Portfolio ({firm_name})", desc)
+                                if j:
+                                    found_jobs.append(j)
                             if found_jobs:
                                 return found_jobs
                     except Exception:
