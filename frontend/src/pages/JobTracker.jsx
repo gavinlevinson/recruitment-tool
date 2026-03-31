@@ -6,9 +6,9 @@ import {
   Calendar, DollarSign, User, FileText, Building2,
   Link2, AlertCircle, Folder, Star, Users, Mail,
   Linkedin, Copy, Sparkles, GraduationCap, Loader2, Send, Paperclip,
-  ClipboardList, Save,
+  ClipboardList, Save, PlusCircle,
 } from 'lucide-react'
-import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi, interviewRoundsApi } from '../api'
+import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi, interviewRoundsApi, googleDocsApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1937,6 +1937,9 @@ function NetworkModal({ job, onClose }) {
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [copied, setCopied]         = useState(null)
   const [emailContact, setEmailContact] = useState(null)  // contact to email
+  const [googleConnected, setGoogleConnected] = useState(false)
+  const [docCreating, setDocCreating] = useState(null)   // contactId being processed
+  const [docError, setDocError]     = useState(null)
 
   const loadContacts = useCallback(async () => {
     setLoading(true)
@@ -1951,6 +1954,31 @@ function NetworkModal({ job, onClose }) {
   }, [job.company])
 
   useEffect(() => { loadContacts() }, [loadContacts])
+
+  useEffect(() => {
+    googleDocsApi.getStatus()
+      .then(res => setGoogleConnected(res.data?.connected || false))
+      .catch(() => setGoogleConnected(false))
+  }, [])
+
+  const handleCreateDoc = async (contactId) => {
+    setDocCreating(contactId)
+    setDocError(null)
+    try {
+      const res = await googleDocsApi.createDoc(contactId, {})
+      window.open(res.data.doc.url, '_blank')
+      await loadContacts()
+    } catch (err) {
+      setDocError(err?.response?.data?.detail || 'Could not create doc.')
+    } finally { setDocCreating(null) }
+  }
+
+  const handleUnlinkDoc = async (contactId, idx) => {
+    try {
+      await googleDocsApi.unlinkDoc(contactId, idx)
+      await loadContacts()
+    } catch { /* silent */ }
+  }
 
   const handleSave = async (form) => {
     const data = { ...form, company: job.company }
@@ -2173,6 +2201,46 @@ function NetworkModal({ job, onClose }) {
                           <p className="text-xs text-navy-500 leading-relaxed">{contact.meeting_notes}</p>
                         </div>
                       )}
+
+                      {/* Conversation Notes (Google Docs) */}
+                      <div className="ml-12 mt-2">
+                        {docError && docCreating === null && (
+                          <p className="text-xs text-red-500 mb-1">{docError}</p>
+                        )}
+                        {(contact.doc_links || []).length > 0 && (
+                          <div className="space-y-1 mb-1.5">
+                            {(contact.doc_links || []).map((doc, idx) => (
+                              <div key={idx} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-sky-50 border border-sky-100">
+                                <FileText size={11} className="text-sky-500 shrink-0" />
+                                <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                                  className="flex-1 text-xs text-sky-700 hover:text-sky-900 truncate font-medium">
+                                  {doc.title || 'Untitled Doc'}
+                                </a>
+                                <button onClick={() => handleUnlinkDoc(contact.id, idx)}
+                                  className="p-0.5 rounded text-navy-300 hover:text-red-500 transition-colors shrink-0" title="Remove">
+                                  <X size={11} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {googleConnected ? (
+                          <button
+                            onClick={() => handleCreateDoc(contact.id)}
+                            disabled={docCreating === contact.id}
+                            className="flex items-center gap-1 text-xs text-sky-600 hover:text-sky-800 font-medium transition-colors disabled:opacity-50"
+                          >
+                            {docCreating === contact.id
+                              ? <RefreshCw size={11} className="animate-spin" />
+                              : <PlusCircle size={11} />}
+                            New conversation note
+                          </button>
+                        ) : (
+                          <a href="/profile" className="text-xs text-navy-400 hover:text-violet-500 transition-colors">
+                            Connect Google Docs to add notes
+                          </a>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
