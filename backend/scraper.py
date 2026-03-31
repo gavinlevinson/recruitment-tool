@@ -1299,66 +1299,39 @@ GREENHOUSE_COMPANIES_EXTRA = [
     ("backblaze", "Backblaze"), ("acronis", "Acronis"), ("veeam", "Veeam"),
     ("cyberark", "CyberArk"), ("wixcom", "Wix"),
     # ── Accel ──
-    ("atlassian", "Atlassian"), ("braintree", "Braintree"), ("crowdstrike", "CrowdStrike"),
-    ("qualtrics", "Qualtrics"), ("pluralsight", "Pluralsight"), ("samsara", "Samsara"),
-    ("meta", "Meta"), ("supercell", "Supercell"), ("kayak", "KAYAK"),
+    ("braintree", "Braintree"), ("samsara", "Samsara"),
+    ("rubrik", "Rubrik"), ("kayak", "KAYAK"),
     # ── Lightspeed ──
-    ("snap", "Snap"), ("affirm", "Affirm"), ("taskus", "TaskUs"),
-    ("nutanix", "Nutanix"), ("zscaler", "Zscaler"), ("rubrik", "Rubrik"),
-    ("appian", "Appian"), ("limeade", "Limeade"),
+    ("affirm", "Affirm"), ("taskus", "TaskUs"), ("appian", "Appian"),
     # ── CRV (Charles River Ventures) ──
-    ("doordash", "DoorDash"), ("hubspot", "HubSpot"), ("zendesk", "Zendesk"),
     ("podium", "Podium"), ("rally-health", "Rally Health"), ("bill", "BILL"),
     # ── NEA ──
-    ("salesforce", "Salesforce"), ("data-robot", "DataRobot"), ("duo-security", "Duo Security"),
-    ("workiva", "Workiva"), ("groupon", "Groupon"), ("freshworks", "Freshworks"),
+    ("datarobot", "DataRobot"), ("workiva", "Workiva"), ("freshworks", "Freshworks"),
     # ── Battery Ventures ──
-    ("glassdoor", "Glassdoor"), ("snaplogic", "SnapLogic"), ("bazaarvoice", "Bazaarvoice"),
-    ("sprinklr", "Sprinklr"), ("talend", "Talend"), ("automox", "Automox"),
+    ("snaplogic", "SnapLogic"), ("sprinklr", "Sprinklr"), ("automox", "Automox"),
     # ── Index Ventures ──
-    ("slack", "Slack"), ("dropbox", "Dropbox"), ("skyscanner", "Skyscanner"),
-    ("robinhood", "Robinhood"), ("figma", "Figma"), ("notion", "Notion"),
-    ("deliveroo", "Deliveroo"), ("etsy", "Etsy"),
+    ("robinhood", "Robinhood"), ("deliveroo", "Deliveroo"),
     # ── Khosla Ventures ──
-    ("square", "Square"), ("opendoor", "Opendoor"), ("poshmark", "Poshmark"),
-    ("joindoc", "Joindoc"), ("tempus", "Tempus"), ("palantir", "Palantir"),
+    ("opendoor", "Opendoor"), ("poshmark", "Poshmark"),
+    ("tempus", "Tempus"),
     # ── Kleiner Perkins ──
-    ("google", "Google"), ("amazon", "Amazon"), ("twitter", "Twitter"),
-    ("uber", "Uber"), ("docusign", "DocuSign"), ("coursera", "Coursera"),
+    ("docusign", "DocuSign"), ("coursera", "Coursera"),
     ("headspace", "Headspace"), ("desktop-metal", "Desktop Metal"),
-    # ── IVP ──
-    ("twitter", "Twitter"), ("supercell", "Supercell"), ("zendesk", "Zendesk"),
-    ("datadog", "Datadog"), ("coinbase", "Coinbase"), ("github", "GitHub"),
-    ("slack", "Slack"), ("netflix", "Netflix"),
-    # ── Founders Fund ──
-    ("palantir", "Palantir"), ("stripe", "Stripe"), ("spacex", "SpaceX"),
-    ("lyft", "Lyft"), ("airbnb", "Airbnb"),
     # ── GV (Google Ventures) ──
-    ("uber", "Uber"), ("slack", "Slack"), ("robinhood", "Robinhood"),
-    ("gitlab", "GitLab"), ("nest", "Nest"), ("one-medical", "One Medical"),
-    ("flatiron-health", "Flatiron Health"),
-    # ── Benchmark ──
-    ("twitter", "Twitter"), ("uber", "Uber"), ("snapchat", "Snapchat"),
-    ("yelp", "Yelp"), ("instagram", "Instagram"), ("ebay", "eBay"),
-    # ── Union Square Ventures ──
-    ("twitter", "Twitter"), ("etsy", "Etsy"), ("duolingo", "Duolingo"),
-    ("mongodb", "MongoDB"), ("coinbase", "Coinbase"), ("tumblr", "Tumblr"),
+    ("gitlab", "GitLab"), ("one-medical", "One Medical"),
     # ── Spark Capital ──
-    ("twitter", "Twitter"), ("warby-parker", "Warby Parker"), ("slack", "Slack"),
-    ("vox-media", "Vox Media"), ("plaid", "Plaid"), ("postmates", "Postmates"),
+    ("warby-parker", "Warby Parker"), ("plaid", "Plaid"),
     # ── Felicis Ventures ──
-    ("notion", "Notion"), ("canva", "Canva"), ("adyen", "Adyen"),
-    ("twitch", "Twitch"), ("shopify", "Shopify"), ("netlify", "Netlify"),
-    # ── Additional high-signal startups ──
+    ("canva", "Canva"), ("adyen", "Adyen"), ("netlify", "Netlify"),
+    # ── Additional high-signal growth-stage startups ──
     ("plaid", "Plaid"), ("brex", "Brex"), ("chime", "Chime"),
-    ("duolingo", "Duolingo"), ("canva", "Canva"), ("gitlab", "GitLab"),
-    ("contentful", "Contentful"), ("segment", "Segment"), ("sendgrid", "SendGrid"),
-    ("hashicorp", "HashiCorp"), ("looker", "Looker"), ("calendly", "Calendly"),
-    ("netlify", "Netlify"), ("cloudflare", "Cloudflare"), ("fastly", "Fastly"),
-    ("mongodb", "MongoDB"), ("datadog", "Datadog"), ("confluent", "Confluent"),
-    ("dbt-labs", "dbt Labs"), ("airbyte", "Airbyte"), ("matterport", "Matterport"),
+    ("duolingo", "Duolingo"), ("gitlab", "GitLab"),
+    ("contentful", "Contentful"), ("segment", "Segment"),
+    ("hashicorp", "HashiCorp"), ("calendly", "Calendly"),
+    ("fastly", "Fastly"), ("confluent", "Confluent"),
+    ("airbyte", "Airbyte"), ("matterport", "Matterport"),
     ("squarespace", "Squarespace"), ("via-transportation", "Via"),
-    ("adyen", "Adyen"), ("asana", "Asana"), ("webflow", "Webflow"),
+    ("asana", "Asana"), ("webflow", "Webflow"),
     ("affinity", "Affinity"), ("leandata", "LeanData"),
     ("watershed", "Watershed"), ("sourcegraph", "Sourcegraph"),
     ("hightouch", "Hightouch"), ("census", "Census"),
@@ -1496,7 +1469,7 @@ async def scrape_vc_boards() -> List[Dict]:
                         url      = job.get("absolute_url", "")
                         content  = re.sub(r"<[^>]+>", " ", job.get("content", "") or "")
                         score, _ = score_job(name, role, location, content)
-                        if score >= 0:
+                        if score > 0:   # >0 excludes hard-rejected (score==0) roles
                             results.append(make_job(name, role, location, url, "VC Portfolio (Greenhouse)", content))
                     return results
                 except Exception:
@@ -1520,7 +1493,7 @@ async def scrape_vc_boards() -> List[Dict]:
                             r"<[^>]+>", " ", job.get("descriptionHtml", "") or ""
                         )
                         score, _ = score_job(name, role, location, desc)
-                        if score >= 0:
+                        if score > 0:
                             results.append(make_job(name, role, location, url, "VC Portfolio (Ashby)", desc))
                     return results
                 except Exception:
@@ -1547,7 +1520,7 @@ async def scrape_vc_boards() -> List[Dict]:
                             r"<[^>]+>", " ", job.get("description", "") or ""
                         )
                         score, _ = score_job(name, role, location, desc)
-                        if score >= 0:
+                        if score > 0:
                             results.append(make_job(name, role, location, url, "VC Portfolio (Lever)", desc))
                     return results
                 except Exception:
@@ -1646,6 +1619,9 @@ async def scrape_getro_vc_boards() -> List[Dict]:
         print(f"[Getro] {len(all_companies)} total unique companies — starting ATS discovery")
 
         # ── Step 2: for each company, try GH / Lever / Ashby ────────────────
+        # Cap: max 25 relevant jobs per company so large companies don't flood results
+        MAX_PER_COMPANY = 25
+
         async def discover_ats(company_name: str, domain: str, firm_name: str):
             slugs = _domain_to_ats_slugs(domain)
             found_jobs = []
@@ -1660,12 +1636,14 @@ async def scrape_getro_vc_boards() -> List[Dict]:
                         )
                         if resp.status_code == 200:
                             for job in resp.json().get("jobs", []):
+                                if len(found_jobs) >= MAX_PER_COMPANY:
+                                    break
                                 role     = job.get("title", "")
                                 location = job.get("location", {}).get("name", "")
                                 url      = job.get("absolute_url", "")
                                 content  = re.sub(r"<[^>]+>", " ", job.get("content", "") or "")
                                 score, _ = score_job(company_name, role, location, content)
-                                if score >= 0:
+                                if score > 0:   # >0 excludes hard-rejected roles
                                     found_jobs.append(make_job(
                                         company_name, role, location, url,
                                         f"VC Portfolio ({firm_name})", content
@@ -1683,6 +1661,8 @@ async def scrape_getro_vc_boards() -> List[Dict]:
                         )
                         if resp.status_code == 200 and isinstance(resp.json(), list):
                             for job in resp.json():
+                                if len(found_jobs) >= MAX_PER_COMPANY:
+                                    break
                                 role     = job.get("text", "")
                                 cats     = job.get("categories", {})
                                 location = cats.get("location", "") or (
@@ -1694,7 +1674,7 @@ async def scrape_getro_vc_boards() -> List[Dict]:
                                     r"<[^>]+>", " ", job.get("description", "") or ""
                                 )
                                 score, _ = score_job(company_name, role, location, desc)
-                                if score >= 0:
+                                if score > 0:
                                     found_jobs.append(make_job(
                                         company_name, role, location, url,
                                         f"VC Portfolio ({firm_name})", desc
@@ -1712,6 +1692,8 @@ async def scrape_getro_vc_boards() -> List[Dict]:
                         )
                         if resp.status_code == 200:
                             for job in resp.json().get("jobs", []):
+                                if len(found_jobs) >= MAX_PER_COMPANY:
+                                    break
                                 role     = job.get("title", "")
                                 location = job.get("location", "") or ""
                                 url      = job.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{slug}"
@@ -1719,7 +1701,7 @@ async def scrape_getro_vc_boards() -> List[Dict]:
                                     r"<[^>]+>", " ", job.get("descriptionHtml", "") or ""
                                 )
                                 score, _ = score_job(company_name, role, location, desc)
-                                if score >= 0:
+                                if score > 0:
                                     found_jobs.append(make_job(
                                         company_name, role, location, url,
                                         f"VC Portfolio ({firm_name})", desc
