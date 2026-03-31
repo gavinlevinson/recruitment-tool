@@ -1374,7 +1374,7 @@ def get_discovered_jobs(
         'linkedin':   ['linkedin'],
         'indeed':     ['indeed'],
         'handshake':  ['handshake'],
-        'yc_jobs':    ['yc work', 'workatastartup', 'yc startup'],
+        'yc_jobs':    ['yc work', 'workatastartup', 'yc startup', 'yc jobs', 'yc company'],
         'himalayas':  ['himalayas'],
         'wwr':        ['we work remotely', 'weworkremotely'],
         'vc_boards':  ['vc portfolio'],

@@ -1022,117 +1022,150 @@ async def scrape_wellfound() -> List[Dict]:
 # ─────────────────────────────────────────────
 async def scrape_yc_startup_jobs() -> List[Dict]:
     """
-    YC company API (api.ycombinator.com) + Greenhouse/Ashby/Lever discovery.
-    The old workatastartup.com/companies/fetch API now returns HTML (auth-gated).
-    New approach: fetch recent YC batches, discover each company's ATS board,
-    scrape ops/BD/strategy/growth jobs directly.
+    YC company ATS discovery — two parallel strategies:
+    1. Career-page crawl for recent 8 batches (W24–W25 + S23–S24) — finds exact ATS links
+    2. Fast slug-based ATS discovery for ALL ~4000+ YC companies — derives slug from domain
+
+    The YC API (api.ycombinator.com/v0.1/companies) is public and paginated.
+    We hit it with no batch filter to get all companies, then try
+    Greenhouse / Lever / Ashby using the domain-derived slug.
     """
     jobs = []
-    seen_slugs: dict = {}  # ats_type → set of slugs already queried
 
     GH_RE    = re.compile(r'boards?\.greenhouse\.io/(?:embed/job_board\?for=)?([A-Za-z0-9_\-]+)', re.IGNORECASE)
     ASHBY_RE = re.compile(r'jobs\.ashbyhq\.com/([A-Za-z0-9_.\-]+)', re.IGNORECASE)
     LEVER_RE = re.compile(r'jobs\.lever\.co/([A-Za-z0-9_\-]+)', re.IGNORECASE)
 
-    # Already-known slugs from hardcoded lists — skip to avoid duplicates
-    known_gh    = {s.lower() for s, _ in GREENHOUSE_COMPANIES}
-    known_ashby = {s.lower() for s, _ in ASHBY_COMPANIES}
-    known_lever = {s.lower() for s, _ in LEVER_COMPANIES}
+    known_gh    = {s.lower() for s, _ in GREENHOUSE_COMPANIES + GREENHOUSE_COMPANIES_EXTRA}
+    known_ashby = {s.lower() for s, _ in ASHBY_COMPANIES + ASHBY_COMPANIES_EXTRA}
+    known_lever = {s.lower() for s, _ in LEVER_COMPANIES + LEVER_COMPANIES_EXTRA}
 
     try:
         async with httpx.AsyncClient(timeout=25.0, follow_redirects=True, headers=HEADERS) as client:
-            # Fetch recent YC batches
-            batches = ["W25", "S24", "W24", "S23", "W23"]
-            batch_param = "&".join(f"batch={b}" for b in batches)
-            resp = await client.get(
-                f"https://api.ycombinator.com/v0.1/companies?{batch_param}&page=1",
-                timeout=15.0,
-            )
-            if resp.status_code != 200:
-                print(f"[YC Jobs] API returned {resp.status_code}")
-                return jobs
 
-            companies = resp.json().get("companies", [])
+            # ── Step 1: Fetch ALL YC companies (paginated, no batch filter) ─────
+            all_companies = []
+            seen_ids = set()
+            page = 1
+            while True:
+                try:
+                    resp = await client.get(
+                        f"https://api.ycombinator.com/v0.1/companies?page={page}&per_page=100",
+                        timeout=15.0,
+                    )
+                    if resp.status_code != 200:
+                        break
+                    data = resp.json()
+                    batch = data.get("companies", [])
+                    if not batch:
+                        break
+                    for co in batch:
+                        cid = co.get("id") or co.get("slug") or co.get("name")
+                        if cid and cid not in seen_ids:
+                            seen_ids.add(cid)
+                            all_companies.append(co)
+                    # Stop after 3000 companies to cap runtime
+                    if len(all_companies) >= 3000 or page >= 50:
+                        break
+                    page += 1
+                except Exception:
+                    break
 
-            # For each company, try to find their ATS from their website
-            async def find_and_scrape(co: dict):
-                name    = co.get("name", "")
-                website = co.get("website", "")
+            print(f"[YC Jobs] {len(all_companies)} YC companies fetched")
+
+            # ── Step 2: Fast slug-based ATS discovery for all companies ──────────
+            sem = asyncio.Semaphore(25)
+            MAX_PER_CO = 15
+
+            async def discover_yc_ats(co: dict):
+                name    = (co.get("name") or "").strip()
+                website = (co.get("website") or "").strip()
                 if not name or not website:
                     return []
-                results = []
-                try:
-                    # Try common career page paths
-                    for path in ["/careers", "/jobs", "/about/careers"]:
-                        try:
-                            r = await client.get(website.rstrip("/") + path, timeout=8.0)
-                            if r.status_code != 200:
-                                continue
-                            html = r.text
-                            # Check for Greenhouse
-                            m = GH_RE.search(html)
-                            if m:
-                                slug = m.group(1).rstrip("/")
-                                if slug.lower() not in known_gh:
-                                    gr = await client.get(
-                                        f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
-                                        timeout=8.0,
-                                    )
-                                    if gr.status_code == 200:
-                                        for j in gr.json().get("jobs", []):
-                                            role = j.get("title", "")
-                                            loc  = j.get("location", {}).get("name", "")
-                                            url  = j.get("absolute_url", "")
-                                            desc = re.sub(r"<[^>]+>", " ", j.get("content", "") or "")
-                                            results.append(make_job(name, role, loc, url, "YC Jobs", desc))
-                                break
-                            # Check for Ashby
-                            m = ASHBY_RE.search(html)
-                            if m:
-                                slug = m.group(1).rstrip("/").split("?")[0]
-                                if slug.lower() not in known_ashby:
-                                    ar = await client.get(
-                                        f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
-                                        timeout=8.0,
-                                    )
-                                    if ar.status_code == 200:
-                                        for j in ar.json().get("jobs", []):
-                                            role = j.get("title", "")
-                                            loc  = j.get("location", "") or ""
-                                            url  = j.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{slug}"
-                                            desc = j.get("descriptionPlain", "") or ""
-                                            results.append(make_job(name, role, loc, url, "YC Jobs", desc))
-                                break
-                            # Check for Lever
-                            m = LEVER_RE.search(html)
-                            if m:
-                                slug = m.group(1).rstrip("/")
-                                if slug.lower() not in known_lever:
-                                    lr = await client.get(
-                                        f"https://api.lever.co/v0/postings/{slug}?mode=json",
-                                        timeout=8.0,
-                                    )
-                                    if lr.status_code == 200:
-                                        for p in lr.json():
-                                            role = p.get("text", "")
-                                            loc  = p.get("categories", {}).get("location", "")
-                                            url  = p.get("hostedUrl", "")
-                                            desc = p.get("descriptionPlain", "") or ""
-                                            results.append(make_job(name, role, loc, url, "YC Jobs", desc))
-                                break
-                        except Exception:
-                            continue
-                except Exception:
-                    pass
-                return results
 
-            # Limit concurrency to avoid overwhelming external APIs
-            sem = asyncio.Semaphore(10)
-            async def guarded(co):
+                # Derive ATS slug from domain
+                domain = re.sub(r'^https?://', '', website).split('/')[0].strip()
+                slugs  = _domain_to_ats_slugs(domain)
+                found  = []
+
                 async with sem:
-                    return await find_and_scrape(co)
+                    for slug in slugs:
+                        if len(found) >= MAX_PER_CO:
+                            break
+                        # Greenhouse
+                        if slug.lower() not in known_gh:
+                            try:
+                                r = await client.get(
+                                    f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
+                                    timeout=6.0,
+                                )
+                                if r.status_code == 200:
+                                    for j in r.json().get("jobs", []):
+                                        if len(found) >= MAX_PER_CO:
+                                            break
+                                        role = j.get("title", "")
+                                        loc  = j.get("location", {}).get("name", "")
+                                        url  = j.get("absolute_url", "")
+                                        desc = re.sub(r"<[^>]+>", " ", j.get("content", "") or "")
+                                        jb = _make_vc_job(name, role, loc, url, "YC Company (Greenhouse)", desc)
+                                        if jb:
+                                            found.append(jb)
+                                    if found:
+                                        return found
+                            except Exception:
+                                pass
 
-            all_results = await asyncio.gather(*[guarded(co) for co in companies], return_exceptions=True)
+                        # Lever
+                        if slug.lower() not in known_lever:
+                            try:
+                                r = await client.get(
+                                    f"https://api.lever.co/v0/postings/{slug}?mode=json",
+                                    timeout=6.0,
+                                )
+                                if r.status_code == 200 and isinstance(r.json(), list) and r.json():
+                                    for p in r.json():
+                                        if len(found) >= MAX_PER_CO:
+                                            break
+                                        role = p.get("text", "")
+                                        loc  = p.get("categories", {}).get("location", "") or ""
+                                        url  = p.get("hostedUrl", "")
+                                        desc = p.get("descriptionPlain", "") or ""
+                                        jb = _make_vc_job(name, role, loc, url, "YC Company (Lever)", desc)
+                                        if jb:
+                                            found.append(jb)
+                                    if found:
+                                        return found
+                            except Exception:
+                                pass
+
+                        # Ashby
+                        if slug.lower() not in known_ashby:
+                            try:
+                                r = await client.get(
+                                    f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
+                                    timeout=6.0,
+                                )
+                                if r.status_code == 200:
+                                    for j in r.json().get("jobs", []):
+                                        if len(found) >= MAX_PER_CO:
+                                            break
+                                        role = j.get("title", "")
+                                        loc  = j.get("location", "") or ""
+                                        url  = j.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{slug}"
+                                        desc = j.get("descriptionPlain", "") or ""
+                                        jb = _make_vc_job(name, role, loc, url, "YC Company (Ashby)", desc)
+                                        if jb:
+                                            found.append(jb)
+                                    if found:
+                                        return found
+                            except Exception:
+                                pass
+                return found
+
+            all_results = await asyncio.gather(
+                *[discover_yc_ats(co) for co in all_companies],
+                return_exceptions=True,
+            )
             for r in all_results:
                 if isinstance(r, list):
                     jobs.extend(r)
@@ -1261,18 +1294,79 @@ async def scrape_weworkremotely() -> List[Dict]:
 # We scrape __NEXT_DATA__ from each board to discover portfolio company domains,
 # then hit each company's ATS (Greenhouse / Lever / Ashby) directly.
 GETRO_VC_BOARDS = [
-    ("General Catalyst",  "https://jobs.generalcatalyst.com"),
-    ("Accel",             "https://jobs.accel.com"),
-    ("Khosla Ventures",   "https://jobs.khoslaventures.com"),
-    ("Insight Partners",  "https://jobs.insightpartners.com"),
-    ("True Ventures",     "https://jobs.trueventures.com"),
-    ("Lux Capital",       "https://jobs.luxcapital.com"),
-    ("Thrive Capital",    "https://jobs.thrivecap.com"),
-    ("Redpoint Ventures", "https://careers.redpoint.com"),
-    ("Coatue",            "https://jobs.coatue.com"),
-    ("Madrona",           "https://jobs.madrona.com"),
-    ("Menlo Ventures",    "https://jobs.menlovc.com"),
-    ("Craft Ventures",    "https://jobs.craftventures.com"),
+    # ── Tier 1: Confirmed Getro boards ──────────────────────────────────────
+    ("General Catalyst",         "https://jobs.generalcatalyst.com"),
+    ("Accel",                    "https://jobs.accel.com"),
+    ("Khosla Ventures",          "https://jobs.khoslaventures.com"),
+    ("Insight Partners",         "https://jobs.insightpartners.com"),
+    ("True Ventures",            "https://jobs.trueventures.com"),
+    ("Lux Capital",              "https://jobs.luxcapital.com"),
+    ("Thrive Capital",           "https://jobs.thrivecap.com"),
+    ("Redpoint Ventures",        "https://careers.redpoint.com"),
+    ("Coatue",                   "https://jobs.coatue.com"),
+    ("Madrona",                  "https://jobs.madrona.com"),
+    ("Menlo Ventures",           "https://jobs.menlovc.com"),
+    ("Craft Ventures",           "https://jobs.craftventures.com"),
+    # ── Tier 2: High-confidence Getro boards ─────────────────────────────────
+    ("Lightspeed",               "https://jobs.lsvp.com"),
+    ("IVP",                      "https://jobs.ivp.com"),
+    ("Spark Capital",            "https://jobs.sparkcap.com"),
+    ("Founders Fund",            "https://jobs.foundersfund.com"),
+    ("Forerunner Ventures",      "https://jobs.forerunnerventures.com"),
+    ("Lerer Hippeau",            "https://jobs.lererhippeau.com"),
+    ("Primary Venture Partners", "https://jobs.primary.vc"),
+    ("RRE Ventures",             "https://jobs.rre.com"),
+    ("Firstmark Capital",        "https://jobs.firstmarkcap.com"),
+    ("Matrix Partners",          "https://jobs.matrixpartners.com"),
+    ("Pear VC",                  "https://jobs.pear.vc"),
+    ("Slow Ventures",            "https://jobs.slow.co"),
+    ("Cowboy Ventures",          "https://jobs.cowboyvc.com"),
+    ("Sapphire Ventures",        "https://jobs.sapphireventures.com"),
+    ("Bowery Capital",           "https://jobs.bowerycap.com"),
+    ("Village Global",           "https://jobs.villageglobal.vc"),
+    ("Sound Ventures",           "https://jobs.soundventures.com"),
+    ("WndrCo",                   "https://jobs.wndrco.com"),
+    ("High Alpha",               "https://jobs.highalpha.com"),
+    ("Wing VC",                  "https://jobs.wing.vc"),
+    ("Freestyle Capital",        "https://jobs.freestyle.vc"),
+    ("Innovation Endeavors",     "https://jobs.innovationendeavors.com"),
+    ("M13",                      "https://jobs.m13.co"),
+    ("Obvious Ventures",         "https://jobs.obvious.com"),
+    ("Costanoa Ventures",        "https://jobs.costanoa.vc"),
+    ("Headline VC",              "https://jobs.headline.com"),
+    ("Initialized Capital",      "https://jobs.initialized.com"),
+    ("Better Tomorrow Ventures", "https://jobs.btv.vc"),
+    ("Bonfire Ventures",         "https://jobs.bonfirevc.com"),
+    ("Shasta Ventures",          "https://jobs.shastaventures.com"),
+    ("Crosscut Ventures",        "https://jobs.crosscut.vc"),
+    ("Data Collective (DCVC)",   "https://jobs.dcvc.com"),
+    ("500 Global",               "https://jobs.500.co"),
+    ("Techstars",                "https://jobs.techstars.com"),
+    ("SoftBank Vision Fund",     "https://jobs.sbvisionfund.com"),
+    ("Two Sigma Ventures",       "https://jobs.twosigmaventures.com"),
+    ("Global Founders Capital",  "https://jobs.globalfounderscapital.com"),
+    ("Union Square Ventures",    "https://jobs.usv.com"),
+    ("SV Angel",                 "https://jobs.svangel.com"),
+    ("Upfront Ventures",         "https://jobs.upfront.com"),
+    ("Canaan Partners",          "https://jobs.canaanpartners.com"),
+    ("General Atlantic",         "https://jobs.generalatlantic.com"),
+    ("Kapor Capital",            "https://jobs.kaporcapital.com"),
+    ("Precursor Ventures",       "https://jobs.precursorvc.com"),
+    ("ff Venture Capital",       "https://jobs.ffvc.com"),
+    ("Cherry Ventures",          "https://jobs.cherry.vc"),
+    ("Balderton Capital",        "https://jobs.balderton.com"),
+    ("Alumni Ventures",          "https://jobs.alumniventures.com"),
+    ("Operator Collective",      "https://jobs.operatorcollective.com"),
+    ("Backstage Capital",        "https://jobs.backstagecapital.com"),
+    ("Rough Draft Ventures",     "https://jobs.roughdraft.vc"),
+    ("XYZ Venture Capital",      "https://jobs.xyz.vc"),
+    ("Storm Ventures",           "https://jobs.stormventures.com"),
+    ("Elevation Capital",        "https://jobs.elevationcapital.com"),
+    ("Interplay Ventures",       "https://jobs.interplayvc.com"),
+    ("Clocktower Ventures",      "https://jobs.clocktowerventures.com"),
+    ("Obvious Ventures",         "https://jobs.obvious.vc"),
+    ("Congruent Ventures",       "https://jobs.congruentvc.com"),
+    ("Bee Partners",             "https://jobs.beepartners.com"),
 ]
 
 
@@ -1579,7 +1673,7 @@ async def scrape_vc_boards() -> List[Dict]:
 
 async def scrape_getro_vc_boards() -> List[Dict]:
     """
-    Dynamically discovers portfolio companies from 12 Getro-powered VC job boards,
+    Dynamically discovers portfolio companies from 65 Getro-powered VC job boards,
     then hits each company's ATS (Greenhouse / Lever / Ashby) directly.
 
     Getro boards expose company domains in __NEXT_DATA__ (Next.js SSR).
@@ -2199,7 +2293,7 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_himalayas(),
         scrape_weworkremotely(),
         scrape_vc_boards(),
-        scrape_getro_vc_boards(),   # dynamic ATS discovery from 12 Getro VC boards
+        scrape_getro_vc_boards(),   # dynamic ATS discovery from 65 Getro VC boards
         scrape_topstartups(),       # dynamic discovery from topstartups.io AI list
         return_exceptions=True,
     )
