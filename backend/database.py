@@ -332,6 +332,32 @@ def _run_pg_migrations():
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS context_roles TEXT",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS context_locations TEXT",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS context_skills TEXT",
+        # interview_rounds columns added after initial deploy
+        "ALTER TABLE interview_rounds ADD COLUMN IF NOT EXISTS thank_you_sent BOOLEAN DEFAULT FALSE",
+        # jobs columns added after initial deploy
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS folder TEXT",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS starred BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS deadline TEXT",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS interview_date TEXT",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS reminder_date TEXT",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS discovered_job_id INTEGER",
+        # discovered_jobs columns added after initial deploy
+        "ALTER TABLE discovered_jobs ADD COLUMN IF NOT EXISTS funding_stage TEXT",
+        "ALTER TABLE discovered_jobs ADD COLUMN IF NOT EXISTS employee_count TEXT",
+        "ALTER TABLE discovered_jobs ADD COLUMN IF NOT EXISTS min_years_required INTEGER",
+        "ALTER TABLE discovered_jobs ADD COLUMN IF NOT EXISTS deadline TEXT",
+        # users columns added after initial deploy
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS minor TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS high_school TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS grad_school TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS nylas_grant_id TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS career_stage TEXT DEFAULT 'college_senior'",
+        # user_preferences columns added after initial deploy
+        "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS user_id INTEGER",
+        "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS enabled_sources TEXT",
+        "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS preferred_roles TEXT",
+        "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS preferred_work_types TEXT",
+        "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS years_experience TEXT",
     ]
     with engine.connect() as conn:
         for sql in pg_migrations:
