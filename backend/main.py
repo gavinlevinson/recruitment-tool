@@ -578,7 +578,7 @@ def create_job(
     return job_to_dict(db_job)
 
 @app.put("/api/jobs/{job_id}")
-def update_job(
+async def update_job(
     job_id: int, job: JobUpdate,
     current_user: Optional[User] = Depends(get_optional_user), db: Session = Depends(get_db),
 ):
@@ -593,6 +593,22 @@ def update_job(
     db_job.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(db_job)
+
+    # Auto-sync deadline to Google Calendar whenever it's set
+    if current_user and current_user.google_refresh_token and db_job.deadline:
+        try:
+            token = await _google_get_valid_token(current_user, db)
+            event_body = {
+                "summary":     f"{db_job.company} — Application Deadline",
+                "description": db_job.role or "",
+                "start":       {"date": db_job.deadline},
+                "end":         {"date": db_job.deadline},
+            }
+            db_job.gcal_deadline_event_id = await _gcal_upsert_event(token, db_job.gcal_deadline_event_id, event_body)
+            db.commit()
+        except Exception:
+            pass
+
     return job_to_dict(db_job)
 
 @app.delete("/api/jobs/{job_id}")
@@ -992,7 +1008,7 @@ def get_interview_rounds(
     return [round_to_dict(r) for r in rounds]
 
 @app.post("/api/jobs/{job_id}/interviews")
-def create_interview_round(
+async def create_interview_round(
     job_id: int,
     payload: InterviewRoundCreate,
     current_user: User = Depends(get_current_user),
@@ -1002,10 +1018,25 @@ def create_interview_round(
     db.add(r)
     db.commit()
     db.refresh(r)
+
+    # Auto-sync to Google Calendar if user has a scheduled date and Google connected
+    if r.scheduled_date and current_user.google_refresh_token:
+        try:
+            job = db.query(Job).filter(Job.id == job_id).first()
+            token = await _google_get_valid_token(current_user, db)
+            round_label = f"Round {r.round_number}" if r.round_number else "Interview"
+            type_label  = r.interview_type or ""
+            summary     = f"{job.company if job else 'Interview'} — {round_label}" + (f" · {type_label}" if type_label else "")
+            event_body  = {"summary": summary, "start": {"date": r.scheduled_date}, "end": {"date": r.scheduled_date}}
+            r.gcal_event_id = await _gcal_upsert_event(token, None, event_body)
+            db.commit()
+        except Exception:
+            pass
+
     return round_to_dict(r)
 
 @app.put("/api/interviews/{round_id}")
-def update_interview_round(
+async def update_interview_round(
     round_id: int,
     payload: InterviewRoundUpdate,
     current_user: User = Depends(get_current_user),
@@ -1021,10 +1052,25 @@ def update_interview_round(
         setattr(r, k, v)
     db.commit()
     db.refresh(r)
+
+    # Auto-sync to Google Calendar whenever a scheduled date exists
+    if r.scheduled_date and current_user.google_refresh_token:
+        try:
+            job = db.query(Job).filter(Job.id == r.job_id).first()
+            token = await _google_get_valid_token(current_user, db)
+            round_label = f"Round {r.round_number}" if r.round_number else "Interview"
+            type_label  = r.interview_type or ""
+            summary     = f"{job.company if job else 'Interview'} — {round_label}" + (f" · {type_label}" if type_label else "")
+            event_body  = {"summary": summary, "start": {"date": r.scheduled_date}, "end": {"date": r.scheduled_date}}
+            r.gcal_event_id = await _gcal_upsert_event(token, r.gcal_event_id, event_body)
+            db.commit()
+        except Exception:
+            pass
+
     return round_to_dict(r)
 
 @app.delete("/api/interviews/{round_id}")
-def delete_interview_round(
+async def delete_interview_round(
     round_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -1035,7 +1081,8 @@ def delete_interview_round(
     ).first()
     if not r:
         raise HTTPException(status_code=404, detail="Round not found")
-    job_id = r.job_id
+    job_id    = r.job_id
+    gcal_id   = getattr(r, "gcal_event_id", None)
     db.delete(r)
     db.flush()
     # If no rounds remain for this job, clear interview_date so calendar is clean
@@ -1045,6 +1092,15 @@ def delete_interview_round(
         if job:
             job.interview_date = None
     db.commit()
+
+    # Remove from Google Calendar if synced
+    if gcal_id and current_user.google_refresh_token:
+        try:
+            token = await _google_get_valid_token(current_user, db)
+            await _gcal_delete_event(token, gcal_id)
+        except Exception:
+            pass
+
     return {"ok": True}
 
 
