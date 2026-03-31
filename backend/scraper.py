@@ -1214,143 +1214,530 @@ async def scrape_weworkremotely() -> List[Dict]:
 
 # ─────────────────────────────────────────────
 # SOURCE: VC Firm Job Boards
-# (a16z, Sequoia, First Round, Greylock,
-#  General Catalyst, Insight Partners)
+# Covers top 50 VC firms via:
+#  1. Getro-powered boards (dynamic ATS discovery)
+#  2. Hardcoded portfolio company lists (300+ companies)
 # ─────────────────────────────────────────────
+
+# ── Getro-powered VC job boards ───────────────────────────────────────────────
+# These VC firms use Getro.com to power their portfolio job boards.
+# We scrape __NEXT_DATA__ from each board to discover portfolio company domains,
+# then hit each company's ATS (Greenhouse / Lever / Ashby) directly.
+GETRO_VC_BOARDS = [
+    ("General Catalyst",  "https://jobs.generalcatalyst.com"),
+    ("Accel",             "https://jobs.accel.com"),
+    ("Khosla Ventures",   "https://jobs.khoslaventures.com"),
+    ("Insight Partners",  "https://jobs.insightpartners.com"),
+    ("True Ventures",     "https://jobs.trueventures.com"),
+    ("Lux Capital",       "https://jobs.luxcapital.com"),
+    ("Thrive Capital",    "https://jobs.thrivecap.com"),
+    ("Redpoint Ventures", "https://careers.redpoint.com"),
+    ("Coatue",            "https://jobs.coatue.com"),
+    ("Madrona",           "https://jobs.madrona.com"),
+    ("Menlo Ventures",    "https://jobs.menlovc.com"),
+    ("Craft Ventures",    "https://jobs.craftventures.com"),
+]
+
+
+def _domain_to_ats_slugs(domain: str) -> list:
+    """
+    Derive candidate ATS board slugs from a company domain.
+    'rippling.com' → ['rippling']
+    'abnormal-security.com' → ['abnormal-security', 'abnormalsecurity']
+    'co-pilot.ai' → ['co-pilot', 'copilot']
+    """
+    base = re.sub(r"^www\.", "", domain.lower())
+    base = re.sub(r"\.[a-z]{2,6}$", "", base)   # strip .com / .io / .ai / .app
+    base = re.sub(r"\.[a-z]{2,6}$", "", base)   # strip second TLD (.co.uk)
+    slugs = [base]
+    if "-" in base:
+        slugs.append(base.replace("-", ""))
+    return slugs
+
+
+# ── Hardcoded portfolio company lists (300+ companies across top 50 VC firms) ──
+# Organized by ATS so we can hit each company's job board directly.
 
 # Companies from top VC portfolios known to use Greenhouse
 GREENHOUSE_COMPANIES_EXTRA = [
-    # a16z portfolio
-    ("coinbase", "Coinbase"), ("stripe", "Stripe"), ("robinhood", "Robinhood"),
-    ("lyft", "Lyft"), ("airbnb", "Airbnb"), ("okta", "Okta"),
-    ("databricks", "Databricks"), ("navan", "Navan"), ("amplitude", "Amplitude"),
-    ("klaviyo", "Klaviyo"), ("checkr", "Checkr"), ("gem", "Gem"),
-    ("mixpanel", "Mixpanel"), ("launchdarkly", "LaunchDarkly"),
-    ("pagerduty", "PagerDuty"), ("front", "Front"),
-    ("ironclad", "Ironclad"), ("benchling", "Benchling"),
-    ("cedar", "Cedar"), ("devoted", "Devoted Health"),
-    ("opentrons", "Opentrons"), ("hadrian", "Hadrian"),
-    ("standard-ai", "Standard AI"), ("genesis-therapeutics", "Genesis Therapeutics"),
-    # Sequoia portfolio
+    # ── a16z ──
+    ("coinbase", "Coinbase"), ("robinhood", "Robinhood"), ("lyft", "Lyft"),
+    ("airbnb", "Airbnb"), ("okta", "Okta"), ("databricks", "Databricks"),
+    ("tripactions", "Navan"), ("amplitude", "Amplitude"), ("klaviyo", "Klaviyo"),
+    ("checkr", "Checkr"), ("gem", "Gem"), ("mixpanel", "Mixpanel"),
+    ("launchdarkly", "LaunchDarkly"), ("pagerduty", "PagerDuty"), ("front", "Front"),
+    ("ironclad", "Ironclad"), ("benchling", "Benchling"), ("cedar", "Cedar"),
+    ("devoted", "Devoted Health"), ("opentrons", "Opentrons"), ("hadrian", "Hadrian"),
+    ("standard-ai", "Standard AI"), ("openphone", "OpenPhone"), ("anduril", "Anduril"),
+    ("dbtlabs", "dbt Labs"), ("stripe", "Stripe"),
+    # ── Sequoia ──
     ("zapier", "Zapier"), ("whoop", "WHOOP"), ("relativity-space", "Relativity Space"),
     ("nubank", "Nubank"), ("klarna", "Klarna"), ("faire", "Faire"),
-    ("dutchie", "Dutchie"), ("openphone", "OpenPhone"), ("zepz", "Zepz"),
-    ("coda", "Coda"), ("airtable", "Airtable"),
-    # First Round portfolio
+    ("dutchie", "Dutchie"), ("zepz", "Zepz"), ("airtable", "Airtable"),
+    ("quora", "Quora"), ("weave", "Weave"), ("tempo", "Tempo"),
+    ("toast", "Toast"), ("carta", "Carta"), ("figma", "Figma"),
+    # ── Greylock ──
+    ("discord", "Discord"), ("roblox", "Roblox"), ("nextdoor", "Nextdoor"),
+    ("abnormal-security", "Abnormal Security"), ("coreweave", "CoreWeave"),
+    ("orca-security", "Orca Security"), ("strongdm", "StrongDM"),
+    ("eightfold", "Eightfold AI"), ("rubrik", "Rubrik"),
+    # ── First Round Capital ──
     ("square", "Square"), ("uber", "Uber"), ("warby-parker", "Warby Parker"),
     ("flatiron-health", "Flatiron Health"), ("classpass", "ClassPass"),
-    # Greylock portfolio
-    ("discord", "Discord"), ("figma", "Figma"), ("roblox", "Roblox"),
-    ("nextdoor", "Nextdoor"), ("pagerduty", "PagerDuty"),
-    # Insight Partners portfolio
-    ("typeform", "Typeform"), ("miro", "Miro"), ("backblaze", "Backblaze"),
-    ("invision", "InVision"), ("pendo", "Pendo"),
-    # General Catalyst portfolio
-    ("hubspot", "HubSpot"), ("snap", "Snap"), ("stripe", "Stripe"),
-    ("liveperson", "LivePerson"), ("gusto", "Gusto"),
-    # Other high-signal startups
-    ("anduril", "Anduril"), ("palantir", "Palantir"), ("scale", "Scale AI"),
-    ("openai", "OpenAI"), ("anthropic", "Anthropic"),
-    ("notion", "Notion"), ("airtable", "Airtable"),
+    ("frameio", "Frame.io"), ("coda", "Coda"),
+    # ── Bessemer Venture Partners ──
+    ("shopify", "Shopify"), ("twilio", "Twilio"), ("sendbird", "SendBird"),
+    ("toast", "Toast"), ("fivetran", "Fivetran"), ("wiz", "Wiz"),
+    ("postman", "Postman"), ("grafana", "Grafana Labs"), ("snyk", "Snyk"),
+    ("harness", "Harness"), ("pendo", "Pendo"), ("intercom", "Intercom"),
+    # ── General Catalyst ──
+    ("hubspot", "HubSpot"), ("snap", "Snap"), ("gusto", "Gusto"),
+    ("liveperson", "LivePerson"), ("samsara", "Samsara"), ("brainware", "Brainware"),
+    ("capsule", "Capsule"), ("commure", "Commure"), ("city-storage-systems", "City Storage"),
+    # ── Insight Partners ──
+    ("miro", "Miro"), ("typeform", "Typeform"), ("invision", "InVision"),
+    ("backblaze", "Backblaze"), ("acronis", "Acronis"), ("veeam", "Veeam"),
+    ("cyberark", "CyberArk"), ("wixcom", "Wix"),
+    # ── Accel ──
+    ("atlassian", "Atlassian"), ("braintree", "Braintree"), ("crowdstrike", "CrowdStrike"),
+    ("qualtrics", "Qualtrics"), ("pluralsight", "Pluralsight"), ("samsara", "Samsara"),
+    ("meta", "Meta"), ("supercell", "Supercell"), ("kayak", "KAYAK"),
+    # ── Lightspeed ──
+    ("snap", "Snap"), ("affirm", "Affirm"), ("taskus", "TaskUs"),
+    ("nutanix", "Nutanix"), ("zscaler", "Zscaler"), ("rubrik", "Rubrik"),
+    ("appian", "Appian"), ("limeade", "Limeade"),
+    # ── CRV (Charles River Ventures) ──
+    ("doordash", "DoorDash"), ("hubspot", "HubSpot"), ("zendesk", "Zendesk"),
+    ("podium", "Podium"), ("rally-health", "Rally Health"), ("bill", "BILL"),
+    # ── NEA ──
+    ("salesforce", "Salesforce"), ("data-robot", "DataRobot"), ("duo-security", "Duo Security"),
+    ("workiva", "Workiva"), ("groupon", "Groupon"), ("freshworks", "Freshworks"),
+    # ── Battery Ventures ──
+    ("glassdoor", "Glassdoor"), ("snaplogic", "SnapLogic"), ("bazaarvoice", "Bazaarvoice"),
+    ("sprinklr", "Sprinklr"), ("talend", "Talend"), ("automox", "Automox"),
+    # ── Index Ventures ──
+    ("slack", "Slack"), ("dropbox", "Dropbox"), ("skyscanner", "Skyscanner"),
+    ("robinhood", "Robinhood"), ("figma", "Figma"), ("notion", "Notion"),
+    ("deliveroo", "Deliveroo"), ("etsy", "Etsy"),
+    # ── Khosla Ventures ──
+    ("square", "Square"), ("opendoor", "Opendoor"), ("poshmark", "Poshmark"),
+    ("joindoc", "Joindoc"), ("tempus", "Tempus"), ("palantir", "Palantir"),
+    # ── Kleiner Perkins ──
+    ("google", "Google"), ("amazon", "Amazon"), ("twitter", "Twitter"),
+    ("uber", "Uber"), ("docusign", "DocuSign"), ("coursera", "Coursera"),
+    ("headspace", "Headspace"), ("desktop-metal", "Desktop Metal"),
+    # ── IVP ──
+    ("twitter", "Twitter"), ("supercell", "Supercell"), ("zendesk", "Zendesk"),
+    ("datadog", "Datadog"), ("coinbase", "Coinbase"), ("github", "GitHub"),
+    ("slack", "Slack"), ("netflix", "Netflix"),
+    # ── Founders Fund ──
+    ("palantir", "Palantir"), ("stripe", "Stripe"), ("spacex", "SpaceX"),
+    ("lyft", "Lyft"), ("airbnb", "Airbnb"),
+    # ── GV (Google Ventures) ──
+    ("uber", "Uber"), ("slack", "Slack"), ("robinhood", "Robinhood"),
+    ("gitlab", "GitLab"), ("nest", "Nest"), ("one-medical", "One Medical"),
+    ("flatiron-health", "Flatiron Health"),
+    # ── Benchmark ──
+    ("twitter", "Twitter"), ("uber", "Uber"), ("snapchat", "Snapchat"),
+    ("yelp", "Yelp"), ("instagram", "Instagram"), ("ebay", "eBay"),
+    # ── Union Square Ventures ──
+    ("twitter", "Twitter"), ("etsy", "Etsy"), ("duolingo", "Duolingo"),
+    ("mongodb", "MongoDB"), ("coinbase", "Coinbase"), ("tumblr", "Tumblr"),
+    # ── Spark Capital ──
+    ("twitter", "Twitter"), ("warby-parker", "Warby Parker"), ("slack", "Slack"),
+    ("vox-media", "Vox Media"), ("plaid", "Plaid"), ("postmates", "Postmates"),
+    # ── Felicis Ventures ──
+    ("notion", "Notion"), ("canva", "Canva"), ("adyen", "Adyen"),
+    ("twitch", "Twitch"), ("shopify", "Shopify"), ("netlify", "Netlify"),
+    # ── Additional high-signal startups ──
+    ("plaid", "Plaid"), ("brex", "Brex"), ("chime", "Chime"),
+    ("duolingo", "Duolingo"), ("canva", "Canva"), ("gitlab", "GitLab"),
+    ("contentful", "Contentful"), ("segment", "Segment"), ("sendgrid", "SendGrid"),
+    ("hashicorp", "HashiCorp"), ("looker", "Looker"), ("calendly", "Calendly"),
+    ("netlify", "Netlify"), ("cloudflare", "Cloudflare"), ("fastly", "Fastly"),
+    ("mongodb", "MongoDB"), ("datadog", "Datadog"), ("confluent", "Confluent"),
+    ("dbt-labs", "dbt Labs"), ("airbyte", "Airbyte"), ("matterport", "Matterport"),
+    ("squarespace", "Squarespace"), ("via-transportation", "Via"),
+    ("adyen", "Adyen"), ("asana", "Asana"), ("webflow", "Webflow"),
+    ("affinity", "Affinity"), ("leandata", "LeanData"),
+    ("watershed", "Watershed"), ("sourcegraph", "Sourcegraph"),
+    ("hightouch", "Hightouch"), ("census", "Census"),
+    # ── NYC-headquartered startups (more likely to have NYC roles) ──
+    ("betterment", "Betterment"), ("oscar-health", "Oscar Health"),
+    ("noom", "Noom"), ("cityblock", "Cityblock Health"),
+    ("clover-health", "Clover Health"), ("kensho", "Kensho"),
+    ("nerdwallet", "NerdWallet"), ("peloton", "Peloton"),
+    ("compass", "Compass"), ("wework", "WeWork"), ("justworks", "Justworks"),
+    ("gilt", "Gilt"), ("knewton", "Knewton"), ("buzzfeed", "BuzzFeed"),
+    ("etsy", "Etsy"), ("kickstarter", "Kickstarter"), ("foursquare", "Foursquare"),
+    ("shutterstock", "Shutterstock"), ("mediamath", "MediaMath"),
+    ("tumblr", "Tumblr"), ("genius", "Genius"), ("seatgeek", "SeatGeek"),
+    ("squarespace", "Squarespace"), ("paperless-post", "Paperless Post"),
+    ("brooklyn-data", "Brooklyn Data Co"), ("ro-health", "Ro Health"),
+    # ── SF / Bay Area startups ──
+    ("notion", "Notion"), ("figma", "Figma"), ("asana", "Asana"),
+    ("mixpanel", "Mixpanel"), ("gusto", "Gusto"), ("lever", "Lever"),
+    ("zenefits", "Zenefits"), ("algolia", "Algolia"), ("sentry", "Sentry"),
+    ("vercel", "Vercel"), ("replit", "Replit"), ("linear", "Linear"),
 ]
 
 # Companies from VC portfolios known to use Ashby
 ASHBY_COMPANIES_EXTRA = [
-    # a16z portfolio
-    ("alchemy", "Alchemy"), ("mux", "Mux"), ("coda", "Coda"),
-    ("substack", "Substack"), ("oxide", "Oxide Computer"),
+    # ── a16z ──
+    ("alchemy", "Alchemy"), ("mux", "Mux"), ("substack", "Substack"),
+    ("oxide", "Oxide Computer"), ("vanta", "Vanta"),
     ("iterative", "Iterative"), ("syndicate", "Syndicate"),
-    ("parabol", "Parabol"), ("vanta", "Vanta"),
-    # Sequoia portfolio
-    ("incident-io", "Incident.io"), ("dbt-labs", "dbt Labs"),
-    ("airbyte", "Airbyte"), ("fivetran", "Fivetran"),
-    ("roboflow", "Roboflow"), ("phlex", "Phlex AI"),
-    # First Round portfolio
-    ("notion", "Notion"), ("lattice", "Lattice"),
-    # Greylock portfolio
+    ("parabol", "Parabol"), ("incident-io", "Incident.io"),
+    # ── Sequoia ──
+    ("airbyte", "Airbyte"), ("roboflow", "Roboflow"),
+    ("dbtlabs", "dbt Labs"), ("plane", "Plane"),
+    ("supabase", "Supabase"), ("linear", "Linear"),
+    # ── Greylock ──
     ("coreweave", "CoreWeave"), ("abnormal-security", "Abnormal Security"),
     ("orca-security", "Orca Security"),
-    # Insight Partners portfolio
+    # ── Insight Partners ──
     ("wiz", "Wiz"), ("postman", "Postman"), ("grafana", "Grafana Labs"),
     ("snyk", "Snyk"), ("harness", "Harness"),
-    # General Catalyst portfolio
-    ("samsara", "Samsara"), ("stripe-climate", "Stripe Climate"),
-    ("hugging-face", "Hugging Face"),
+    # ── General Catalyst ──
+    ("samsara", "Samsara"), ("hugging-face", "Hugging Face"),
+    # ── Bessemer ──
+    ("fivetran", "Fivetran"), ("toast", "Toast"),
+    # ── Additional Ashby users ──
+    ("browserbase", "Browserbase"), ("exa", "Exa"),
+    ("temporal", "Temporal"), ("neon", "Neon"),
+    ("arc", "Arc Browser"), ("zed-industries", "Zed"),
+    ("dagster-labs", "Dagster"), ("prefect", "Prefect"),
+    ("dagger", "Dagger"), ("turso", "Turso"),
+    ("val-town", "Val Town"), ("infisical", "Infisical"),
+    ("trigger", "Trigger.dev"), ("cal", "Cal.com"),
+    ("livekit", "LiveKit"), ("daily", "Daily.co"),
+    ("inngest", "Inngest"), ("apify", "Apify"),
+    ("braintrust-data", "Braintrust"), ("humanloop", "Humanloop"),
+    ("langfuse", "Langfuse"), ("smith-ai", "Smith.ai"),
+    ("elevenlabs", "ElevenLabs"), ("hume", "Hume AI"),
+    ("cartesia", "Cartesia"), ("kyutai", "Kyutai"),
+    ("rime-ai", "Rime AI"), ("lmnt", "LMNT"),
+    # ── NYC Ashby startups ──
+    ("ramp", "Ramp"), ("brex", "Brex"), ("arkwright", "Arkwright"),
+    ("persona", "Persona"), ("plain", "Plain"),
+    ("teal", "Teal"), ("workstream", "Workstream"),
+    # ── General fast-growing startups on Ashby ──
+    ("fly-io", "Fly.io"), ("render", "Render"),
+    ("railway", "Railway"), ("coolify", "Coolify"),
+    ("clerk", "Clerk"), ("stytch", "Stytch"),
+    ("workos", "WorkOS"), ("propelauth", "PropelAuth"),
+    ("kinde", "Kinde"), ("auth0", "Auth0"),
+]
+
+# Companies from VC portfolios known to use Lever
+LEVER_COMPANIES_EXTRA = [
+    # ── a16z ──
+    ("coinbase", "Coinbase"), ("lyft", "Lyft"),
+    # ── Sequoia ──
+    ("stripe", "Stripe"), ("doordash", "DoorDash"),
+    ("instacart", "Instacart"), ("zoom", "Zoom"), ("servicenow", "ServiceNow"),
+    # ── Greylock ──
+    ("pagerduty", "PagerDuty"), ("okta", "Okta"),
+    # ── General Catalyst ──
+    ("airbnb", "Airbnb"), ("hubspot", "HubSpot"),
+    # ── Additional Lever users ──
+    ("gong", "Gong"), ("impact", "Impact.com"),
+    ("jumpcloud", "JumpCloud"), ("patreon", "Patreon"),
+    ("riskified", "Riskified"), ("yotpo", "Yotpo"),
+    ("wrike", "Wrike"), ("walkme", "WalkMe"),
+    ("netlify", "Netlify"), ("uipath", "UiPath"),
+    ("amplitude", "Amplitude"), ("jasper", "Jasper AI"),
+    ("copy-ai", "Copy.ai"), ("writesonic", "Writesonic"),
+    ("anyword", "Anyword"), ("wordtune", "Wordtune"),
+    ("covariant", "Covariant"), ("machina-labs", "Machina Labs"),
+    ("robust-intelligence", "Robust Intelligence"),
+    ("primer", "Primer AI"), ("veritone", "Veritone"),
+    # ── NYC Lever startups ──
+    ("andela", "Andela"), ("cityblock", "Cityblock"),
+    ("zocdoc", "ZocDoc"), ("codecademy", "Codecademy"),
+    ("fubo-tv", "FuboTV"), ("newsela", "Newsela"),
+    ("bravely", "Bravely"), ("movable-ink", "Movable Ink"),
+    ("yext", "Yext"), ("spotify", "Spotify"),
 ]
 
 
 async def scrape_vc_boards() -> List[Dict]:
     """
-    Scrape job boards from top VC firms using their portfolio companies'
-    expanded Greenhouse + Ashby boards, plus direct VC board pages.
+    Scrape job boards from 300+ portfolio companies across the top 50 VC firms.
+    Hits Greenhouse, Lever, and Ashby ATSs for each company.
     """
     jobs = []
+    sem = asyncio.Semaphore(20)
 
-    # ── Expand Greenhouse with VC portfolio companies ────────────────────────
-    extra_gh_companies = [(s, n) for s, n in GREENHOUSE_COMPANIES_EXTRA
-                          if (s, n) not in GREENHOUSE_COMPANIES]
+    # Deduplicate against the base lists
+    gh_set   = set(GREENHOUSE_COMPANIES)
+    ashby_set = set(ASHBY_COMPANIES)
+    lever_set = set(LEVER_COMPANIES)
+
+    extra_gh    = [(s, n) for s, n in GREENHOUSE_COMPANIES_EXTRA if (s, n) not in gh_set]
+    extra_ashby = [(s, n) for s, n in ASHBY_COMPANIES_EXTRA     if (s, n) not in ashby_set]
+    extra_lever = [(s, n) for s, n in LEVER_COMPANIES_EXTRA     if (s, n) not in lever_set]
 
     async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
+
         async def fetch_gh(slug, name):
-            try:
-                resp = await client.get(
-                    f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
-                    timeout=10.0,
-                )
-                if resp.status_code != 200:
-                    return []
-                results = []
-                for job in resp.json().get("jobs", []):
-                    role = job.get("title", "")
-                    location = job.get("location", {}).get("name", "")
-                    url = job.get("absolute_url", "")
-                    content = re.sub(r"<[^>]+>", " ", job.get("content", "") or "")
-                    score, _ = score_job(name, role, location, content)
-                    if score >= 0:
-                        results.append(make_job(name, role, location, url, "VC Portfolio (Greenhouse)", content))
-                return results
-            except Exception:
-                return []
-
-        tasks = [fetch_gh(slug, name) for slug, name in extra_gh_companies]
-        results = await asyncio.gather(*tasks)
-        for r in results:
-            jobs.extend(r)
-
-    # ── Expand Ashby with VC portfolio companies (new REST API) ──────────────
-    extra_ashby = [(s, n) for s, n in ASHBY_COMPANIES_EXTRA
-                   if (s, n) not in ASHBY_COMPANIES]
-
-    async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
-        async def fetch_ashby(slug, name):
-            try:
-                resp = await client.get(
-                    f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
-                    timeout=10.0,
-                )
-                if resp.status_code != 200:
-                    return []
-                results = []
-                for job in resp.json().get("jobs", []):
-                    role     = job.get("title", "")
-                    location = job.get("location", "") or ""
-                    url      = job.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{slug}"
-                    desc     = job.get("descriptionPlain", "") or re.sub(
-                        r"<[^>]+>", " ", job.get("descriptionHtml", "") or ""
+            async with sem:
+                try:
+                    resp = await client.get(
+                        f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
+                        timeout=10.0,
                     )
-                    score, _ = score_job(name, role, location, desc)
-                    if score >= 0:
-                        results.append(make_job(name, role, location, url, "VC Portfolio (Ashby)", desc))
-                return results
-            except Exception:
-                return []
+                    if resp.status_code != 200:
+                        return []
+                    results = []
+                    for job in resp.json().get("jobs", []):
+                        role     = job.get("title", "")
+                        location = job.get("location", {}).get("name", "")
+                        url      = job.get("absolute_url", "")
+                        content  = re.sub(r"<[^>]+>", " ", job.get("content", "") or "")
+                        score, _ = score_job(name, role, location, content)
+                        if score >= 0:
+                            results.append(make_job(name, role, location, url, "VC Portfolio (Greenhouse)", content))
+                    return results
+                except Exception:
+                    return []
 
-        tasks = [fetch_ashby(slug, name) for slug, name in extra_ashby]
-        results = await asyncio.gather(*tasks)
+        async def fetch_ashby(slug, name):
+            async with sem:
+                try:
+                    resp = await client.get(
+                        f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
+                        timeout=10.0,
+                    )
+                    if resp.status_code != 200:
+                        return []
+                    results = []
+                    for job in resp.json().get("jobs", []):
+                        role     = job.get("title", "")
+                        location = job.get("location", "") or ""
+                        url      = job.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{slug}"
+                        desc     = job.get("descriptionPlain", "") or re.sub(
+                            r"<[^>]+>", " ", job.get("descriptionHtml", "") or ""
+                        )
+                        score, _ = score_job(name, role, location, desc)
+                        if score >= 0:
+                            results.append(make_job(name, role, location, url, "VC Portfolio (Ashby)", desc))
+                    return results
+                except Exception:
+                    return []
+
+        async def fetch_lever(slug, name):
+            async with sem:
+                try:
+                    resp = await client.get(
+                        f"https://api.lever.co/v0/postings/{slug}?mode=json",
+                        timeout=10.0,
+                    )
+                    if resp.status_code != 200:
+                        return []
+                    results = []
+                    for job in resp.json():
+                        role     = job.get("text", "")
+                        cats     = job.get("categories", {})
+                        location = cats.get("location", "") or (
+                            cats.get("allLocations", [""])[0] if cats.get("allLocations") else ""
+                        )
+                        url      = job.get("hostedUrl", "")
+                        desc     = job.get("descriptionPlain", "") or re.sub(
+                            r"<[^>]+>", " ", job.get("description", "") or ""
+                        )
+                        score, _ = score_job(name, role, location, desc)
+                        if score >= 0:
+                            results.append(make_job(name, role, location, url, "VC Portfolio (Lever)", desc))
+                    return results
+                except Exception:
+                    return []
+
+        all_tasks = (
+            [fetch_gh(s, n)    for s, n in extra_gh]
+            + [fetch_ashby(s, n) for s, n in extra_ashby]
+            + [fetch_lever(s, n) for s, n in extra_lever]
+        )
+        results = await asyncio.gather(*all_tasks)
         for r in results:
-            jobs.extend(r)
+            if isinstance(r, list):
+                jobs.extend(r)
 
-    print(f"[VC Boards] {len(jobs)} jobs found")
+    print(f"[VC Boards] {len(jobs)} jobs found across {len(extra_gh)} GH + {len(extra_ashby)} Ashby + {len(extra_lever)} Lever companies")
+    return jobs
+
+
+async def scrape_getro_vc_boards() -> List[Dict]:
+    """
+    Dynamically discovers portfolio companies from 12 Getro-powered VC job boards,
+    then hits each company's ATS (Greenhouse / Lever / Ashby) directly.
+
+    Getro boards expose company domains in __NEXT_DATA__ (Next.js SSR).
+    We derive ATS board slugs from each domain and try all three ATSs.
+    """
+    jobs = []
+    company_domains_seen: set = set()
+    all_companies: list = []   # [(company_name, domain, firm_name)]
+
+    sem = asyncio.Semaphore(8)
+
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+
+        # ── Step 1: collect company domains from every Getro board ──────────
+        for firm_name, board_url in GETRO_VC_BOARDS:
+            try:
+                r = await client.get(board_url, timeout=12.0)
+                m = re.search(
+                    r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text, re.DOTALL
+                )
+                if not m:
+                    continue
+                data  = json.loads(m.group(1))
+                state = data.get("props", {}).get("pageProps", {}).get("initialState", {})
+
+                # Primary: companies.found from homepage
+                companies_state = state.get("companies", {})
+                found = list(companies_state.get("found", []))
+
+                # Secondary: network.allCompanies (sometimes has more)
+                all_c = state.get("network", {}).get("allCompanies", [])
+                if all_c:
+                    existing_ids = {c.get("id") for c in found}
+                    for c in all_c:
+                        if c.get("id") not in existing_ids:
+                            found.append(c)
+
+                # Tertiary: try the /companies Next.js data route for extra items
+                build_id = data.get("buildId", "")
+                if build_id:
+                    try:
+                        r2 = await client.get(
+                            f"{board_url}/_next/data/{build_id}/companies.json",
+                            timeout=10.0,
+                        )
+                        if r2.status_code == 200:
+                            companies2 = (
+                                r2.json()
+                                .get("pageProps", {})
+                                .get("initialState", {})
+                                .get("companies", {})
+                            )
+                            existing_ids = {c.get("id") for c in found}
+                            for c in companies2.get("found", []):
+                                if c.get("id") not in existing_ids:
+                                    found.append(c)
+                    except Exception:
+                        pass
+
+                added = 0
+                for company in found:
+                    domain = (company.get("domain") or "").strip().lower()
+                    name   = (company.get("name")   or "").strip()
+                    if domain and name and domain not in company_domains_seen:
+                        company_domains_seen.add(domain)
+                        all_companies.append((name, domain, firm_name))
+                        added += 1
+
+                print(f"[Getro/{firm_name}] {added} new companies")
+
+            except Exception as e:
+                print(f"[Getro/{firm_name}] Error: {e}")
+
+        print(f"[Getro] {len(all_companies)} total unique companies — starting ATS discovery")
+
+        # ── Step 2: for each company, try GH / Lever / Ashby ────────────────
+        async def discover_ats(company_name: str, domain: str, firm_name: str):
+            slugs = _domain_to_ats_slugs(domain)
+            found_jobs = []
+
+            async with sem:
+                for slug in slugs:
+                    # Greenhouse
+                    try:
+                        resp = await client.get(
+                            f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
+                            timeout=8.0,
+                        )
+                        if resp.status_code == 200:
+                            for job in resp.json().get("jobs", []):
+                                role     = job.get("title", "")
+                                location = job.get("location", {}).get("name", "")
+                                url      = job.get("absolute_url", "")
+                                content  = re.sub(r"<[^>]+>", " ", job.get("content", "") or "")
+                                score, _ = score_job(company_name, role, location, content)
+                                if score >= 0:
+                                    found_jobs.append(make_job(
+                                        company_name, role, location, url,
+                                        f"VC Portfolio ({firm_name})", content
+                                    ))
+                            if found_jobs:
+                                return found_jobs
+                    except Exception:
+                        pass
+
+                    # Lever
+                    try:
+                        resp = await client.get(
+                            f"https://api.lever.co/v0/postings/{slug}?mode=json",
+                            timeout=8.0,
+                        )
+                        if resp.status_code == 200 and isinstance(resp.json(), list):
+                            for job in resp.json():
+                                role     = job.get("text", "")
+                                cats     = job.get("categories", {})
+                                location = cats.get("location", "") or (
+                                    cats.get("allLocations", [""])[0]
+                                    if cats.get("allLocations") else ""
+                                )
+                                url  = job.get("hostedUrl", "")
+                                desc = job.get("descriptionPlain", "") or re.sub(
+                                    r"<[^>]+>", " ", job.get("description", "") or ""
+                                )
+                                score, _ = score_job(company_name, role, location, desc)
+                                if score >= 0:
+                                    found_jobs.append(make_job(
+                                        company_name, role, location, url,
+                                        f"VC Portfolio ({firm_name})", desc
+                                    ))
+                            if found_jobs:
+                                return found_jobs
+                    except Exception:
+                        pass
+
+                    # Ashby
+                    try:
+                        resp = await client.get(
+                            f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
+                            timeout=8.0,
+                        )
+                        if resp.status_code == 200:
+                            for job in resp.json().get("jobs", []):
+                                role     = job.get("title", "")
+                                location = job.get("location", "") or ""
+                                url      = job.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{slug}"
+                                desc     = job.get("descriptionPlain", "") or re.sub(
+                                    r"<[^>]+>", " ", job.get("descriptionHtml", "") or ""
+                                )
+                                score, _ = score_job(company_name, role, location, desc)
+                                if score >= 0:
+                                    found_jobs.append(make_job(
+                                        company_name, role, location, url,
+                                        f"VC Portfolio ({firm_name})", desc
+                                    ))
+                            if found_jobs:
+                                return found_jobs
+                    except Exception:
+                        pass
+
+            return found_jobs
+
+        tasks   = [discover_ats(name, domain, firm) for name, domain, firm in all_companies]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, list):
+                jobs.extend(r)
+
+    print(f"[Getro VC Boards] {len(jobs)} jobs found")
     return jobs
 
 
@@ -1749,7 +2136,8 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_himalayas(),
         scrape_weworkremotely(),
         scrape_vc_boards(),
-        scrape_topstartups(),   # dynamic discovery from topstartups.io AI list
+        scrape_getro_vc_boards(),   # dynamic ATS discovery from 12 Getro VC boards
+        scrape_topstartups(),       # dynamic discovery from topstartups.io AI list
         return_exceptions=True,
     )
 
