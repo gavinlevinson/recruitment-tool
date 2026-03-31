@@ -841,36 +841,29 @@ async def scrape_lever() -> List[Dict]:
 # SOURCE 6: Ashby job boards (AI startups)
 # ─────────────────────────────────────────────
 async def scrape_ashby() -> List[Dict]:
-    """Ashby public job board GraphQL API — no auth required."""
+    """
+    Ashby public REST API (replaces broken GraphQL endpoint).
+    GET https://api.ashbyhq.com/posting-api/job-board/{slug}
+    Returns JSON: { jobs: [{id, title, location, jobUrl, descriptionHtml, descriptionPlain, ...}] }
+    """
     jobs = []
-    ASHBY_QUERY = (
-        "query ApiJobBoardWithTeams($organizationHostedJobsPageName: String!) {"
-        "  jobBoard: jobBoardWithTeams(organizationHostedJobsPageName: $organizationHostedJobsPageName) {"
-        "    jobPostings { id title locationName employmentType descriptionHtml }"
-        "  }"
-        "}"
-    )
     async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
         async def fetch_company(slug, name):
             try:
-                resp = await client.post(
-                    "https://jobs.ashbyhq.com/api/non-user-graphql",
-                    json={
-                        "operationName": "ApiJobBoardWithTeams",
-                        "variables": {"organizationHostedJobsPageName": slug},
-                        "query": ASHBY_QUERY,
-                    },
+                resp = await client.get(
+                    f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
                     timeout=10.0,
                 )
                 if resp.status_code != 200:
                     return []
-                postings = resp.json().get("data", {}).get("jobBoard", {}).get("jobPostings", [])
                 results = []
-                for job in (postings or []):
-                    role = job.get("title", "")
-                    location = job.get("locationName", "")
-                    url = f"https://jobs.ashbyhq.com/{slug}/{job.get('id', '')}"
-                    desc = re.sub(r"<[^>]+>", " ", job.get("descriptionHtml", "") or "")
+                for job in resp.json().get("jobs", []):
+                    role     = job.get("title", "")
+                    location = job.get("location", "") or ""
+                    url      = job.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{slug}"
+                    desc     = job.get("descriptionPlain", "") or re.sub(
+                        r"<[^>]+>", " ", job.get("descriptionHtml", "") or ""
+                    )
                     score, _ = score_job(name, role, location, desc)
                     if score >= 0:
                         results.append(make_job(name, role, location, url, "Ashby", desc))
@@ -891,39 +884,51 @@ async def scrape_ashby() -> List[Dict]:
 # SOURCE 7: Workable job boards
 # ─────────────────────────────────────────────
 async def scrape_workable() -> List[Dict]:
-    """Workable public REST API — no auth required for public listings."""
+    """
+    Remotive public API — replaces Workable (Workable's per-company API is gone).
+    Free, no auth required. Returns remote jobs across business/sales/marketing/ops categories.
+    https://remotive.com/api/remote-jobs?category={cat}
+    """
     jobs = []
-    async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
-        async def fetch_company(slug, name):
-            try:
-                resp = await client.get(
-                    f"https://apply.workable.com/api/v3/accounts/{slug}/jobs",
-                    timeout=10.0,
-                )
-                if resp.status_code != 200:
-                    return []
-                results = []
-                for job in resp.json().get("results", []):
-                    role = job.get("title", "")
-                    city = job.get("city", "") or ""
-                    country = job.get("country", "") or ""
-                    location = city if city else country
-                    shortcode = job.get("shortcode", "")
-                    url = f"https://apply.workable.com/{slug}/j/{shortcode}" if shortcode else ""
-                    desc = job.get("description", "") or ""
-                    score, _ = score_job(name, role, location, desc)
-                    if score >= 0:
-                        results.append(make_job(name, role, location, url, "Workable", desc))
-                return results
-            except Exception:
-                return []
-
-        tasks = [fetch_company(slug, name) for slug, name in WORKABLE_COMPANIES]
-        results = await asyncio.gather(*tasks)
-        for r in results:
-            jobs.extend(r)
-
-    print(f"[Workable] {len(jobs)} jobs found")
+    # Categories that map to our target roles
+    categories = [
+        "management-finance",
+        "customer-support",
+        "sales",
+        "marketing",
+        "business",
+        "hr",
+    ]
+    seen = set()
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            for cat in categories:
+                try:
+                    resp = await client.get(
+                        f"https://remotive.com/api/remote-jobs?category={cat}",
+                        timeout=12.0,
+                    )
+                    if resp.status_code != 200:
+                        continue
+                    for job in resp.json().get("jobs", []):
+                        company  = job.get("company_name", "")
+                        role     = job.get("title", "")
+                        location = job.get("candidate_required_location", "Remote") or "Remote"
+                        url      = job.get("url", "")
+                        desc     = re.sub(r"<[^>]+>", " ", job.get("description", "") or "")
+                        posted   = (job.get("publication_date") or "")[:10]
+                        if company and role:
+                            key = f"{company.lower()}|{role.lower()}"
+                            if key not in seen:
+                                seen.add(key)
+                                score, _ = score_job(company, role, location, desc)
+                                if score >= 0:
+                                    jobs.append(make_job(company, role, location, url, "Remotive", desc, posted))
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"[Remotive] Error: {e}")
+    print(f"[Remotive] {len(jobs)} jobs found")
     return jobs
 
 
@@ -931,60 +936,48 @@ async def scrape_workable() -> List[Dict]:
 # SOURCE 8: Wellfound (AngelList)
 # ─────────────────────────────────────────────
 async def scrape_wellfound() -> List[Dict]:
-    """Wellfound startup jobs — scrape search result pages."""
+    """
+    Wellfound is now blocked (403 Cloudflare). Replaced with Jobicy — a remote
+    job board with a free public JSON API. Targets ops/strategy/business/growth roles.
+    https://jobicy.com/api/v2/remote-jobs?count=50&industry=business-management
+    """
     jobs = []
-    search_urls = [
-        "https://wellfound.com/role/l/new-york-city/operations",
-        "https://wellfound.com/role/l/new-york-city/product-manager",
-        "https://wellfound.com/role/l/san-francisco/operations",
-        "https://wellfound.com/role/l/san-francisco/product-manager",
-        "https://wellfound.com/role/l/new-york-city/business-development",
-        "https://wellfound.com/role/l/san-francisco/strategy",
-    ]
+    industries = ["business-management", "sales", "marketing", "customer-success"]
+    seen = set()
     try:
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
-            for url in search_urls:
+            for industry in industries:
                 try:
-                    resp = await client.get(url)
-                    html = resp.text
-                    # Extract JSON-LD job postings
-                    for ld_str in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.DOTALL):
-                        try:
-                            data = json.loads(ld_str)
-                            items = data if isinstance(data, list) else [data]
-                            for item in items:
-                                if item.get("@type") == "JobPosting":
-                                    role = item.get("title", "")
-                                    company = item.get("hiringOrganization", {}).get("name", "")
-                                    loc = item.get("jobLocation", {})
-                                    location = loc.get("address", {}).get("addressLocality", "") if isinstance(loc, dict) else str(loc)
-                                    desc = re.sub(r"<[^>]+>", " ", item.get("description", "") or "")
-                                    job_url = item.get("url", url)
-                                    if company and role:
-                                        jobs.append(make_job(company, role, location, job_url, "Wellfound", desc[:500]))
-                        except Exception:
-                            pass
-                    # Also look for next-data JSON
-                    nd_match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
-                    if nd_match:
-                        try:
-                            nd = json.loads(nd_match.group(1))
-                            roles = nd.get("props", {}).get("pageProps", {}).get("roles", [])
-                            for r in roles:
-                                role = r.get("title", "")
-                                company = r.get("startup", {}).get("name", "") if isinstance(r.get("startup"), dict) else ""
-                                location = r.get("locationNames", [""])[0] if r.get("locationNames") else ""
-                                job_url = "https://wellfound.com" + r.get("slug", "")
-                                if company and role:
-                                    jobs.append(make_job(company, role, location, job_url, "Wellfound"))
-                        except Exception:
-                            pass
+                    resp = await client.get(
+                        f"https://jobicy.com/api/v2/remote-jobs?count=50&industry={industry}",
+                        timeout=12.0,
+                    )
+                    if resp.status_code != 200:
+                        continue
+                    data = resp.json()
+                    for job in data.get("jobs", []):
+                        company  = job.get("companyName", "")
+                        role     = job.get("jobTitle", "")
+                        location = job.get("jobGeo", "Remote") or "Remote"
+                        url      = job.get("url", "")
+                        desc     = re.sub(r"<[^>]+>", " ", job.get("jobDescription", "") or "")
+                        posted   = (job.get("pubDate") or "")[:10]
+                        if company and role:
+                            key = f"{company.lower()}|{role.lower()}"
+                            if key not in seen:
+                                seen.add(key)
+                                score, _ = score_job(company, role, location, desc)
+                                if score >= 0:
+                                    jobs.append(make_job(company, role, location, url, "Jobicy", desc, posted))
                 except Exception:
                     pass
     except Exception as e:
-        print(f"[Wellfound] Error: {e}")
-    print(f"[Wellfound] {len(jobs)} jobs found")
+        print(f"[Jobicy] Error: {e}")
+    print(f"[Jobicy] {len(jobs)} jobs found")
     return jobs
+
+
+# Wellfound is blocked (403 Cloudflare) — removed, replaced by scrape_wellfound() above
 
 
 # ─────────────────────────────────────────────
@@ -992,45 +985,124 @@ async def scrape_wellfound() -> List[Dict]:
 # ─────────────────────────────────────────────
 async def scrape_yc_startup_jobs() -> List[Dict]:
     """
-    YC Work at a Startup public API — all YC-backed companies posting jobs.
-    Filters by ops/BD/management/marketing role types.
+    YC company API (api.ycombinator.com) + Greenhouse/Ashby/Lever discovery.
+    The old workatastartup.com/companies/fetch API now returns HTML (auth-gated).
+    New approach: fetch recent YC batches, discover each company's ATS board,
+    scrape ops/BD/strategy/growth jobs directly.
     """
     jobs = []
-    role_codes = "OP%2CBD%2CMG%2CMK%2CSA"  # Operations, BD, Management, Marketing, Sales
-    urls = [
-        f"https://www.workatastartup.com/companies/fetch?q=&batch=&industry=&subindustry=&regions=&company_size=&roles={role_codes}&remote=false&order_by=relevance&nonprofit=false",
-        f"https://www.workatastartup.com/companies/fetch?q=&batch=&industry=&subindustry=&regions=&company_size=&roles={role_codes}&remote=true&order_by=relevance&nonprofit=false",
-    ]
+    seen_slugs: dict = {}  # ats_type → set of slugs already queried
+
+    GH_RE    = re.compile(r'boards?\.greenhouse\.io/(?:embed/job_board\?for=)?([A-Za-z0-9_\-]+)', re.IGNORECASE)
+    ASHBY_RE = re.compile(r'jobs\.ashbyhq\.com/([A-Za-z0-9_.\-]+)', re.IGNORECASE)
+    LEVER_RE = re.compile(r'jobs\.lever\.co/([A-Za-z0-9_\-]+)', re.IGNORECASE)
+
+    # Already-known slugs from hardcoded lists — skip to avoid duplicates
+    known_gh    = {s.lower() for s, _ in GREENHOUSE_COMPANIES}
+    known_ashby = {s.lower() for s, _ in ASHBY_COMPANIES}
+    known_lever = {s.lower() for s, _ in LEVER_COMPANIES}
+
     try:
-        async with httpx.AsyncClient(timeout=25.0, follow_redirects=True, headers={
-            **HEADERS,
-            "Accept": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-            "Referer": "https://www.workatastartup.com/jobs",
-        }) as client:
-            for url in urls:
+        async with httpx.AsyncClient(timeout=25.0, follow_redirects=True, headers=HEADERS) as client:
+            # Fetch recent YC batches
+            batches = ["W25", "S24", "W24", "S23", "W23"]
+            batch_param = "&".join(f"batch={b}" for b in batches)
+            resp = await client.get(
+                f"https://api.ycombinator.com/v0.1/companies?{batch_param}&page=1",
+                timeout=15.0,
+            )
+            if resp.status_code != 200:
+                print(f"[YC Jobs] API returned {resp.status_code}")
+                return jobs
+
+            companies = resp.json().get("companies", [])
+
+            # For each company, try to find their ATS from their website
+            async def find_and_scrape(co: dict):
+                name    = co.get("name", "")
+                website = co.get("website", "")
+                if not name or not website:
+                    return []
+                results = []
                 try:
-                    resp = await client.get(url)
-                    if resp.status_code != 200:
-                        continue
-                    data = resp.json()
-                    for co in data.get("companies", []):
-                        name = co.get("name", "")
-                        for job in co.get("jobs", []):
-                            role = job.get("title", "")
-                            location = job.get("location", "") or ""
-                            desc = (job.get("description", "") or "")
-                            desc = re.sub(r"<[^>]+>", " ", desc)
-                            job_id = job.get("id", "")
-                            job_url = f"https://www.workatastartup.com/jobs/{job_id}" if job_id else ""
-                            if name and role:
-                                score, _ = score_job(name, role, location, desc)
-                                if score >= 0:
-                                    jobs.append(make_job(name, role, location, job_url, "YC Work at a Startup", desc))
-                except Exception as e:
-                    print(f"[YC Jobs] URL error: {e}")
+                    # Try common career page paths
+                    for path in ["/careers", "/jobs", "/about/careers"]:
+                        try:
+                            r = await client.get(website.rstrip("/") + path, timeout=8.0)
+                            if r.status_code != 200:
+                                continue
+                            html = r.text
+                            # Check for Greenhouse
+                            m = GH_RE.search(html)
+                            if m:
+                                slug = m.group(1).rstrip("/")
+                                if slug.lower() not in known_gh:
+                                    gr = await client.get(
+                                        f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
+                                        timeout=8.0,
+                                    )
+                                    if gr.status_code == 200:
+                                        for j in gr.json().get("jobs", []):
+                                            role = j.get("title", "")
+                                            loc  = j.get("location", {}).get("name", "")
+                                            url  = j.get("absolute_url", "")
+                                            desc = re.sub(r"<[^>]+>", " ", j.get("content", "") or "")
+                                            results.append(make_job(name, role, loc, url, "YC Jobs", desc))
+                                break
+                            # Check for Ashby
+                            m = ASHBY_RE.search(html)
+                            if m:
+                                slug = m.group(1).rstrip("/").split("?")[0]
+                                if slug.lower() not in known_ashby:
+                                    ar = await client.get(
+                                        f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
+                                        timeout=8.0,
+                                    )
+                                    if ar.status_code == 200:
+                                        for j in ar.json().get("jobs", []):
+                                            role = j.get("title", "")
+                                            loc  = j.get("location", "") or ""
+                                            url  = j.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{slug}"
+                                            desc = j.get("descriptionPlain", "") or ""
+                                            results.append(make_job(name, role, loc, url, "YC Jobs", desc))
+                                break
+                            # Check for Lever
+                            m = LEVER_RE.search(html)
+                            if m:
+                                slug = m.group(1).rstrip("/")
+                                if slug.lower() not in known_lever:
+                                    lr = await client.get(
+                                        f"https://api.lever.co/v0/postings/{slug}?mode=json",
+                                        timeout=8.0,
+                                    )
+                                    if lr.status_code == 200:
+                                        for p in lr.json():
+                                            role = p.get("text", "")
+                                            loc  = p.get("categories", {}).get("location", "")
+                                            url  = p.get("hostedUrl", "")
+                                            desc = p.get("descriptionPlain", "") or ""
+                                            results.append(make_job(name, role, loc, url, "YC Jobs", desc))
+                                break
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+                return results
+
+            # Limit concurrency to avoid overwhelming external APIs
+            sem = asyncio.Semaphore(10)
+            async def guarded(co):
+                async with sem:
+                    return await find_and_scrape(co)
+
+            all_results = await asyncio.gather(*[guarded(co) for co in companies], return_exceptions=True)
+            for r in all_results:
+                if isinstance(r, list):
+                    jobs.extend(r)
+
     except Exception as e:
         print(f"[YC Jobs] Error: {e}")
+
     print(f"[YC Jobs] {len(jobs)} jobs found")
     return jobs
 
@@ -1053,28 +1125,44 @@ async def scrape_himalayas() -> List[Dict]:
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
             for q in queries:
                 try:
+                    # Himalayas moved their API — use the search page and extract
+                    # JSON-LD job postings from the HTML
                     resp = await client.get(
-                        "https://himalayas.app/api/jobs",
-                        params={"search": q, "limit": 50},
+                        "https://himalayas.app/jobs",
+                        params={"q": q},
                         timeout=12.0,
                     )
                     if resp.status_code != 200:
                         continue
-                    data = resp.json()
-                    for job in data.get("jobs", []):
-                        role    = job.get("title", "")
-                        company = (job.get("company") or {}).get("name", "") or job.get("companyName", "")
-                        locs    = job.get("locationRestrictions") or []
-                        location = locs[0] if locs else "Remote"
-                        url     = job.get("url", "") or job.get("applicationUrl", "")
-                        desc    = re.sub(r"<[^>]+>", " ", job.get("description", "") or "")
-                        if company and role:
-                            key = f"{company.lower()}|{role.lower()}"
-                            if key not in seen:
-                                seen.add(key)
-                                score, _ = score_job(company, role, location, desc)
-                                if score >= 0:
-                                    jobs.append(make_job(company, role, location, url, "Himalayas", desc))
+                    html = resp.text
+                    # Extract JSON-LD JobPosting schema blocks
+                    for ld_str in re.findall(
+                        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+                        html, re.DOTALL
+                    ):
+                        try:
+                            ld = json.loads(ld_str)
+                            items = ld if isinstance(ld, list) else [ld]
+                            for item in items:
+                                if item.get("@type") != "JobPosting":
+                                    continue
+                                role    = item.get("title", "")
+                                company = (item.get("hiringOrganization") or {}).get("name", "")
+                                loc_obj = item.get("jobLocation") or {}
+                                if isinstance(loc_obj, list):
+                                    loc_obj = loc_obj[0] if loc_obj else {}
+                                location = (loc_obj.get("address") or {}).get("addressLocality", "Remote")
+                                url      = item.get("url", "")
+                                desc     = re.sub(r"<[^>]+>", " ", item.get("description", "") or "")
+                                if company and role:
+                                    key = f"{company.lower()}|{role.lower()}"
+                                    if key not in seen:
+                                        seen.add(key)
+                                        score, _ = score_job(company, role, location, desc)
+                                        if score >= 0:
+                                            jobs.append(make_job(company, role, location, url, "Himalayas", desc))
+                        except Exception:
+                            pass
                 except Exception:
                     pass
     except Exception as e:
@@ -1093,8 +1181,12 @@ async def scrape_weworkremotely() -> List[Dict]:
     """
     jobs = []
     feeds = [
-        "https://weworkremotely.com/categories/remote-business-management-jobs.rss",
+        # Updated slugs — old ones (remote-business-management-jobs, remote-product-jobs)
+        # now return 301 with empty bodies. Current valid slugs from WWR's own homepage:
+        "https://weworkremotely.com/categories/remote-management-and-finance-jobs.rss",
+        "https://weworkremotely.com/categories/remote-sales-and-marketing-jobs.rss",
         "https://weworkremotely.com/categories/remote-product-jobs.rss",
+        "https://weworkremotely.com/categories/remote-customer-support-jobs.rss",
     ]
     seen = set()
     try:
@@ -1239,38 +1331,27 @@ async def scrape_vc_boards() -> List[Dict]:
         for r in results:
             jobs.extend(r)
 
-    # ── Expand Ashby with VC portfolio companies ─────────────────────────────
-    ASHBY_QUERY = (
-        "query ApiJobBoardWithTeams($organizationHostedJobsPageName: String!) {"
-        "  jobBoard: jobBoardWithTeams(organizationHostedJobsPageName: $organizationHostedJobsPageName) {"
-        "    jobPostings { id title locationName employmentType descriptionHtml }"
-        "  }"
-        "}"
-    )
+    # ── Expand Ashby with VC portfolio companies (new REST API) ──────────────
     extra_ashby = [(s, n) for s, n in ASHBY_COMPANIES_EXTRA
                    if (s, n) not in ASHBY_COMPANIES]
 
     async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
         async def fetch_ashby(slug, name):
             try:
-                resp = await client.post(
-                    "https://jobs.ashbyhq.com/api/non-user-graphql",
-                    json={
-                        "operationName": "ApiJobBoardWithTeams",
-                        "variables": {"organizationHostedJobsPageName": slug},
-                        "query": ASHBY_QUERY,
-                    },
+                resp = await client.get(
+                    f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
                     timeout=10.0,
                 )
                 if resp.status_code != 200:
                     return []
-                postings = resp.json().get("data", {}).get("jobBoard", {}).get("jobPostings", [])
                 results = []
-                for job in (postings or []):
-                    role = job.get("title", "")
-                    location = job.get("locationName", "")
-                    url = f"https://jobs.ashbyhq.com/{slug}/{job.get('id', '')}"
-                    desc = re.sub(r"<[^>]+>", " ", job.get("descriptionHtml", "") or "")
+                for job in resp.json().get("jobs", []):
+                    role     = job.get("title", "")
+                    location = job.get("location", "") or ""
+                    url      = job.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{slug}"
+                    desc     = job.get("descriptionPlain", "") or re.sub(
+                        r"<[^>]+>", " ", job.get("descriptionHtml", "") or ""
+                    )
                     score, _ = score_job(name, role, location, desc)
                     if score >= 0:
                         results.append(make_job(name, role, location, url, "VC Portfolio (Ashby)", desc))
@@ -1487,10 +1568,9 @@ async def scrape_topstartups() -> List[Dict]:
                     # Scan for direct ATS links on the topstartups.io page itself
                     _scan_for_ats(html, "", "TopStartups")
 
-                    # Also collect external company career/jobs URLs for Pass 2.
-                    # topstartups.io links companies with hrefs that include their
-                    # site URL — we pick up anything that looks like a company
-                    # career or jobs page (not already an ATS, not a skip domain).
+                    # Collect external company URLs for Pass 2.
+                    # topstartups.io links to company homepages with ?utm_source=topstartups.io
+                    # We collect those homepages and also any direct /careers or /jobs paths.
                     for href in re.findall(r'href=["\']([^"\']{15,})["\']', html):
                         if not href.startswith("http"):
                             continue
@@ -1507,15 +1587,25 @@ async def scrape_topstartups() -> List[Dict]:
                                 continue
                         except Exception:
                             continue
-                        # Only follow URLs that look like career/jobs pages
+
                         href_lower = href.lower().split('?')[0]
+                        company_name = _extract_company_name(html, href)
+
+                        # Direct career/jobs page — follow as-is
                         if any(kw in href_lower for kw in [
                             "/careers", "/jobs", "/work-with-us", "/join",
                             "/join-us", "/open-positions", "/opportunities",
                         ]):
-                            company_name = _extract_company_name(html, href)
                             if href not in career_pages:
                                 career_pages[href] = company_name
+
+                        # Company homepage (utm_source link) — queue /careers and /jobs variants
+                        elif "utm_source=topstartups" in href.lower():
+                            base = re.sub(r'\?.*', '', href).rstrip('/')
+                            for path in ["/careers", "/jobs"]:
+                                url_to_try = base + path
+                                if url_to_try not in career_pages:
+                                    career_pages[url_to_try] = company_name
 
                     await asyncio.sleep(0.3)
                 except Exception as e:
@@ -1577,25 +1667,21 @@ async def scrape_topstartups() -> List[Dict]:
 
         async def fetch_ashby(slug, name_hint):
             try:
-                r = await client.post(
-                    "https://jobs.ashbyhq.com/api/non-user-graphql",
-                    json={"operationName": "ApiJobBoardWithTeams",
-                          "variables": {"organizationHostedJobsPageName": slug},
-                          "query": ASHBY_Q},
+                slug = slug.split("?")[0].rstrip("/")
+                r = await client.get(
+                    f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
                     timeout=10.0,
                 )
                 if r.status_code != 200:
                     return []
-                board = r.json().get("data", {}).get("jobBoard", {}) or {}
-                name  = (board.get("organization", {}) or {}).get("name", "") or name_hint
                 return [
                     make_job(
-                        name, j.get("title", ""), j.get("locationName", ""),
-                        f"https://jobs.ashbyhq.com/{slug}/{j.get('id', '')}",
+                        name_hint, j.get("title", ""), j.get("location", "") or "",
+                        j.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{slug}",
                         "TopStartups (Ashby)",
-                        re.sub(r"<[^>]+>", " ", j.get("descriptionHtml", "") or ""),
+                        j.get("descriptionPlain", "") or re.sub(r"<[^>]+>", " ", j.get("descriptionHtml", "") or ""),
                     )
-                    for j in (board.get("jobPostings") or [])
+                    for j in r.json().get("jobs", [])
                 ]
             except Exception:
                 return []
