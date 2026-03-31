@@ -1801,13 +1801,13 @@ def get_new_today_jobs(db: Session = Depends(get_db)):
         .limit(2000)
         .all()
     )
-    # Deduplicate by company AND cap at 15 jobs per source for diversity
-    seen_companies = set()
+    # Cap at 20 jobs per source for diversity (no company dedup — show all roles)
+    seen_job_keys = set()
     source_counts: dict = {}
-    unique = []
+    result = []
     for j in jobs:
-        company_key = (j.company or "").lower().strip()
-        if not company_key or company_key in seen_companies:
+        job_key = f"{(j.company or '').lower().strip()}|{(j.role or '').lower().strip()}"
+        if not job_key or job_key in seen_job_keys:
             continue
         # Normalize source to broad category for capping
         src = (j.source or "").lower()
@@ -1822,12 +1822,12 @@ def get_new_today_jobs(db: Session = Depends(get_db)):
             src_key = "forbes"
         else:
             src_key = src[:30]
-        if source_counts.get(src_key, 0) >= 15:
+        if source_counts.get(src_key, 0) >= 20:
             continue
-        seen_companies.add(company_key)
+        seen_job_keys.add(job_key)
         source_counts[src_key] = source_counts.get(src_key, 0) + 1
-        unique.append(discovered_to_dict(j))
-    return {"jobs": unique, "count": len(unique)}
+        result.append(discovered_to_dict(j))
+    return {"jobs": result, "count": len(result)}
 
 
 @app.get("/api/company-summary")

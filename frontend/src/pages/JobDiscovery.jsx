@@ -1723,7 +1723,7 @@ export default function JobDiscovery() {
                 {newTodayJobs.length}
               </span>
               <span className="text-sm font-semibold text-sky-800">
-                New companies added today
+                New jobs found today
               </span>
               {newTodayExpanded
                 ? <ChevronUp size={15} className="text-sky-500" />
