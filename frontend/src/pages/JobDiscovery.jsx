@@ -77,6 +77,7 @@ const ROLE_CHIP_KEYWORDS = {
   'Strategy':    ['strategy', 'strategic', 'chief of staff', 'special projects', 'consulting', 'corporate development', 'corp dev'],
   'Research':    ['research', 'analyst', 'data analyst', 'market research', 'policy', 'insights', 'intelligence', 'scientist'],
   'Growth':      ['growth', 'marketing', 'go-to-market', 'gtm', 'product marketing', 'demand gen', 'content', 'acquisition', 'seo', 'performance marketing'],
+  'Undefined':   ['__undefined__'],  // sentinel — backend handles specially
 }
 
 function getSourceMeta(source) {
@@ -889,8 +890,19 @@ function PreferencesPanel({ open, onClose, preferences, onSave }) {
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
           {/* Location */}
           <div>
-            <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide mb-1">Location</p>
-            <p className="text-xs text-navy-400 mb-3">Select your preferred cities</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide">Location</p>
+              {local.locations.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setLocal(prev => ({ ...prev, locations: [] }))}
+                  className="text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors"
+                >
+                  Show All
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-navy-400 mb-3">Select your preferred cities, or show all</p>
             <div className="space-y-2">
               {ALL_LOCATIONS.map(loc => (
                 <CheckOption
@@ -1002,20 +1014,46 @@ function PreferencesPanel({ open, onClose, preferences, onSave }) {
 
           {/* Role Type */}
           <div>
-            <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide mb-1">Role Type</p>
-            <p className="text-xs text-navy-400 mb-3">Filter by role category (uncheck all = show all)</p>
-            <div className="space-y-2">
-              {['Engineering', 'Revenue', 'Operations', 'Strategy', 'Research', 'Growth'].map(role => {
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide">Role Type</p>
+              {(() => {
+                const ALL_ROLE_TYPES = ['Engineering', 'Revenue', 'Operations', 'Strategy', 'Research', 'Growth', 'Undefined']
                 const roleArr = local.preferred_roles === null
-                  ? ['Engineering', 'Revenue', 'Operations', 'Strategy', 'Research', 'Growth']
+                  ? ALL_ROLE_TYPES
                   : (local.preferred_roles || [])
-                const ALL_ROLES = ['Engineering', 'Revenue', 'Operations', 'Strategy', 'Research', 'Growth']
+                const allOn = roleArr.length === ALL_ROLE_TYPES.length
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setLocal(prev => ({
+                      ...prev,
+                      preferred_roles: allOn ? [] : null,
+                    }))}
+                    className="text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors"
+                  >
+                    {allOn ? 'Deselect All' : 'Select All'}
+                  </button>
+                )
+              })()}
+            </div>
+            <p className="text-xs text-navy-400 mb-3">Filter by role category (deselect all = show all)</p>
+            <div className="space-y-2">
+              {['Engineering', 'Revenue', 'Operations', 'Strategy', 'Research', 'Growth', 'Undefined'].map(role => {
+                const ALL_ROLE_TYPES = ['Engineering', 'Revenue', 'Operations', 'Strategy', 'Research', 'Growth', 'Undefined']
+                const roleArr = local.preferred_roles === null
+                  ? ALL_ROLE_TYPES
+                  : (local.preferred_roles || [])
                 const toggleRole = () => {
                   const next = roleArr.includes(role) ? roleArr.filter(r => r !== role) : [...roleArr, role]
-                  setLocal(prev => ({ ...prev, preferred_roles: next.length === ALL_ROLES.length ? null : next }))
+                  setLocal(prev => ({ ...prev, preferred_roles: next.length === ALL_ROLE_TYPES.length ? null : next }))
                 }
                 return (
-                  <CheckOption key={role} label={role} checked={roleArr.includes(role)} onChange={toggleRole} />
+                  <CheckOption
+                    key={role}
+                    label={role === 'Undefined' ? 'Undefined (other roles)' : role}
+                    checked={roleArr.includes(role)}
+                    onChange={toggleRole}
+                  />
                 )
               })}
             </div>
@@ -1372,12 +1410,18 @@ export default function JobDiscovery() {
       if (curSearch) params.search = curSearch
       if (curRole && curRole.length > 0) {
         // Chip selection overrides saved preference
-        const expandedKeywords = curRole.flatMap(r => ROLE_CHIP_KEYWORDS[r] || [r])
-        params.role_filter = expandedKeywords.join(',')
+        const hasUndefined = curRole.includes('Undefined')
+        const definedRoles = curRole.filter(r => r !== 'Undefined')
+        const expandedKeywords = definedRoles.flatMap(r => ROLE_CHIP_KEYWORDS[r] || [r])
+        if (expandedKeywords.length > 0) params.role_filter = expandedKeywords.join(',')
+        if (hasUndefined) params.include_undefined_roles = true
       } else if (curPrefs.preferred_roles && curPrefs.preferred_roles.length > 0) {
         // Fall back to saved preferred_roles when no chips selected
-        const expandedKeywords = curPrefs.preferred_roles.flatMap(r => ROLE_CHIP_KEYWORDS[r] || [r])
-        params.role_filter = expandedKeywords.join(',')
+        const hasUndefined = curPrefs.preferred_roles.includes('Undefined')
+        const definedRoles = curPrefs.preferred_roles.filter(r => r !== 'Undefined')
+        const expandedKeywords = definedRoles.flatMap(r => ROLE_CHIP_KEYWORDS[r] || [r])
+        if (expandedKeywords.length > 0) params.role_filter = expandedKeywords.join(',')
+        if (hasUndefined) params.include_undefined_roles = true
       }
       if (curPrefs.preferred_work_types && curPrefs.preferred_work_types !== null) {
         params.work_type = curPrefs.preferred_work_types.join(',')

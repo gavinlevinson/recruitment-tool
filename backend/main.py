@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from typing import Optional, List
 from pydantic import BaseModel
 from datetime import datetime
@@ -1293,6 +1293,7 @@ def get_discovered_jobs(
     employee_range: Optional[str] = None,  # comma-separated e.g. "1-50,50-200"
     location_filter: Optional[str] = None,
     role_filter: Optional[str] = None,     # filter by role type keyword
+    include_undefined_roles: bool = False,
     work_type: Optional[str] = None,       # comma-separated: "Remote,Hybrid,In-Office"
     years_experience: Optional[str] = None,  # "0+","1-2","3-5","5-10","10+"
     company_filter: Optional[str] = None,    # exact company name for popup
@@ -1323,11 +1324,34 @@ def get_discovered_jobs(
         ranges = [r.strip() for r in employee_range.split(",")]
         # Strict: only show jobs with a known matching employee count
         q = q.filter(DiscoveredJob.employee_count.in_(ranges))
-    if role_filter:
-        # role_filter is comma-separated keywords; OR-match any keyword in the role title
-        keywords = [kw.strip() for kw in role_filter.split(",") if kw.strip()]
-        if keywords:
-            q = q.filter(or_(*[DiscoveredJob.role.ilike(f"%{kw}%") for kw in keywords]))
+    if role_filter or include_undefined_roles:
+        all_category_keywords = [
+            'engineer', 'developer', 'software', 'devops', 'swe', 'machine learning', 'technical',
+            'infrastructure', 'data engineer', 'backend', 'frontend', 'fullstack', 'full stack',
+            'qa ', 'quality assurance', 'sales', 'account executive', 'revenue', 'business development',
+            'partnerships', 'customer success', 'account manager', ' bd ', 'closing', ' ae ', 'csm',
+            'alliances', 'operations', ' ops', 'bizops', 'biz ops', 'revops', 'special projects',
+            'chief of staff', 'program manager', 'implementation', 'logistics', 'project manager',
+            'process', 'launch', 'strategy', 'strategic', 'corporate development', 'corp dev',
+            'consulting', 'investment', 'due diligence', 'finance', 'associate', 'research', 'analyst',
+            'data analyst', 'market research', 'policy', 'insights', 'intelligence', 'scientist',
+            'data science', 'growth', 'marketing', 'go-to-market', 'gtm', 'product marketing',
+            'demand gen', 'content', 'acquisition', 'seo', 'performance marketing', 'brand',
+        ]
+        if role_filter and include_undefined_roles:
+            # Show keyword-matching roles OR roles that match no category keyword
+            keywords = [kw.strip() for kw in role_filter.split(",") if kw.strip()]
+            defined_conditions = [DiscoveredJob.role.ilike(f"%{kw}%") for kw in keywords]
+            undefined_conditions = [~DiscoveredJob.role.ilike(f"%{kw}%") for kw in all_category_keywords]
+            q = q.filter(or_(or_(*defined_conditions), and_(*undefined_conditions)))
+        elif role_filter:
+            keywords = [kw.strip() for kw in role_filter.split(",") if kw.strip()]
+            if keywords:
+                q = q.filter(or_(*[DiscoveredJob.role.ilike(f"%{kw}%") for kw in keywords]))
+        elif include_undefined_roles:
+            # Only show roles matching no known category keyword
+            undefined_conditions = [~DiscoveredJob.role.ilike(f"%{kw}%") for kw in all_category_keywords]
+            q = q.filter(and_(*undefined_conditions))
     if work_type:
         types = [t.strip().lower() for t in work_type.split(",") if t.strip()]
         wt_conditions = []
@@ -1550,7 +1574,7 @@ ROLE_CATEGORIES = {
 }
 
 def classify_role(role: str, description: str = "") -> str:
-    """Return the best-matching folder category for a job, or 'Unfiled'."""
+    """Return the best-matching folder category for a job, or 'Undefined'."""
     title = (role or "").lower()
     desc = (description or "").lower()[:800]
     best_cat = None
@@ -1565,7 +1589,7 @@ def classify_role(role: str, description: str = "") -> str:
         if score > best_score:
             best_score = score
             best_cat = category
-    return best_cat if best_score > 0 else "Unfiled"
+    return best_cat if best_score > 0 else "Undefined"
 
 
 @app.post("/api/discovered-jobs/{job_id}/add-to-tracker")

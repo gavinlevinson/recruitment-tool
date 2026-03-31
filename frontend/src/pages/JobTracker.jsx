@@ -165,7 +165,7 @@ function JobModal({ isOpen, onClose, onSave, initialData }) {
               <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">Folder</label>
               <div className="relative">
                 <select className="input appearance-none pr-8" value={form.folder || ''} onChange={e => set('folder', e.target.value)}>
-                  <option value="">Unfiled</option>
+                  <option value="">Undefined</option>
                   {ROLE_FOLDERS.map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-navy-400 pointer-events-none" />
