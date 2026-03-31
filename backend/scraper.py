@@ -939,10 +939,10 @@ async def scrape_wellfound() -> List[Dict]:
     """
     Wellfound is now blocked (403 Cloudflare). Replaced with Jobicy — a remote
     job board with a free public JSON API. Targets ops/strategy/business/growth roles.
-    https://jobicy.com/api/v2/remote-jobs?count=50&industry=business-management
+    Valid industry slugs: business, sales, marketing, hr (no hyphens, no 'customer-success')
     """
     jobs = []
-    industries = ["business-management", "sales", "marketing", "customer-success"]
+    industries = ["business", "sales", "marketing", "hr"]
     seen = set()
     try:
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
@@ -1108,66 +1108,52 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
 
 
 # ─────────────────────────────────────────────
-# SOURCE: Himalayas (remote startup jobs)
+# SOURCE: Arbeitnow (replaces Himalayas — fully client-side rendered)
 # ─────────────────────────────────────────────
 async def scrape_himalayas() -> List[Dict]:
     """
-    Himalayas — startup & remote job board with a public REST API.
-    Searches ops, strategy, growth, and business roles. No auth required.
+    Arbeitnow — free public job board API (no auth required).
+    Returns up to 100 jobs per page across all categories.
+    Himalayas switched to fully client-side rendering (no server-side job data
+    in HTML), so we replaced it with Arbeitnow which has a proper public API.
+    https://www.arbeitnow.com/api/job-board-api?page=1
     """
     jobs = []
-    queries = [
-        "operations", "strategy", "chief of staff", "business development",
-        "growth", "product operations", "go to market",
-    ]
     seen = set()
     try:
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
-            for q in queries:
+            for page in range(1, 4):  # pages 1–3 → up to 300 jobs
                 try:
-                    # Himalayas moved their API — use the search page and extract
-                    # JSON-LD job postings from the HTML
                     resp = await client.get(
-                        "https://himalayas.app/jobs",
-                        params={"q": q},
+                        "https://www.arbeitnow.com/api/job-board-api",
+                        params={"page": page},
                         timeout=12.0,
                     )
                     if resp.status_code != 200:
-                        continue
-                    html = resp.text
-                    # Extract JSON-LD JobPosting schema blocks
-                    for ld_str in re.findall(
-                        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
-                        html, re.DOTALL
-                    ):
-                        try:
-                            ld = json.loads(ld_str)
-                            items = ld if isinstance(ld, list) else [ld]
-                            for item in items:
-                                if item.get("@type") != "JobPosting":
-                                    continue
-                                role    = item.get("title", "")
-                                company = (item.get("hiringOrganization") or {}).get("name", "")
-                                loc_obj = item.get("jobLocation") or {}
-                                if isinstance(loc_obj, list):
-                                    loc_obj = loc_obj[0] if loc_obj else {}
-                                location = (loc_obj.get("address") or {}).get("addressLocality", "Remote")
-                                url      = item.get("url", "")
-                                desc     = re.sub(r"<[^>]+>", " ", item.get("description", "") or "")
-                                if company and role:
-                                    key = f"{company.lower()}|{role.lower()}"
-                                    if key not in seen:
-                                        seen.add(key)
-                                        score, _ = score_job(company, role, location, desc)
-                                        if score >= 0:
-                                            jobs.append(make_job(company, role, location, url, "Himalayas", desc))
-                        except Exception:
-                            pass
+                        break
+                    data = resp.json()
+                    batch = data.get("data", [])
+                    if not batch:
+                        break
+                    for job in batch:
+                        company  = job.get("company_name", "")
+                        role     = job.get("title", "")
+                        location = job.get("location", "Remote") or "Remote"
+                        url      = job.get("url", "")
+                        desc     = re.sub(r"<[^>]+>", " ", job.get("description", "") or "")
+                        posted   = str(job.get("created_at", ""))[:10]
+                        if company and role:
+                            key = f"{company.lower()}|{role.lower()}"
+                            if key not in seen:
+                                seen.add(key)
+                                score, _ = score_job(company, role, location, desc)
+                                if score >= 0:
+                                    jobs.append(make_job(company, role, location, url, "Arbeitnow", desc, posted))
                 except Exception:
                     pass
     except Exception as e:
-        print(f"[Himalayas] Error: {e}")
-    print(f"[Himalayas] {len(jobs)} jobs found")
+        print(f"[Arbeitnow] Error: {e}")
+    print(f"[Arbeitnow] {len(jobs)} jobs found")
     return jobs
 
 
