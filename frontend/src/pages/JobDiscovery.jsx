@@ -1655,7 +1655,7 @@ export default function JobDiscovery() {
       ) : (
         <>
           <p className="text-xs text-navy-400">
-            Showing <span className="font-medium text-navy-600">{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)}</span> of <span className="font-medium text-navy-600">{total.toLocaleString()}</span> jobs
+            Showing <span className="font-medium text-navy-600">{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)}</span> of <span className="font-medium text-navy-600">{total.toLocaleString()}</span> companies
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">

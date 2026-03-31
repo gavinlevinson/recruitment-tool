@@ -1677,9 +1677,12 @@ async def scrape_vc_portfolio_pages() -> List[Dict]:
     then runs ATS discovery (Greenhouse / Lever / Ashby) on each company.
 
     Confirmed accessible sources:
-      - a16z (andreessen horowitz): 809 companies via window.a16z_portfolio_companies
+      - a16z (andreessen horowitz): 800+ companies via window.a16z_portfolio_companies
       - Founders Fund: 61 companies via window.__data
       - Sequoia: WordPress REST API for company posts
+      - GV (Google Ventures): 637 companies via open Sanity CDN
+      - True Ventures: 222 companies via api.trueventures.com WP REST API
+      - Greylock: 155 companies via greylock.com WP REST API
 
     NOTE: Getro boards (jobs.generalcatalyst.com etc.) now return 403 and
     direct users to api@getro.com — they have blocked all web scraping.
@@ -1854,6 +1857,110 @@ async def scrape_vc_portfolio_pages() -> List[Dict]:
                     jobs.extend(res)
         except Exception as e:
             print(f"[Sequoia] Error: {e}")
+
+        # ── Source 4: GV (Google Ventures) — 637 companies via Sanity CDN ────
+        try:
+            gv_cos: list = []
+            gv_batch = 200
+            gv_offset = 0
+            while True:
+                query = (
+                    f'*[_type=="company"]|order(name asc)'
+                    f'[{gv_offset}...{gv_offset + gv_batch}]{{name,website}}'
+                )
+                r = await client.get(
+                    "https://v5ygm6ip.apicdn.sanity.io/v2021-10-21/data/query/production",
+                    params={"query": query},
+                    timeout=15.0,
+                )
+                if r.status_code != 200:
+                    break
+                result = r.json().get("result", [])
+                if not result:
+                    break
+                gv_cos.extend(result)
+                if len(result) < gv_batch:
+                    break
+                gv_offset += gv_batch
+            print(f"[GV] {len(gv_cos)} companies found")
+            tasks_gv = [
+                discover_company(c["name"], c["website"], "GV")
+                for c in gv_cos if c.get("name") and c.get("website")
+            ]
+            results_gv = await asyncio.gather(*tasks_gv, return_exceptions=True)
+            for res in results_gv:
+                if isinstance(res, list):
+                    jobs.extend(res)
+            print(f"[GV] done")
+        except Exception as e:
+            print(f"[GV] Error: {e}")
+
+        # ── Source 5: True Ventures — 222 companies via WP REST API ──────────
+        try:
+            tv_page = 1
+            tv_cos: list = []
+            while tv_page <= 10:
+                r = await client.get(
+                    f"https://api.trueventures.com/wp-json/wp/v2/company"
+                    f"?per_page=100&page={tv_page}&_fields=slug,title,acf",
+                    timeout=12.0,
+                )
+                if r.status_code != 200:
+                    break
+                batch = r.json()
+                if not batch:
+                    break
+                tv_cos.extend(batch)
+                if len(batch) < 100:
+                    break
+                tv_page += 1
+            print(f"[True Ventures] {len(tv_cos)} companies found")
+            tasks_tv = []
+            for co in tv_cos:
+                name = (co.get("title") or {}).get("rendered", "") or co.get("slug", "")
+                site_url = (co.get("acf") or {}).get("site_url", "") or f"https://{co.get('slug','')}.com"
+                tasks_tv.append(discover_company(name, site_url, "True Ventures"))
+            results_tv = await asyncio.gather(*tasks_tv, return_exceptions=True)
+            for res in results_tv:
+                if isinstance(res, list):
+                    jobs.extend(res)
+            print(f"[True Ventures] done")
+        except Exception as e:
+            print(f"[True Ventures] Error: {e}")
+
+        # ── Source 6: Greylock — 155 companies via WP REST API ───────────────
+        try:
+            gl_page = 1
+            gl_cos: list = []
+            while gl_page <= 5:
+                r = await client.get(
+                    f"https://greylock.com/wp-json/wp/v2/portfolio"
+                    f"?per_page=100&page={gl_page}&_fields=slug,title",
+                    timeout=12.0,
+                )
+                if r.status_code != 200:
+                    break
+                batch = r.json()
+                if not batch:
+                    break
+                gl_cos.extend(batch)
+                if len(batch) < 100:
+                    break
+                gl_page += 1
+            print(f"[Greylock] {len(gl_cos)} companies found")
+            tasks_gl = []
+            for co in gl_cos:
+                name = (co.get("title") or {}).get("rendered", "") or co.get("slug", "")
+                slug = co.get("slug", "")
+                # Use slug directly as domain guess — e.g. "anthropic" → anthropic.com
+                tasks_gl.append(discover_company(name, f"https://{slug}.com", "Greylock"))
+            results_gl = await asyncio.gather(*tasks_gl, return_exceptions=True)
+            for res in results_gl:
+                if isinstance(res, list):
+                    jobs.extend(res)
+            print(f"[Greylock] done")
+        except Exception as e:
+            print(f"[Greylock] Error: {e}")
 
     print(f"[VC Portfolio Pages] {len(jobs)} total jobs found")
     return jobs
@@ -2479,7 +2586,7 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_himalayas(),
         scrape_weworkremotely(),
         scrape_vc_boards(),
-        scrape_vc_portfolio_pages(),  # direct scrape of a16z (809 co), Sequoia, Founders Fund
+        scrape_vc_portfolio_pages(),  # a16z (800+), Sequoia, Founders Fund, GV (637), True Ventures (222), Greylock (155)
         scrape_topstartups(),         # dynamic discovery from topstartups.io AI list
         return_exceptions=True,
     )
