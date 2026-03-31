@@ -53,11 +53,11 @@ const EVENT_CONFIG = {
   },
   google: {
     label:  'Google Calendar',
-    bg:     'bg-teal-50',
-    text:   'text-teal-700',
-    border: 'border-teal-200',
-    dot:    'bg-teal-500',
-    pill:   'bg-teal-600 text-white',
+    bg:     'bg-blue-50',
+    text:   'text-blue-700',
+    border: 'border-blue-200',
+    dot:    'bg-blue-500',
+    pill:   'bg-blue-600 text-white',
     Icon:   CalendarDays,
   },
 }
@@ -224,7 +224,7 @@ function EventPopover({ event, onClose, onDelete }) {
               event.url ? (
                 <button
                   onClick={() => { window.open(event.url, '_blank', 'noopener,noreferrer'); onClose() }}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
                 >
                   <ExternalLink size={13} /> Open in Google Calendar
                 </button>
