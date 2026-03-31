@@ -1671,13 +1671,199 @@ async def scrape_vc_boards() -> List[Dict]:
     return jobs
 
 
+async def scrape_vc_portfolio_pages() -> List[Dict]:
+    """
+    Scrapes VC firm portfolio pages directly to extract company lists,
+    then runs ATS discovery (Greenhouse / Lever / Ashby) on each company.
+
+    Confirmed accessible sources:
+      - a16z (andreessen horowitz): 809 companies via window.a16z_portfolio_companies
+      - Founders Fund: 61 companies via window.__data
+      - Sequoia: WordPress REST API for company posts
+
+    NOTE: Getro boards (jobs.generalcatalyst.com etc.) now return 403 and
+    direct users to api@getro.com — they have blocked all web scraping.
+    """
+    jobs = []
+    seen_domains: set = set()
+    sem = asyncio.Semaphore(25)
+    MAX_PER_CO = 15
+
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+
+        # ── Helper: run ATS discovery for a (name, website_url) pair ─────────
+        async def discover_company(name: str, website: str, firm_label: str):
+            if not name or not website:
+                return []
+            domain = re.sub(r'^https?://(www\.)?', '', website.rstrip('/').split('?')[0])
+            domain = domain.split('/')[0].lower()
+            if not domain or domain in seen_domains:
+                return []
+            seen_domains.add(domain)
+            slugs = _domain_to_ats_slugs(domain)
+            found = []
+            async with sem:
+                for slug in slugs:
+                    if len(found) >= MAX_PER_CO:
+                        break
+                    # Greenhouse
+                    try:
+                        r = await client.get(
+                            f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
+                            timeout=7.0,
+                        )
+                        if r.status_code == 200:
+                            for j in r.json().get("jobs", []):
+                                if len(found) >= MAX_PER_CO: break
+                                role = j.get("title", "")
+                                loc  = j.get("location", {}).get("name", "")
+                                url  = j.get("absolute_url", "")
+                                desc = re.sub(r"<[^>]+>", " ", j.get("content", "") or "")
+                                jb = _make_vc_job(name, role, loc, url, f"VC Portfolio ({firm_label})", desc)
+                                if jb: found.append(jb)
+                            if found: return found
+                    except Exception:
+                        pass
+                    # Lever
+                    try:
+                        r = await client.get(
+                            f"https://api.lever.co/v0/postings/{slug}?mode=json",
+                            timeout=7.0,
+                        )
+                        if r.status_code == 200 and isinstance(r.json(), list) and r.json():
+                            for p in r.json():
+                                if len(found) >= MAX_PER_CO: break
+                                role = p.get("text", "")
+                                loc  = p.get("categories", {}).get("location", "") or ""
+                                url  = p.get("hostedUrl", "")
+                                desc = p.get("descriptionPlain", "") or ""
+                                jb = _make_vc_job(name, role, loc, url, f"VC Portfolio ({firm_label})", desc)
+                                if jb: found.append(jb)
+                            if found: return found
+                    except Exception:
+                        pass
+                    # Ashby
+                    try:
+                        r = await client.get(
+                            f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
+                            timeout=7.0,
+                        )
+                        if r.status_code == 200:
+                            for j in r.json().get("jobs", []):
+                                if len(found) >= MAX_PER_CO: break
+                                role = j.get("title", "")
+                                loc  = j.get("location", "") or ""
+                                url  = j.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{slug}"
+                                desc = j.get("descriptionPlain", "") or ""
+                                jb = _make_vc_job(name, role, loc, url, f"VC Portfolio ({firm_label})", desc)
+                                if jb: found.append(jb)
+                            if found: return found
+                    except Exception:
+                        pass
+            return found
+
+        # ── Source 1: a16z — 800+ companies in window.a16z_portfolio_companies ─
+        try:
+            r = await client.get("https://a16z.com/portfolio/", timeout=20.0)
+            idx = r.text.find("window.a16z_portfolio_companies = [")
+            if idx >= 0:
+                start = idx + len("window.a16z_portfolio_companies = ")
+                depth, end = 0, start
+                for i, ch in enumerate(r.text[start:], start):
+                    if ch == "[": depth += 1
+                    elif ch == "]":
+                        depth -= 1
+                        if depth == 0:
+                            end = i + 1
+                            break
+                a16z_cos = json.loads(r.text[start:end])
+                pairs = [(co.get("title",""), co.get("web","")) for co in a16z_cos if co.get("web")]
+                print(f"[a16z] {len(pairs)} companies found")
+                tasks = [discover_company(n, w, "a16z") for n, w in pairs]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for res in results:
+                    if isinstance(res, list):
+                        jobs.extend(res)
+                print(f"[a16z] {len(jobs)} jobs after ATS discovery")
+        except Exception as e:
+            print(f"[a16z] Error: {e}")
+
+        # ── Source 2: Founders Fund — companies via window.__data ─────────────
+        try:
+            r = await client.get("https://foundersfund.com/portfolio/", timeout=15.0)
+            idx = r.text.find("window.__data = {")
+            if idx >= 0:
+                start = idx + len("window.__data = ")
+                depth, end = 0, start
+                for i, ch in enumerate(r.text[start:], start):
+                    if ch == "{": depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                        if depth == 0:
+                            end = i + 1
+                            break
+                ff_data = json.loads(r.text[start:end])
+                ff_cos = ff_data.get("companies", [])
+                # Use company slug as ATS slug candidate
+                pairs_ff = []
+                for co in ff_cos:
+                    name = (co.get("title") or {}).get("rendered", "") or co.get("slug","")
+                    slug = co.get("slug","")
+                    if name and slug:
+                        pairs_ff.append((name, f"https://{slug}.com"))
+                print(f"[Founders Fund] {len(pairs_ff)} companies found")
+                tasks_ff = [discover_company(n, w, "Founders Fund") for n, w in pairs_ff]
+                results_ff = await asyncio.gather(*tasks_ff, return_exceptions=True)
+                for res in results_ff:
+                    if isinstance(res, list):
+                        jobs.extend(res)
+        except Exception as e:
+            print(f"[Founders Fund] Error: {e}")
+
+        # ── Source 3: Sequoia — WordPress REST API for company posts ───────────
+        try:
+            page, seq_companies = 1, []
+            while page <= 10:
+                r = await client.get(
+                    f"https://www.sequoiacap.com/wp-json/wp/v2/company?per_page=100&page={page}",
+                    timeout=12.0,
+                )
+                if r.status_code != 200:
+                    break
+                batch = r.json()
+                if not batch:
+                    break
+                seq_companies.extend(batch)
+                if len(batch) < 100:
+                    break
+                page += 1
+            print(f"[Sequoia] {len(seq_companies)} companies via WP REST API")
+            pairs_seq = []
+            for co in seq_companies:
+                name = (co.get("title") or {}).get("rendered", "") or co.get("slug","")
+                # Try to extract website from content HTML
+                content_html = (co.get("content") or {}).get("rendered", "")
+                website_m = re.search(r'href="(https?://(?!sequoiacap)[^"]+)"', content_html)
+                website = website_m.group(1) if website_m else f"https://{co.get('slug','')}.com"
+                if name:
+                    pairs_seq.append((name, website))
+            tasks_seq = [discover_company(n, w, "Sequoia") for n, w in pairs_seq]
+            results_seq = await asyncio.gather(*tasks_seq, return_exceptions=True)
+            for res in results_seq:
+                if isinstance(res, list):
+                    jobs.extend(res)
+        except Exception as e:
+            print(f"[Sequoia] Error: {e}")
+
+    print(f"[VC Portfolio Pages] {len(jobs)} total jobs found")
+    return jobs
+
+
 async def scrape_getro_vc_boards() -> List[Dict]:
     """
-    Dynamically discovers portfolio companies from 65 Getro-powered VC job boards,
-    then hits each company's ATS (Greenhouse / Lever / Ashby) directly.
-
-    Getro boards expose company domains in __NEXT_DATA__ (Next.js SSR).
-    We derive ATS board slugs from each domain and try all three ATSs.
+    NOTE: Getro now blocks all scraping (returns 403 with message to use their paid API).
+    This function is kept as a stub returning empty to avoid breaking scrape_all_sources.
+    Replaced by scrape_vc_portfolio_pages() which scrapes VC firm websites directly.
     """
     jobs = []
     company_domains_seen: set = set()
@@ -1844,7 +2030,7 @@ async def scrape_getro_vc_boards() -> List[Dict]:
             if isinstance(r, list):
                 jobs.extend(r)
 
-    print(f"[Getro VC Boards] {len(jobs)} jobs found")
+    print(f"[Getro VC Boards] {len(jobs)} jobs found (NOTE: Getro now blocks scraping — returns 0)")
     return jobs
 
 
@@ -2293,8 +2479,8 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_himalayas(),
         scrape_weworkremotely(),
         scrape_vc_boards(),
-        scrape_getro_vc_boards(),   # dynamic ATS discovery from 65 Getro VC boards
-        scrape_topstartups(),       # dynamic discovery from topstartups.io AI list
+        scrape_vc_portfolio_pages(),  # direct scrape of a16z (809 co), Sequoia, Founders Fund
+        scrape_topstartups(),         # dynamic discovery from topstartups.io AI list
         return_exceptions=True,
     )
 
