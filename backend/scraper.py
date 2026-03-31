@@ -1056,7 +1056,7 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
             while True:
                 try:
                     resp = await client.get(
-                        f"https://api.ycombinator.com/v0.1/companies?page={page}&per_page=100",
+                        f"https://api.ycombinator.com/v0.1/companies?page={page}&per_page=25",
                         timeout=15.0,
                     )
                     if resp.status_code != 200:
@@ -1070,8 +1070,9 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
                         if cid and cid not in seen_ids:
                             seen_ids.add(cid)
                             all_companies.append(co)
-                    # Stop after 3000 companies to cap runtime
-                    if len(all_companies) >= 3000 or page >= 50:
+                    total_pages = data.get("totalPages", 999)
+                    # Fetch all pages (up to 5000 companies to cap runtime)
+                    if len(all_companies) >= 5000 or page >= total_pages:
                         break
                     page += 1
                 except Exception:
@@ -2599,6 +2600,432 @@ async def scrape_topstartups() -> List[Dict]:
 
 
 # ─────────────────────────────────────────────
+# SHARED: ATS discovery helper for list-based scrapers
+# ─────────────────────────────────────────────
+async def _ats_discover_jobs(name: str, website: str, source_label: str,
+                              client, sem, max_per_co: int = 10) -> list:
+    """
+    Given a company name and website URL, derive ATS slug candidates
+    and try Greenhouse → Lever → Ashby in order. Returns a list of job dicts.
+    Used by Forbes, LinkedIn, and similar list-based scrapers.
+    """
+    if not name or not website:
+        return []
+    domain = re.sub(r'^https?://(www\.)?', '', website.rstrip('/').split('?')[0])
+    domain = domain.split('/')[0].lower()
+    if not domain:
+        return []
+    slugs = _domain_to_ats_slugs(domain)
+    found = []
+    async with sem:
+        for slug in slugs:
+            if len(found) >= max_per_co:
+                break
+            # Greenhouse
+            try:
+                r = await client.get(
+                    f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
+                    timeout=7.0,
+                )
+                if r.status_code == 200:
+                    for j in r.json().get("jobs", []):
+                        if len(found) >= max_per_co: break
+                        jb = _make_vc_job(
+                            name, j.get("title", ""),
+                            j.get("location", {}).get("name", ""),
+                            j.get("absolute_url", ""), source_label,
+                            re.sub(r"<[^>]+>", " ", j.get("content", "") or ""),
+                        )
+                        if jb: found.append(jb)
+                    if found: return found
+            except Exception:
+                pass
+            # Lever
+            try:
+                r = await client.get(
+                    f"https://api.lever.co/v0/postings/{slug}?mode=json",
+                    timeout=7.0,
+                )
+                if r.status_code == 200 and isinstance(r.json(), list) and r.json():
+                    for p in r.json():
+                        if len(found) >= max_per_co: break
+                        jb = _make_vc_job(
+                            name, p.get("text", ""),
+                            p.get("categories", {}).get("location", "") or "",
+                            p.get("hostedUrl", ""), source_label,
+                            p.get("descriptionPlain", "") or "",
+                        )
+                        if jb: found.append(jb)
+                    if found: return found
+            except Exception:
+                pass
+            # Ashby
+            try:
+                r = await client.get(
+                    f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
+                    timeout=7.0,
+                )
+                if r.status_code == 200:
+                    for j in r.json().get("jobPostings", []):
+                        if len(found) >= max_per_co: break
+                        jb = _make_vc_job(
+                            name, j.get("title", ""),
+                            j.get("location", "") or "",
+                            (j.get("jobPostingUrls") or {}).get("externalUrl", "")
+                            or f"https://jobs.ashbyhq.com/{slug}/{j.get('id', '')}",
+                            source_label,
+                            re.sub(r"<[^>]+>", " ", j.get("descriptionHtml", "") or ""),
+                        )
+                        if jb: found.append(jb)
+                    if found: return found
+            except Exception:
+                pass
+    return found
+
+
+# ─────────────────────────────────────────────
+# SOURCE: Forbes Best Startup Employers + Similar Lists
+# ─────────────────────────────────────────────
+async def scrape_forbes_startup_lists() -> List[Dict]:
+    """
+    Scrapes Forbes Best Startup Employers list via their public JSON API,
+    then does live ATS discovery (Greenhouse / Lever / Ashby) on each company.
+    API endpoint confirmed: forbesapi/org/americas-best-startup-employers/{year}/position/true.json
+    Returns ~40 top startup employers + jobs from their open boards.
+    """
+    companies: list[tuple[str, str]] = []  # (name, website_hint)
+    jobs = []
+
+    FORBES_API_URLS = [
+        "https://www.forbes.com/forbesapi/org/americas-best-startup-employers/2024/position/true.json",
+        "https://www.forbes.com/forbesapi/org/americas-best-startup-employers/2023/position/true.json",
+    ]
+
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+
+        for api_url in FORBES_API_URLS:
+            try:
+                resp = await client.get(api_url, timeout=15.0)
+                if resp.status_code != 200:
+                    continue
+                orgs = resp.json().get("organizationList", {}).get("organizationsLists", [])
+                if not orgs:
+                    continue
+                for org in orgs:
+                    name    = org.get("organizationName") or org.get("name", "")
+                    website = org.get("webSite", "") or ""
+                    uri     = org.get("uri", "")  # slug like "coalition"
+                    if not website and uri:
+                        website = f"https://{uri}.com"
+                    if name:
+                        companies.append((name, website))
+                print(f"[Forbes] {len(companies)} companies from {api_url}")
+                break
+            except Exception as e:
+                print(f"[Forbes] API error {api_url}: {e}")
+
+        if not companies:
+            print("[Forbes] Could not fetch company list")
+            return []
+
+        sem = asyncio.Semaphore(20)
+        seen_domains: set = set()
+        tasks = []
+        for name, website in companies:
+            if not website:
+                slug_guess = re.sub(r'[^a-z0-9]', '', name.lower())
+                website = f"https://{slug_guess}.com"
+            domain = re.sub(r'^https?://(www\.)?', '', website.rstrip('/'))
+            domain = domain.split('/')[0].lower()
+            if domain and domain not in seen_domains:
+                seen_domains.add(domain)
+                tasks.append(_ats_discover_jobs(name, website, "Forbes Best Startups", client, sem))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, list):
+                jobs.extend(r)
+
+    print(f"[Forbes] {len(jobs)} jobs found via ATS discovery")
+    return jobs
+
+
+# Builtin omitted: uses Alpine.js client-side rendering; job data not in static HTML
+# Wellfound omitted: Cloudflare blocks all scraping (403)
+
+async def scrape_builtin_jobs() -> List[Dict]:
+    """
+    Scrapes Builtin's job board. Targets business, ops, sales, marketing,
+    product, and strategy roles at startups and tech companies.
+    Builtin organizes jobs by role category and city/remote.
+    """
+    jobs = []
+    seen = set()
+
+    # Builtin role categories relevant to early-career business/ops candidates
+    ROLE_SLUGS = [
+        "business-development", "sales", "marketing", "operations",
+        "product-management", "customer-success", "account-management",
+        "finance", "strategy", "project-management",
+    ]
+
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers={
+        **HEADERS,
+        "Referer": "https://builtin.com/",
+        "Accept": "application/json, text/plain, */*",
+    }) as client:
+
+        for role_slug in ROLE_SLUGS:
+            for page_num in range(1, 4):  # up to 3 pages per role
+                try:
+                    # Builtin's internal search API
+                    resp = await client.get(
+                        "https://builtin.com/api/search-jobs",
+                        params={
+                            "search[role][]": role_slug,
+                            "search[country][]": "United States",
+                            "search[job_type][]": "full-time",
+                            "page": page_num,
+                        },
+                        timeout=12.0,
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        job_list = data.get("jobs") or data.get("data") or []
+                        if not job_list:
+                            break
+                        for job in job_list:
+                            company = (job.get("company") or {}).get("name") or job.get("companyName", "")
+                            role    = job.get("title") or job.get("role", "")
+                            loc     = job.get("builtinLocation") or job.get("location") or ""
+                            url     = job.get("url") or job.get("applyUrl") or ""
+                            desc    = re.sub(r"<[^>]+>", " ", job.get("description", "") or "")
+                            if company and role:
+                                key = f"{company.lower()}|{role.lower()}"
+                                if key not in seen:
+                                    seen.add(key)
+                                    jobs.append(make_job(company, role, loc, url, "Builtin", desc))
+                    else:
+                        # API path not found — try HTML scrape fallback
+                        if page_num == 1:
+                            html_resp = await client.get(
+                                f"https://builtin.com/jobs/dev--engineer/remote/{role_slug}",
+                                timeout=12.0,
+                            )
+                            if html_resp.status_code == 200:
+                                from bs4 import BeautifulSoup
+                                soup = BeautifulSoup(html_resp.text, "html.parser")
+                                for card in soup.find_all(attrs={"data-id": True}):
+                                    role_el    = card.find(class_=re.compile(r'job-title|role|title', re.I))
+                                    company_el = card.find(class_=re.compile(r'company-name|company', re.I))
+                                    loc_el     = card.find(class_=re.compile(r'location', re.I))
+                                    link_el    = card.find("a", href=True)
+                                    r_txt  = role_el.get_text(strip=True)    if role_el    else ""
+                                    co_txt = company_el.get_text(strip=True) if company_el else ""
+                                    l_txt  = loc_el.get_text(strip=True)     if loc_el     else ""
+                                    href   = ("https://builtin.com" + link_el["href"]) if link_el else ""
+                                    if co_txt and r_txt:
+                                        key = f"{co_txt.lower()}|{r_txt.lower()}"
+                                        if key not in seen:
+                                            seen.add(key)
+                                            jobs.append(make_job(co_txt, r_txt, l_txt, href, "Builtin", ""))
+                        break
+                except Exception as e:
+                    print(f"[Builtin] Error ({role_slug} p{page_num}): {e}")
+                    break
+
+    print(f"[Builtin] {len(jobs)} jobs found")
+    return jobs
+
+
+# ─────────────────────────────────────────────
+# SOURCE: Wellfound (real attempt)
+# ─────────────────────────────────────────────
+async def scrape_wellfound_actual() -> List[Dict]:
+    """
+    Attempts to scrape Wellfound (wellfound.com) directly for startup jobs.
+    Wellfound runs Cloudflare — if we get a 403, we log it and return empty
+    so the caller can rely on the existing Jobicy fallback in scrape_wellfound().
+    """
+    jobs = []
+    seen = set()
+
+    ROLE_PATHS = [
+        "/jobs/role/business-development",
+        "/jobs/role/operations",
+        "/jobs/role/sales",
+        "/jobs/role/marketing",
+        "/jobs/role/product-manager",
+        "/jobs/role/strategy",
+    ]
+
+    cf_bypass_headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-CH-UA": '"Chromium";v="124", "Google Chrome";v="124"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"macOS"',
+    }
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=20.0, follow_redirects=True, headers=cf_bypass_headers
+        ) as client:
+            for path in ROLE_PATHS:
+                try:
+                    resp = await client.get(f"https://wellfound.com{path}", timeout=12.0)
+                    if resp.status_code in (403, 429, 503):
+                        print(f"[Wellfound] Blocked ({resp.status_code}) on {path} — Cloudflare active")
+                        return []  # blocked — bail out entirely
+                    if resp.status_code != 200:
+                        continue
+
+                    from bs4 import BeautifulSoup
+                    soup = BeautifulSoup(resp.text, "html.parser")
+
+                    # Wellfound embeds job data in <script type="application/json"> or SSR HTML
+                    # Try JSON extraction first
+                    for script in soup.find_all("script", type="application/json"):
+                        try:
+                            data = json.loads(script.string or "")
+                            # Walk the JSON to find job-like objects
+                            def _walk(obj):
+                                if isinstance(obj, list):
+                                    for item in obj: _walk(item)
+                                elif isinstance(obj, dict):
+                                    title   = obj.get("title") or obj.get("role", "")
+                                    company = (obj.get("company") or {}).get("name", "") if isinstance(obj.get("company"), dict) else obj.get("companyName", "")
+                                    if title and company and len(title) < 100:
+                                        loc  = obj.get("locationNames", [""])[0] if obj.get("locationNames") else ""
+                                        url  = obj.get("jobUrl") or obj.get("url", "")
+                                        desc = obj.get("description", "")
+                                        key  = f"{company.lower()}|{title.lower()}"
+                                        if key not in seen:
+                                            seen.add(key)
+                                            jobs.append(make_job(company, title, loc, url, "Wellfound", desc))
+                                    for v in obj.values():
+                                        _walk(v)
+                            _walk(data)
+                        except Exception:
+                            pass
+
+                    # HTML fallback
+                    if not jobs:
+                        for card in soup.find_all(class_=re.compile(r'job-listing|startup-job|role', re.I)):
+                            role_el    = card.find(class_=re.compile(r'role|title|position', re.I))
+                            company_el = card.find(class_=re.compile(r'company|startup', re.I))
+                            if role_el and company_el:
+                                r_txt  = role_el.get_text(strip=True)
+                                co_txt = company_el.get_text(strip=True)
+                                key = f"{co_txt.lower()}|{r_txt.lower()}"
+                                if key not in seen and co_txt and r_txt:
+                                    seen.add(key)
+                                    jobs.append(make_job(co_txt, r_txt, "", "", "Wellfound", ""))
+
+                except Exception as e:
+                    print(f"[Wellfound] Error on {path}: {e}")
+
+    except Exception as e:
+        print(f"[Wellfound] Fatal error: {e}")
+
+    print(f"[Wellfound] {len(jobs)} jobs found")
+    return jobs
+
+
+# ─────────────────────────────────────────────
+# SOURCE: LinkedIn Top Startups 2024
+# ─────────────────────────────────────────────
+
+# LinkedIn Top 50 Startups 2024 (US) — publicly published list, live ATS discovery
+LINKEDIN_TOP_STARTUPS_2024 = [
+    ("OpenAI",                "openai.com"),
+    ("Anthropic",             "anthropic.com"),
+    ("Perplexity AI",         "perplexity.ai"),
+    ("Figure AI",             "figure.ai"),
+    ("ElevenLabs",            "elevenlabs.io"),
+    ("Mistral AI",            "mistral.ai"),
+    ("Ramp",                  "ramp.com"),
+    ("Shield AI",             "shield.ai"),
+    ("Writer",                "writer.com"),
+    ("CoreWeave",             "coreweave.com"),
+    ("Anduril Industries",    "anduril.com"),
+    ("Coalition",             "coalitioninc.com"),
+    ("Wiz",                   "wiz.io"),
+    ("Brex",                  "brex.com"),
+    ("Cohere",                "cohere.com"),
+    ("Glean",                 "glean.com"),
+    ("Cognition",             "cognition.ai"),
+    ("Runway",                "runwayml.com"),
+    ("Navan",                 "navan.com"),
+    ("Weights & Biases",      "wandb.ai"),
+    ("Rubrik",                "rubrik.com"),
+    ("Abridge",               "abridge.com"),
+    ("Samsara",               "samsara.com"),
+    ("Vanta",                 "vanta.com"),
+    ("Moveworks",             "moveworks.com"),
+    ("Intercom",              "intercom.com"),
+    ("Vercel",                "vercel.com"),
+    ("Figma",                 "figma.com"),
+    ("Harness",               "harness.io"),
+    ("Temporal",              "temporal.io"),
+    ("Anyscale",              "anyscale.com"),
+    ("Descript",              "descript.com"),
+    ("Abnormal Security",     "abnormalsecurity.com"),
+    ("Monte Carlo",           "montecarlodata.com"),
+    ("Snorkel AI",            "snorkel.ai"),
+    ("HeyGen",                "heygen.com"),
+    ("Tome",                  "tome.app"),
+    ("Gecko Robotics",        "geckorobotics.com"),
+    ("Rippling",              "rippling.com"),
+    ("Lattice",               "lattice.com"),
+    ("Contentful",            "contentful.com"),
+    ("Asana",                 "asana.com"),
+    ("Amplitude",             "amplitude.com"),
+    ("Retool",                "retool.com"),
+    ("Notion",                "notion.so"),
+    ("Linear",                "linear.app"),
+    ("Loom",                  "loom.com"),
+    ("Replit",                "replit.com"),
+    ("Deel",                  "deel.com"),
+    ("Gusto",                 "gusto.com"),
+]
+
+
+async def scrape_linkedin_top_startups() -> List[Dict]:
+    """
+    Uses the LinkedIn Top 50 Startups 2024 list (hardcoded — LinkedIn blocks
+    live scraping) to do live ATS discovery. Each company's Greenhouse / Lever /
+    Ashby board is checked for open roles matching the target profile.
+    """
+    jobs = []
+    sem = asyncio.Semaphore(20)
+
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+        tasks = [
+            _ats_discover_jobs(name, f"https://{domain}", "LinkedIn Top Startups", client, sem)
+            for name, domain in LINKEDIN_TOP_STARTUPS_2024
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, list):
+                jobs.extend(r)
+
+    print(f"[LinkedIn Top Startups] {len(jobs)} jobs found via ATS discovery")
+    return jobs
+
+
+# ─────────────────────────────────────────────
 # AGGREGATE + DEDUPLICATE
 # ─────────────────────────────────────────────
 async def scrape_all_sources() -> List[Dict]:
@@ -2613,13 +3040,15 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_lever(),
         scrape_ashby(),
         scrape_workable(),
-        scrape_wellfound(),
-        scrape_yc_startup_jobs(),
+        scrape_wellfound(),           # Jobicy fallback (Wellfound is Cloudflare-blocked)
+        scrape_yc_startup_jobs(),     # YC company directory (all ~4000 YC companies via ATS)
         scrape_himalayas(),
         scrape_weworkremotely(),
         scrape_vc_boards(),
-        scrape_vc_portfolio_pages(),  # a16z (800+), Sequoia, Founders Fund, GV (637), True Ventures (222), Greylock (155), Lightspeed (639)
-        scrape_topstartups(),         # dynamic discovery from topstartups.io AI list
+        scrape_vc_portfolio_pages(),  # a16z, Sequoia, Founders Fund, GV, True Ventures, Greylock, Lightspeed
+        scrape_topstartups(),         # topstartups.io AI list
+        scrape_forbes_startup_lists(), # Forbes Best Startup Employers → ATS discovery
+        scrape_linkedin_top_startups(), # LinkedIn Top 50 Startups 2024 → ATS discovery
         return_exceptions=True,
     )
 
