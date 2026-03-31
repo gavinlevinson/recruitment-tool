@@ -1371,17 +1371,36 @@ def _slug_to_name(slug: str) -> str:
 
 async def scrape_topstartups() -> List[Dict]:
     """
-    Dynamically scrapes topstartups.io AI company listings (8 pages ≈ 140 companies)
-    and pulls jobs from their Greenhouse / Ashby / Lever boards. Only fetches boards
-    for companies NOT already in our hardcoded lists — so no duplicates.
+    Two-pass scraper for topstartups.io AI company listings:
+
+    Pass 1 — scan topstartups.io HTML for direct ATS board links (Greenhouse /
+              Ashby / Lever) AND collect each company's external career-page URL.
+
+    Pass 2 — follow every career-page URL that wasn't already a direct ATS link,
+              fetch that page, and scan it for ATS board links one level deeper.
+              This catches companies that host their own /careers page but use a
+              known ATS behind the scenes (very common for smaller funded startups).
+
+    Only processes companies NOT already in our hardcoded lists — no duplicates.
     """
     jobs = []
+
+    # ── ATS detection patterns ────────────────────────────────────────────────
     GH_RE    = re.compile(
         r'(?:boards|job-boards)\.greenhouse\.io/(?:embed/job_board\?for=)?([A-Za-z0-9_\-]+)',
         re.IGNORECASE,
     )
     ASHBY_RE = re.compile(r'jobs\.ashbyhq\.com/([A-Za-z0-9_.\-]+)', re.IGNORECASE)
     LEVER_RE = re.compile(r'jobs\.lever\.co/([A-Za-z0-9_\-]+)',      re.IGNORECASE)
+    WORKABLE_RE = re.compile(r'apply\.workable\.com/([A-Za-z0-9_\-]+)', re.IGNORECASE)
+
+    # Domains we should NOT follow as career pages
+    SKIP_DOMAINS = {
+        "topstartups.io", "linkedin.com", "twitter.com", "x.com",
+        "instagram.com", "facebook.com", "youtube.com", "glassdoor.com",
+        "trustpilot.com", "crunchbase.com", "substack.com", "github.com",
+        "techcrunch.com", "bloomberg.com", "producthunt.com",
+    }
 
     ASHBY_Q = (
         "query ApiJobBoardWithTeams($organizationHostedJobsPageName: String!) {"
@@ -1392,15 +1411,67 @@ async def scrape_topstartups() -> List[Dict]:
         "}"
     )
 
-    # Build sets of already-known slugs so we skip duplication
-    existing_gh    = {s.lower() for s, _ in GREENHOUSE_COMPANIES + GREENHOUSE_COMPANIES_EXTRA}
-    existing_ashby = {s.lower() for s, _ in ASHBY_COMPANIES + ASHBY_COMPANIES_EXTRA}
-    existing_lever = {s.lower() for s, _ in LEVER_COMPANIES}
+    # Build sets of already-known slugs to avoid duplication
+    existing_gh      = {s.lower() for s, _ in GREENHOUSE_COMPANIES + GREENHOUSE_COMPANIES_EXTRA}
+    existing_ashby   = {s.lower() for s, _ in ASHBY_COMPANIES + ASHBY_COMPANIES_EXTRA}
+    existing_lever   = {s.lower() for s, _ in LEVER_COMPANIES}
+    existing_workable = {s.lower() for s, _ in WORKABLE_COMPANIES}
 
-    gh_slugs    = {}   # slug → display name
-    ashby_slugs = {}
-    lever_slugs = {}
+    gh_slugs      = {}   # slug → display name
+    ashby_slugs   = {}
+    lever_slugs   = {}
+    workable_slugs = {}
+    career_pages  = {}   # company_name → career page URL (for Pass 2)
 
+    def _extract_company_name(html: str, href: str) -> str:
+        """Try to pull a company name from the surrounding HTML context of a link."""
+        # Look for the link in context and grab nearby text
+        idx = html.find(href)
+        if idx == -1:
+            return _slug_to_name(href.split('//')[-1].split('/')[0].split('.')[0])
+        snippet = html[max(0, idx - 300):idx]
+        # Look for common name patterns: <h2>, <h3>, data-name, alt= attributes
+        for pat in [
+            r'<h[123][^>]*>([^<]{2,60})</h[123]>',
+            r'data-name=["\']([^"\']{2,60})["\']',
+            r'alt=["\']([^"\']{2,60})\s*logo["\']',
+            r'<strong[^>]*>([^<]{2,40})</strong>',
+        ]:
+            m = re.search(pat, snippet, re.IGNORECASE)
+            if m:
+                name = m.group(1).strip()
+                if 2 < len(name) < 60:
+                    return name
+        return ""
+
+    def _scan_for_ats(html: str, company_name: str, source_label: str):
+        """Scan an HTML page for ATS board links and add new slugs to our dicts."""
+        for href in re.findall(r'href=["\']([^"\']{10,})["\']', html):
+            m = GH_RE.search(href)
+            if m:
+                slug = m.group(1).rstrip('/')
+                if slug and slug.lower() not in existing_gh and slug not in gh_slugs:
+                    gh_slugs[slug] = company_name or _slug_to_name(slug)
+                continue
+            m = ASHBY_RE.search(href)
+            if m:
+                slug = m.group(1).rstrip('/').split('?')[0]
+                if slug and slug.lower() not in existing_ashby and slug not in ashby_slugs:
+                    ashby_slugs[slug] = company_name or _slug_to_name(slug)
+                continue
+            m = LEVER_RE.search(href)
+            if m:
+                slug = m.group(1).rstrip('/')
+                if slug and slug.lower() not in existing_lever and slug not in lever_slugs:
+                    lever_slugs[slug] = company_name or _slug_to_name(slug)
+                continue
+            m = WORKABLE_RE.search(href)
+            if m:
+                slug = m.group(1).rstrip('/')
+                if slug and slug.lower() not in existing_workable and slug not in workable_slugs:
+                    workable_slugs[slug] = company_name or _slug_to_name(slug)
+
+    # ── PASS 1: Scrape topstartups.io listing pages ───────────────────────────
     try:
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
             for page in range(1, 9):  # 8 pages ≈ 144 AI companies
@@ -1412,32 +1483,75 @@ async def scrape_topstartups() -> List[Dict]:
                     if resp.status_code != 200:
                         break
                     html = resp.text
-                    for href in re.findall(r'href=["\']([^"\']{10,})["\']', html):
-                        m = GH_RE.search(href)
-                        if m:
-                            slug = m.group(1).rstrip('/')
-                            if slug and slug.lower() not in existing_gh and slug not in gh_slugs:
-                                gh_slugs[slug] = _slug_to_name(slug)
+
+                    # Scan for direct ATS links on the topstartups.io page itself
+                    _scan_for_ats(html, "", "TopStartups")
+
+                    # Also collect external company career/jobs URLs for Pass 2.
+                    # topstartups.io links companies with hrefs that include their
+                    # site URL — we pick up anything that looks like a company
+                    # career or jobs page (not already an ATS, not a skip domain).
+                    for href in re.findall(r'href=["\']([^"\']{15,})["\']', html):
+                        if not href.startswith("http"):
                             continue
-                        m = ASHBY_RE.search(href)
-                        if m:
-                            slug = m.group(1).rstrip('/')
-                            if slug and slug.lower() not in existing_ashby and slug not in ashby_slugs:
-                                ashby_slugs[slug] = _slug_to_name(slug)
+                        # Skip if it's already an ATS URL (handled above)
+                        if any(x in href for x in [
+                            "greenhouse.io", "ashbyhq.com", "lever.co",
+                            "workable.com", "topstartups.io",
+                        ]):
                             continue
-                        m = LEVER_RE.search(href)
-                        if m:
-                            slug = m.group(1).rstrip('/')
-                            if slug and slug.lower() not in existing_lever and slug not in lever_slugs:
-                                lever_slugs[slug] = _slug_to_name(slug)
+                        # Skip social/news domains
+                        try:
+                            domain = href.split('//')[-1].split('/')[0].lower()
+                            if any(d in domain for d in SKIP_DOMAINS):
+                                continue
+                        except Exception:
+                            continue
+                        # Only follow URLs that look like career/jobs pages
+                        href_lower = href.lower().split('?')[0]
+                        if any(kw in href_lower for kw in [
+                            "/careers", "/jobs", "/work-with-us", "/join",
+                            "/join-us", "/open-positions", "/opportunities",
+                        ]):
+                            company_name = _extract_company_name(html, href)
+                            if href not in career_pages:
+                                career_pages[href] = company_name
+
                     await asyncio.sleep(0.3)
                 except Exception as e:
                     print(f"[TopStartups] Page {page} error: {e}")
     except Exception as e:
         print(f"[TopStartups] Scrape error: {e}")
 
-    print(f"[TopStartups] New boards: {len(gh_slugs)} GH | {len(ashby_slugs)} Ashby | {len(lever_slugs)} Lever")
+    print(f"[TopStartups] Pass 1: {len(gh_slugs)} GH | {len(ashby_slugs)} Ashby | "
+          f"{len(lever_slugs)} Lever | {len(workable_slugs)} Workable | "
+          f"{len(career_pages)} career pages to follow")
 
+    # ── PASS 2: Follow career page URLs and scan for ATS links ────────────────
+    if career_pages:
+        sem = asyncio.Semaphore(8)  # max 8 concurrent requests
+
+        async def follow_career_page(url: str, company_name: str):
+            async with sem:
+                try:
+                    async with httpx.AsyncClient(
+                        timeout=12.0, follow_redirects=True, headers=HEADERS
+                    ) as c:
+                        r = await c.get(url, timeout=10.0)
+                        if r.status_code == 200:
+                            _scan_for_ats(r.text, company_name, "TopStartups→Career")
+                except Exception:
+                    pass
+
+        await asyncio.gather(
+            *[follow_career_page(url, name) for url, name in career_pages.items()],
+            return_exceptions=True,
+        )
+
+    print(f"[TopStartups] After Pass 2: {len(gh_slugs)} GH | {len(ashby_slugs)} Ashby | "
+          f"{len(lever_slugs)} Lever | {len(workable_slugs)} Workable")
+
+    # ── Fetch jobs from all discovered ATS boards ─────────────────────────────
     async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
 
         async def fetch_gh(slug, name):
@@ -1507,10 +1621,33 @@ async def scrape_topstartups() -> List[Dict]:
             except Exception:
                 return []
 
+        async def fetch_workable(slug, name):
+            try:
+                r = await client.get(
+                    f"https://apply.workable.com/api/v3/accounts/{slug}/jobs",
+                    timeout=10.0,
+                )
+                if r.status_code != 200:
+                    return []
+                results = []
+                for job in r.json().get("results", []):
+                    role = job.get("title", "")
+                    city = job.get("city", "") or ""
+                    country = job.get("country", "") or ""
+                    location = city if city else country
+                    shortcode = job.get("shortcode", "")
+                    url = f"https://apply.workable.com/{slug}/j/{shortcode}" if shortcode else ""
+                    desc = job.get("description", "") or ""
+                    results.append(make_job(name, role, location, url, "TopStartups (Workable)", desc))
+                return results
+            except Exception:
+                return []
+
         tasks = (
-            [fetch_gh(s, n)    for s, n in gh_slugs.items()] +
-            [fetch_ashby(s, n) for s, n in ashby_slugs.items()] +
-            [fetch_lever(s, n) for s, n in lever_slugs.items()]
+            [fetch_gh(s, n)       for s, n in gh_slugs.items()] +
+            [fetch_ashby(s, n)    for s, n in ashby_slugs.items()] +
+            [fetch_lever(s, n)    for s, n in lever_slugs.items()] +
+            [fetch_workable(s, n) for s, n in workable_slugs.items()]
         )
         for r in await asyncio.gather(*tasks, return_exceptions=True):
             if isinstance(r, list):
