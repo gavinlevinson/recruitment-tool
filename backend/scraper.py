@@ -1881,31 +1881,30 @@ async def scrape_topstartups() -> List[Dict]:
         return ""
 
     def _scan_for_ats(html: str, company_name: str, source_label: str):
-        """Scan an HTML page for ATS board links and add new slugs to our dicts."""
-        for href in re.findall(r'href=["\']([^"\']{10,})["\']', html):
-            m = GH_RE.search(href)
-            if m:
-                slug = m.group(1).rstrip('/')
-                if slug and slug.lower() not in existing_gh and slug not in gh_slugs:
-                    gh_slugs[slug] = company_name or _slug_to_name(slug)
-                continue
-            m = ASHBY_RE.search(href)
-            if m:
-                slug = m.group(1).rstrip('/').split('?')[0]
-                if slug and slug.lower() not in existing_ashby and slug not in ashby_slugs:
-                    ashby_slugs[slug] = company_name or _slug_to_name(slug)
-                continue
-            m = LEVER_RE.search(href)
-            if m:
-                slug = m.group(1).rstrip('/')
-                if slug and slug.lower() not in existing_lever and slug not in lever_slugs:
-                    lever_slugs[slug] = company_name or _slug_to_name(slug)
-                continue
-            m = WORKABLE_RE.search(href)
-            if m:
-                slug = m.group(1).rstrip('/')
-                if slug and slug.lower() not in existing_workable and slug not in workable_slugs:
-                    workable_slugs[slug] = company_name or _slug_to_name(slug)
+        """
+        Scan a page for ATS board links. Searches both href attributes AND the
+        full HTML text — some pages embed ATS URLs in script tags or data attrs.
+        """
+        # Search full HTML text for ATS URL patterns (catches JS/data embeds)
+        for m in GH_RE.finditer(html):
+            slug = m.group(1).rstrip('/')
+            if slug and slug.lower() not in existing_gh and slug not in gh_slugs:
+                gh_slugs[slug] = company_name or _slug_to_name(slug)
+
+        for m in ASHBY_RE.finditer(html):
+            slug = m.group(1).rstrip('/').split('?')[0]
+            if slug and slug.lower() not in existing_ashby and slug not in ashby_slugs:
+                ashby_slugs[slug] = company_name or _slug_to_name(slug)
+
+        for m in LEVER_RE.finditer(html):
+            slug = m.group(1).rstrip('/')
+            if slug and slug.lower() not in existing_lever and slug not in lever_slugs:
+                lever_slugs[slug] = company_name or _slug_to_name(slug)
+
+        for m in WORKABLE_RE.finditer(html):
+            slug = m.group(1).rstrip('/')
+            if slug and slug.lower() not in existing_workable and slug not in workable_slugs:
+                workable_slugs[slug] = company_name or _slug_to_name(slug)
 
     # ── PASS 1: Scrape topstartups.io listing pages ───────────────────────────
     try:
@@ -1929,18 +1928,42 @@ async def scrape_topstartups() -> List[Dict]:
                     for href in re.findall(r'href=["\']([^"\']{15,})["\']', html):
                         if not href.startswith("http"):
                             continue
-                        # Skip if it's already an ATS URL (handled above)
-                        if any(x in href for x in [
+
+                        # Extract the destination domain (ignoring UTM params)
+                        try:
+                            dest_domain = href.split('//')[-1].split('/')[0].lower()
+                        except Exception:
+                            continue
+
+                        # Company homepage with UTM param — queue for Pass 2 FIRST,
+                        # before any skip checks (UTM hrefs contain topstartups.io
+                        # in the query string which would otherwise skip them)
+                        if "utm_source=topstartups" in href.lower():
+                            base = re.sub(r'\?.*', '', href).rstrip('/')
+                            company_name = _extract_company_name(html, href)
+                            for path in [
+                                "",               # homepage — often has ATS link directly
+                                "/careers",
+                                "/jobs",
+                                "/company/careers",
+                                "/about/careers",
+                                "/team/join",
+                                "/join-us",
+                            ]:
+                                url_to_try = base + path
+                                if url_to_try not in career_pages:
+                                    career_pages[url_to_try] = company_name
+                            continue
+
+                        # Skip ATS URLs (already handled by _scan_for_ats above)
+                        if any(x in dest_domain for x in [
                             "greenhouse.io", "ashbyhq.com", "lever.co",
                             "workable.com", "topstartups.io",
                         ]):
                             continue
+
                         # Skip social/news domains
-                        try:
-                            domain = href.split('//')[-1].split('/')[0].lower()
-                            if any(d in domain for d in SKIP_DOMAINS):
-                                continue
-                        except Exception:
+                        if any(d in dest_domain for d in SKIP_DOMAINS):
                             continue
 
                         href_lower = href.lower().split('?')[0]
@@ -1953,14 +1976,6 @@ async def scrape_topstartups() -> List[Dict]:
                         ]):
                             if href not in career_pages:
                                 career_pages[href] = company_name
-
-                        # Company homepage (utm_source link) — queue /careers and /jobs variants
-                        elif "utm_source=topstartups" in href.lower():
-                            base = re.sub(r'\?.*', '', href).rstrip('/')
-                            for path in ["/careers", "/jobs"]:
-                                url_to_try = base + path
-                                if url_to_try not in career_pages:
-                                    career_pages[url_to_try] = company_name
 
                     await asyncio.sleep(0.3)
                 except Exception as e:
@@ -1983,8 +1998,43 @@ async def scrape_topstartups() -> List[Dict]:
                         timeout=12.0, follow_redirects=True, headers=HEADERS
                     ) as c:
                         r = await c.get(url, timeout=10.0)
-                        if r.status_code == 200:
-                            _scan_for_ats(r.text, company_name, "TopStartups→Career")
+                        if r.status_code != 200:
+                            return
+                        html = r.text
+                        _scan_for_ats(html, company_name, "TopStartups→Career")
+
+                        # If this is a homepage (no path keywords), also follow
+                        # any career/jobs links found within it (e.g. doppel.com
+                        # has /company/careers linked from its homepage)
+                        url_lower = url.lower().split('?')[0]
+                        is_homepage = not any(kw in url_lower for kw in [
+                            "/careers", "/jobs", "/join", "/team", "/about"
+                        ])
+                        if is_homepage:
+                            base_domain = url.split('//')[-1].split('/')[0]
+                            for href in re.findall(r'href=["\']([^"\']{5,})["\']', html):
+                                href_lower = href.lower().split('?')[0]
+                                if any(kw in href_lower for kw in [
+                                    "/careers", "/jobs", "/company/careers",
+                                    "/about/careers", "/join", "/work-with-us",
+                                    "/open-positions",
+                                ]):
+                                    # Resolve relative links
+                                    if href.startswith('/'):
+                                        full = f"https://{base_domain}{href.split('?')[0]}"
+                                    elif href.startswith('http'):
+                                        full = href.split('?')[0]
+                                    else:
+                                        continue
+                                    if full not in career_pages:
+                                        career_pages[full] = company_name
+                                        # Fetch immediately since we're in Pass 2
+                                        try:
+                                            r2 = await c.get(full, timeout=10.0)
+                                            if r2.status_code == 200:
+                                                _scan_for_ats(r2.text, company_name, "TopStartups→Career2")
+                                        except Exception:
+                                            pass
                 except Exception:
                     pass
 
