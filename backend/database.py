@@ -121,6 +121,7 @@ class Job(Base):
     deadline = Column(String, nullable=True)       # application deadline date (YYYY-MM-DD)
     interview_date = Column(String, nullable=True) # scheduled interview date (YYYY-MM-DD)
     reminder_date = Column(String, nullable=True)  # user-set reminder date (YYYY-MM-DD)
+    gcal_deadline_event_id = Column(String, nullable=True)   # Google Calendar event ID for deadline
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -238,6 +239,7 @@ class InterviewRound(Base):
     notes = Column(Text, nullable=True)
     status = Column(String, default="Scheduled")       # Scheduled, Completed, Cancelled
     thank_you_sent = Column(Boolean, default=False)
+    gcal_event_id = Column(String, nullable=True)   # Google Calendar event ID for this interview
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -315,6 +317,8 @@ def run_migrations():
         "ALTER TABLE user_profiles ADD COLUMN context_locations TEXT",
         "ALTER TABLE user_profiles ADD COLUMN context_skills TEXT",
         "ALTER TABLE interview_rounds ADD COLUMN thank_you_sent INTEGER DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN gcal_deadline_event_id TEXT",
+        "ALTER TABLE interview_rounds ADD COLUMN gcal_event_id TEXT",
         # Google Docs integration columns
         "ALTER TABLE users ADD COLUMN google_access_token TEXT",
         "ALTER TABLE users ADD COLUMN google_refresh_token TEXT",
@@ -368,6 +372,9 @@ def _run_pg_migrations():
         "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS preferred_roles TEXT",
         "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS preferred_work_types TEXT",
         "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS years_experience TEXT",
+        # Google Calendar sync columns
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS gcal_deadline_event_id TEXT",
+        "ALTER TABLE interview_rounds ADD COLUMN IF NOT EXISTS gcal_event_id TEXT",
         # Google Docs integration columns
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_access_token TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_refresh_token TEXT",

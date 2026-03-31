@@ -650,6 +650,7 @@ def job_to_dict(j):
         "deadline": j.deadline if hasattr(j, 'deadline') else None,
         "interview_date": j.interview_date if hasattr(j, 'interview_date') else None,
         "reminder_date": j.reminder_date if hasattr(j, 'reminder_date') else None,
+        "gcal_deadline_event_id": j.gcal_deadline_event_id if hasattr(j, 'gcal_deadline_event_id') else None,
         "created_at": j.created_at.isoformat() if j.created_at else None,
         "updated_at": j.updated_at.isoformat() if j.updated_at else None,
     }
@@ -894,6 +895,7 @@ def round_to_dict(r: InterviewRound) -> dict:
         "scheduled_date": r.scheduled_date, "interviewer_name": r.interviewer_name,
         "interviewer_linkedin": r.interviewer_linkedin, "notes": r.notes,
         "status": r.status,
+        "gcal_event_id": r.gcal_event_id if hasattr(r, 'gcal_event_id') else None,
         "created_at": r.created_at.isoformat() if r.created_at else None,
     }
 
@@ -3710,6 +3712,44 @@ async def _google_get_valid_token(user: User, db: Session) -> str:
     return user.google_access_token
 
 
+async def _gcal_upsert_event(token: str, event_id: Optional[str], event_body: dict) -> str:
+    """Create or update a Google Calendar event. Returns the event ID."""
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        if event_id:
+            # Update existing event
+            r = await client.put(
+                f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{event_id}",
+                headers=headers, json=event_body,
+            )
+            if r.status_code == 404:
+                # Event was deleted from Google Calendar — create a new one
+                event_id = None
+            elif r.status_code not in (200, 201):
+                raise HTTPException(status_code=502, detail=f"Calendar API error: {r.text}")
+            else:
+                return r.json()["id"]
+        if not event_id:
+            r = await client.post(
+                "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                headers=headers, json=event_body,
+            )
+            if r.status_code not in (200, 201):
+                raise HTTPException(status_code=502, detail=f"Calendar API error: {r.text}")
+            return r.json()["id"]
+
+async def _gcal_delete_event(token: str, event_id: str) -> None:
+    """Delete a Google Calendar event. Ignores 404 (already deleted)."""
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.delete(
+            f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{event_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        # 204 = deleted, 404 = already gone — both are fine
+        if r.status_code not in (204, 404):
+            raise HTTPException(status_code=502, detail=f"Calendar delete error: {r.text}")
+
+
 @app.get("/api/google/auth-url")
 async def google_auth_url(current_user: User = Depends(get_current_user)):
     """Return the Google OAuth URL for the user to visit."""
@@ -3720,7 +3760,7 @@ async def google_auth_url(current_user: User = Depends(get_current_user)):
         "client_id":     GOOGLE_CLIENT_ID,
         "redirect_uri":  GOOGLE_REDIRECT_URI,
         "response_type": "code",
-        "scope":         "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email",
+        "scope":         "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/calendar.events",
         "access_type":   "offline",
         "prompt":        "consent",
         "state":         str(current_user.id),
@@ -3986,6 +4026,126 @@ async def google_drive_list_files(
             )
         resp.raise_for_status()
         return resp.json()
+
+
+# ─────────────────────────────────────────────
+# GOOGLE CALENDAR SYNC
+# ─────────────────────────────────────────────
+
+@app.post("/api/jobs/{job_id}/gcal/deadline")
+async def sync_deadline_to_gcal(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Sync (create or update) the job deadline as an all-day Google Calendar event."""
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job.deadline:
+        raise HTTPException(status_code=400, detail="Job has no deadline set")
+    token = await _google_get_valid_token(current_user, db)
+    # All-day event: end date = next day
+    from datetime import date, timedelta
+    d = date.fromisoformat(job.deadline)
+    end = (d + timedelta(days=1)).isoformat()
+    event_body = {
+        "summary": f"Deadline: {job.company} — {job.role}",
+        "description": f"Application deadline for {job.role} at {job.company}.\n\nTracked in Orion.",
+        "start": {"date": job.deadline},
+        "end":   {"date": end},
+        "reminders": {"useDefault": False, "overrides": [{"method": "popup", "minutes": 1440}]},
+    }
+    event_id = await _gcal_upsert_event(token, job.gcal_deadline_event_id, event_body)
+    job.gcal_deadline_event_id = event_id
+    db.commit()
+    return {"ok": True, "event_id": event_id}
+
+
+@app.delete("/api/jobs/{job_id}/gcal/deadline")
+async def remove_deadline_from_gcal(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove the deadline calendar event."""
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.gcal_deadline_event_id:
+        token = await _google_get_valid_token(current_user, db)
+        await _gcal_delete_event(token, job.gcal_deadline_event_id)
+        job.gcal_deadline_event_id = None
+        db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/interview-rounds/{round_id}/gcal")
+async def sync_interview_to_gcal(
+    round_id: int,
+    payload: dict = Body(default={}),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Sync (create or update) an interview round as a Google Calendar event."""
+    round_ = db.query(InterviewRound).filter(
+        InterviewRound.id == round_id,
+        InterviewRound.user_id == current_user.id,
+    ).first()
+    if not round_:
+        raise HTTPException(status_code=404, detail="Interview round not found")
+    if not round_.scheduled_date:
+        raise HTTPException(status_code=400, detail="Interview round has no date set")
+    # Get parent job for company/role names
+    job = db.query(Job).filter(Job.id == round_.job_id).first()
+    company = job.company if job else "Company"
+    role    = job.role    if job else "Role"
+    token = await _google_get_valid_token(current_user, db)
+    round_type = round_.interview_type or f"Round {round_.round_number}"
+    # Default: 1-hour event at 10am on the scheduled date
+    start_dt = f"{round_.scheduled_date}T10:00:00"
+    end_dt   = f"{round_.scheduled_date}T11:00:00"
+    description_parts = [f"{round_type} interview for {role} at {company}."]
+    if round_.interviewer_name:
+        description_parts.append(f"Interviewer: {round_.interviewer_name}")
+    if round_.notes:
+        description_parts.append(f"Notes: {round_.notes}")
+    description_parts.append("\nTracked in Orion.")
+    event_body = {
+        "summary": f"{round_type} Interview — {company}",
+        "description": "\n".join(description_parts),
+        "start": {"dateTime": start_dt, "timeZone": "America/New_York"},
+        "end":   {"dateTime": end_dt,   "timeZone": "America/New_York"},
+        "reminders": {"useDefault": False, "overrides": [
+            {"method": "popup", "minutes": 60},
+            {"method": "popup", "minutes": 1440},
+        ]},
+    }
+    event_id = await _gcal_upsert_event(token, round_.gcal_event_id, event_body)
+    round_.gcal_event_id = event_id
+    db.commit()
+    return {"ok": True, "event_id": event_id}
+
+
+@app.delete("/api/interview-rounds/{round_id}/gcal")
+async def remove_interview_from_gcal(
+    round_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove an interview round calendar event."""
+    round_ = db.query(InterviewRound).filter(
+        InterviewRound.id == round_id,
+        InterviewRound.user_id == current_user.id,
+    ).first()
+    if not round_:
+        raise HTTPException(status_code=404, detail="Interview round not found")
+    if round_.gcal_event_id:
+        token = await _google_get_valid_token(current_user, db)
+        await _gcal_delete_event(token, round_.gcal_event_id)
+        round_.gcal_event_id = None
+        db.commit()
+    return {"ok": True}
 
 
 # ── Nylas Gmail Integration ────────────────────────────────────────────────────

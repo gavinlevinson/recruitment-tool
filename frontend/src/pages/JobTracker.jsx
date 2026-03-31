@@ -3,12 +3,12 @@ import confetti from 'canvas-confetti'
 import {
   Plus, Pencil, Trash2, ExternalLink, Search, X,
   ChevronDown, ChevronUp, Check, RefreshCw, Briefcase, MapPin,
-  Calendar, DollarSign, User, FileText, Building2,
+  Calendar, Calendar as CalendarIcon, DollarSign, User, FileText, Building2,
   Link2, AlertCircle, Folder, Star, Users, Mail,
   Linkedin, Copy, Sparkles, GraduationCap, Loader2, Send, Paperclip,
   ClipboardList, Save, PlusCircle,
 } from 'lucide-react'
-import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi, interviewRoundsApi, googleDocsApi } from '../api'
+import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi, interviewRoundsApi, googleDocsApi, calendarApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -394,7 +394,7 @@ const TYPE_COLORS = {
   'Other':            'bg-slate-100 text-slate-600 border-slate-200',
 }
 
-function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoundsChange }) {
+function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoundsChange, googleConnected }) {
   const [rounds, setRounds]     = useState([])
   const [loading, setLoading]   = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -515,13 +515,31 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
           </div>
 
           {r.scheduled_date && (
-            <p className="text-xs text-navy-500 flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <Calendar size={11} className="text-navy-400" />
-              {(() => {
-                const [y,m,d] = r.scheduled_date.split('-').map(Number)
-                return new Date(y,m-1,d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
-              })()}
-            </p>
+              <p className="text-xs text-navy-500">
+                {(() => {
+                  const [y,m,d] = r.scheduled_date.split('-').map(Number)
+                  return new Date(y,m-1,d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+                })()}
+              </p>
+              {googleConnected && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await calendarApi.syncInterview(r.id)
+                      setRounds(prev => prev.map(x => x.id === r.id ? { ...x, gcal_event_id: 'synced' } : x))
+                    } catch (e) {
+                      console.error('Calendar sync failed', e)
+                    }
+                  }}
+                  title={r.gcal_event_id ? 'Synced to Google Calendar — click to update' : 'Add to Google Calendar'}
+                  className={`p-1 rounded transition-colors ${r.gcal_event_id ? 'text-emerald-500 hover:text-emerald-700' : 'text-navy-300 hover:text-violet-500'}`}
+                >
+                  <CalendarIcon size={13} />
+                </button>
+              )}
+            </div>
           )}
 
           {r.interviewer_name && (
@@ -620,9 +638,12 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
 }
 
 // ── Detail Panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToInterviewing }) {
+function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToInterviewing, googleConnected }) {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [roundDates, setRoundDates] = useState([])
+  const [localJob, setLocalJob] = useState(null)
+  useEffect(() => { setLocalJob(null) }, [job?.id])
+  const displayJob = localJob || job
 
   useEffect(() => { setDeleteConfirm(false); setRoundDates([]) }, [job?.id])
 
@@ -680,8 +701,8 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToIn
                 ? new Date(job.date_applied).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
                 : null}
             />
-            {job.status === 'Not Applied' && job.deadline && (() => {
-              const [y,m,d] = job.deadline.split('-').map(Number)
+            {displayJob.status === 'Not Applied' && displayJob.deadline && (() => {
+              const [y,m,d] = displayJob.deadline.split('-').map(Number)
               const dt = new Date(y, m-1, d)
               const today = new Date(); today.setHours(0,0,0,0)
               const delta = Math.round((dt - today) / 86400000)
@@ -692,10 +713,28 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToIn
                   <AlertCircle size={15} className="text-red-400 mt-0.5 shrink-0" />
                   <div>
                     <p className="text-xs text-navy-400 uppercase tracking-wide font-semibold">Deadline</p>
-                    <p className="text-sm text-navy-700 mt-0.5">
-                      {dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                      <span className={`ml-2 text-xs font-semibold ${color}`}>({label})</span>
-                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <p className="text-sm text-navy-700">
+                        {dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                        <span className={`ml-2 text-xs font-semibold ${color}`}>({label})</span>
+                      </p>
+                      {googleConnected && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              await calendarApi.syncDeadline(displayJob.id)
+                              setLocalJob(prev => ({ ...(prev || displayJob), gcal_deadline_event_id: 'synced' }))
+                            } catch (e) {
+                              console.error('Calendar sync failed', e)
+                            }
+                          }}
+                          title={displayJob.gcal_deadline_event_id ? 'Synced to Google Calendar — click to update' : 'Add to Google Calendar'}
+                          className={`p-1 rounded transition-colors ${displayJob.gcal_deadline_event_id ? 'text-emerald-500 hover:text-emerald-700' : 'text-navy-300 hover:text-violet-500'}`}
+                        >
+                          <CalendarIcon size={13} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )
@@ -798,6 +837,7 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToIn
             jobStatus={job.status}
             onMoveToInterviewing={onMoveToInterviewing}
             onRoundsChange={setRoundDates}
+            googleConnected={googleConnected}
           />
 
           <div className="border-t border-navy-100 pt-5">
@@ -2856,6 +2896,7 @@ export default function JobTracker() {
           setSelectedJob(prev => ({ ...prev, status: 'Interviewing' }))
           jobsApi.update(selectedJob.id, { status: 'Interviewing' }).catch(() => {})
         }}
+        googleConnected={googleConnected}
       />
 
       {/* Network modal */}

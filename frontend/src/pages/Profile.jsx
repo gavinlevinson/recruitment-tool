@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import {
   Upload, FileText, Check, RefreshCw, User, GraduationCap, BookOpen,
   MapPin, Briefcase, AlertCircle, ChevronDown, Sparkles, X,
-  Download, Eye, EyeOff, Mail, Link2, Link2Off, Save, MessageSquare, Trash2,
+  Download, Eye, EyeOff, Mail, Link2, Link2Off, Save, MessageSquare, Trash2, Calendar,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { profileApi, authApi, nylasApi, googleDocsApi } from '../api'
@@ -250,11 +250,11 @@ export default function Profile() {
 
     const googleParam = params.get('google')
     if (googleParam === 'connected') {
-      setGoogleMsg({ type: 'success', text: 'Google Docs connected successfully!' })
+      setGoogleMsg({ type: 'success', text: 'Google connected successfully! Docs & Calendar sync are now active.' })
       googleDocsApi.getStatus().then(res => setGoogleStatus(res.data)).catch(() => {})
       window.history.replaceState({}, '', window.location.pathname)
     } else if (googleParam === 'error') {
-      setGoogleMsg({ type: 'error', text: 'Could not connect Google Docs. Please try again.' })
+      setGoogleMsg({ type: 'error', text: 'Could not connect Google. Please try again.' })
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [])
@@ -608,7 +608,7 @@ export default function Profile() {
           )}
         </div>
 
-        {/* Google Docs message banner */}
+        {/* Google message banner */}
         {googleMsg && (
           <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border ${
             googleMsg.type === 'success'
@@ -621,18 +621,18 @@ export default function Profile() {
           </div>
         )}
 
-        {/* Google Docs row */}
+        {/* Google row */}
         <div className="flex items-center justify-between gap-4 border-t border-navy-100 pt-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center flex-shrink-0">
-              <FileText size={16} className="text-sky-500" />
+              <Calendar size={16} className="text-sky-500" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-navy-800">Google Docs</p>
+              <p className="text-sm font-semibold text-navy-800">Google (Docs + Calendar)</p>
               {googleStatus?.connected ? (
-                <p className="text-xs text-emerald-600 font-medium">Connected · Attach notes to contacts</p>
+                <p className="text-xs text-emerald-600 font-medium">Connected · Sync deadlines & interviews to Google Calendar</p>
               ) : (
-                <p className="text-xs text-navy-400">Create & attach conversation notes to networking contacts</p>
+                <p className="text-xs text-navy-400">Sync interview dates & deadlines to Google Calendar, attach notes to contacts</p>
               )}
             </div>
           </div>

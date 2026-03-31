@@ -127,6 +127,10 @@ export const calendarApi = {
   getEvents:         ()          => api.get('/calendar/events'),
   createEvent:       (data)      => api.post('/calendar/events', data),
   deleteManualEvent: (eventId)   => api.delete(`/calendar/events/manual/${eventId}`),
+  syncDeadline:      (jobId)     => api.post(`/jobs/${jobId}/gcal/deadline`),
+  removeDeadline:    (jobId)     => api.delete(`/jobs/${jobId}/gcal/deadline`),
+  syncInterview:     (roundId)   => api.post(`/interview-rounds/${roundId}/gcal`),
+  removeInterview:   (roundId)   => api.delete(`/interview-rounds/${roundId}/gcal`),
 }
 
 export const interviewRoundsApi = {
