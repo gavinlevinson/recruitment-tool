@@ -2570,6 +2570,13 @@ export default function JobTracker() {
   const [interviewPrompt, setInterviewPrompt] = useState(null)       // entering Interviewing
   const [leaveInterviewPrompt, setLeaveInterviewPrompt] = useState(null) // leaving Interviewing with date set
   const [congratsJob, setCongratsJob] = useState(null)               // job just accepted — show congrats modal
+  const [googleConnected, setGoogleConnected] = useState(false)
+
+  useEffect(() => {
+    googleDocsApi.getStatus()
+      .then(res => setGoogleConnected(res.data?.connected || false))
+      .catch(() => setGoogleConnected(false))
+  }, [])
 
   const fetchJobs = useCallback(async () => {
     setLoading(true); setError(null)
