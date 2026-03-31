@@ -1071,8 +1071,8 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
                             seen_ids.add(cid)
                             all_companies.append(co)
                     total_pages = data.get("totalPages", 999)
-                    # Fetch all pages (up to 5000 companies to cap runtime)
-                    if len(all_companies) >= 5000 or page >= total_pages:
+                    # Cap at 2000 companies to stay within Railway 512MB RAM limit
+                    if len(all_companies) >= 2000 or page >= total_pages:
                         break
                     page += 1
                 except Exception:
@@ -1081,7 +1081,7 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
             print(f"[YC Jobs] {len(all_companies)} YC companies fetched")
 
             # ── Step 2: Fast slug-based ATS discovery for all companies ──────────
-            sem = asyncio.Semaphore(25)
+            sem = asyncio.Semaphore(15)  # Reduced from 25 to ease memory pressure
             MAX_PER_CO = 15
 
             async def discover_yc_ats(co: dict):
@@ -1169,13 +1169,18 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
                                 pass
                 return found
 
-            all_results = await asyncio.gather(
-                *[discover_yc_ats(co) for co in all_companies],
-                return_exceptions=True,
-            )
-            for r in all_results:
-                if isinstance(r, list):
-                    jobs.extend(r)
+            # Process in chunks of 150 to keep memory usage low on Railway (512MB)
+            CHUNK = 150
+            for i in range(0, len(all_companies), CHUNK):
+                chunk = all_companies[i:i + CHUNK]
+                chunk_results = await asyncio.gather(
+                    *[discover_yc_ats(co) for co in chunk],
+                    return_exceptions=True,
+                )
+                for r in chunk_results:
+                    if isinstance(r, list):
+                        jobs.extend(r)
+                print(f"[YC Jobs] Processed {min(i + CHUNK, len(all_companies))}/{len(all_companies)} companies, {len(jobs)} jobs so far")
 
     except Exception as e:
         print(f"[YC Jobs] Error: {e}")
