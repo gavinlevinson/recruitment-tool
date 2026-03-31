@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { authApi } from '../api'
+import posthog from 'posthog-js'
 
 const AuthContext = createContext(null)
 
@@ -12,7 +13,15 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!token) { setLoading(false); return }
     authApi.me()
-      .then(res => setUser(res.data))
+      .then(res => {
+        setUser(res.data)
+        posthog.identify(String(res.data.id), {
+          email: res.data.email,
+          name: res.data.name,
+          university: res.data.university,
+          graduation_year: res.data.graduation_year,
+        })
+      })
       .catch(() => { localStorage.removeItem('orion_token'); setToken(null) })
       .finally(() => setLoading(false))
   }, []) // eslint-disable-line
@@ -22,6 +31,13 @@ export function AuthProvider({ children }) {
     localStorage.setItem('orion_user', JSON.stringify(usr))
     setToken(tok)
     setUser(usr)
+    // Identify user in PostHog so events are tied to a real person
+    posthog.identify(String(usr.id), {
+      email: usr.email,
+      name: usr.name,
+      university: usr.university,
+      graduation_year: usr.graduation_year,
+    })
   }
 
   const login = useCallback(async (email, password) => {
@@ -41,6 +57,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('orion_user')
     setToken(null)
     setUser(null)
+    posthog.reset()  // Clear identity on logout
   }, [])
 
   const refreshUser = useCallback(async () => {
