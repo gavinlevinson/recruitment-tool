@@ -26,6 +26,7 @@ const SOURCE_META = [
   { match: 'himalayas',        label: 'Himalayas',       classes: 'bg-yellow-100 text-yellow-700 border border-yellow-200' },
   { match: 'we work remotely', label: 'We Work Remotely',classes: 'bg-green-100 text-green-700 border border-green-200' },
   { match: 'vc portfolio',     label: 'VC Portfolio',    classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
+  { match: 'topstartups',     label: 'TopStartups',     classes: 'bg-purple-100 text-purple-700 border border-purple-200' },
 ]
 
 const ALL_SOURCES = [
@@ -40,7 +41,8 @@ const ALL_SOURCES = [
   { id: 'yc_jobs',    label: 'YC Jobs',              description: 'Work at a Startup (YC)' },
   { id: 'himalayas',  label: 'Himalayas',            description: 'Remote startup jobs (public API)' },
   { id: 'wwr',        label: 'We Work Remotely',     description: 'Business & product remote roles' },
-  { id: 'vc_boards',  label: 'VC Portfolio',         description: 'a16z, Sequoia, Greylock & more' },
+  { id: 'vc_boards',      label: 'VC Portfolio',    description: 'a16z, Sequoia, Greylock & more' },
+  { id: 'topstartups',   label: 'TopStartups',     description: 'Funded AI startups (topstartups.io)' },
 ]
 
 const ALL_SOURCE_BADGES = [
@@ -58,6 +60,7 @@ const ALL_SOURCE_BADGES = [
   { id: 'himalayas',  label: 'Himalayas',       classes: 'bg-yellow-100 text-yellow-700 border border-yellow-200' },
   { id: 'wwr',        label: 'We Work Remotely',classes: 'bg-green-100 text-green-700 border border-green-200' },
   { id: 'vc_boards',  label: 'VC Portfolio',    classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
+  { id: 'topstartups', label: 'TopStartups',   classes: 'bg-purple-100 text-purple-700 border border-purple-200' },
 ]
 
 const PAGE_SIZE = 30
