@@ -1071,8 +1071,8 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
                             seen_ids.add(cid)
                             all_companies.append(co)
                     total_pages = data.get("totalPages", 999)
-                    # Cap at 2000 companies to stay within Railway 512MB RAM limit
-                    if len(all_companies) >= 2000 or page >= total_pages:
+                    # Fetch all YC companies (full directory ~5800 on Hobby 8GB plan)
+                    if page >= total_pages:
                         break
                     page += 1
                 except Exception:
@@ -1081,8 +1081,8 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
             print(f"[YC Jobs] {len(all_companies)} YC companies fetched")
 
             # ── Step 2: Fast slug-based ATS discovery for all companies ──────────
-            sem = asyncio.Semaphore(15)  # Reduced from 25 to ease memory pressure
-            MAX_PER_CO = 15
+            sem = asyncio.Semaphore(40)
+            MAX_PER_CO = 25
 
             async def discover_yc_ats(co: dict):
                 name    = (co.get("name") or "").strip()
@@ -1169,8 +1169,8 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
                                 pass
                 return found
 
-            # Process in chunks of 150 to keep memory usage low on Railway (512MB)
-            CHUNK = 150
+            # Process in chunks of 500 (safe on Hobby 8GB plan)
+            CHUNK = 500
             for i in range(0, len(all_companies), CHUNK):
                 chunk = all_companies[i:i + CHUNK]
                 chunk_results = await asyncio.gather(
@@ -1583,7 +1583,7 @@ async def scrape_vc_boards() -> List[Dict]:
     Hits Greenhouse, Lever, and Ashby ATSs for each company.
     """
     jobs = []
-    sem = asyncio.Semaphore(20)
+    sem = asyncio.Semaphore(40)
 
     # Deduplicate against the base lists
     gh_set   = set(GREENHOUSE_COMPANIES)
@@ -1702,8 +1702,8 @@ async def scrape_vc_portfolio_pages() -> List[Dict]:
     """
     jobs = []
     seen_domains: set = set()
-    sem = asyncio.Semaphore(25)
-    MAX_PER_CO = 15
+    sem = asyncio.Semaphore(40)
+    MAX_PER_CO = 25
 
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
 
@@ -2608,7 +2608,7 @@ async def scrape_topstartups() -> List[Dict]:
 # SHARED: ATS discovery helper for list-based scrapers
 # ─────────────────────────────────────────────
 async def _ats_discover_jobs(name: str, website: str, source_label: str,
-                              client, sem, max_per_co: int = 10) -> list:
+                              client, sem, max_per_co: int = 20) -> list:
     """
     Given a company name and website URL, derive ATS slug candidates
     and try Greenhouse → Lever → Ashby in order. Returns a list of job dicts.
@@ -2732,8 +2732,7 @@ async def scrape_forbes_startup_lists() -> List[Dict]:
         if not companies:
             print("[Forbes] Could not fetch company list")
             return []
-
-        sem = asyncio.Semaphore(20)
+        sem = asyncio.Semaphore(40)
         seen_domains: set = set()
         tasks = []
         for name, website in companies:
@@ -3014,7 +3013,7 @@ async def scrape_linkedin_top_startups() -> List[Dict]:
     Ashby board is checked for open roles matching the target profile.
     """
     jobs = []
-    sem = asyncio.Semaphore(20)
+    sem = asyncio.Semaphore(40)
 
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
         tasks = [
