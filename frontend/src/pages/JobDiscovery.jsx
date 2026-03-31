@@ -81,6 +81,13 @@ const ROLE_CHIP_KEYWORDS = {
 function getSourceMeta(source) {
   if (!source) return { label: 'Unknown', classes: 'bg-slate-100 text-slate-600 border border-slate-200' }
   const src = source.toLowerCase()
+
+  // VC Portfolio sources are stored as "VC Portfolio (FirmName)" — extract the firm name
+  const vcMatch = source.match(/^VC Portfolio \((.+?)\)$/i)
+  if (vcMatch) {
+    return { label: vcMatch[1], classes: 'bg-lime-100 text-lime-700 border border-lime-200' }
+  }
+
   return (
     SOURCE_META.find(m => src.includes(m.match)) ||
     { label: source, classes: 'bg-slate-100 text-slate-600 border border-slate-200' }
