@@ -1351,16 +1351,15 @@ def get_discovered_jobs(
         if loc_conditions:
             q = q.filter(or_(*loc_conditions))
 
-    # Years of experience filter
-    if years_experience and years_experience != "10+":
-        max_years_map = {"0+": 3, "1-2": 2, "3-5": 5, "5-10": 10}
-        user_max = max_years_map.get(years_experience)
-        if user_max is not None:
-            # Show jobs where experience requirement is unknown (null) OR within user's range
-            q = q.filter(or_(
-                DiscoveredJob.min_years_required == None,
-                DiscoveredJob.min_years_required <= user_max,
-            ))
+    # Years of experience filter — hard cutoff (what can be seen at all)
+    # 0+: 0-3 yrs   1-2: 0-5 yrs   3-5: 0-10 yrs   5-10/10+: everything
+    _exp_hard_max = {"0+": 3, "1-2": 5, "3-5": 10}
+    if years_experience and years_experience in _exp_hard_max:
+        user_max = _exp_hard_max[years_experience]
+        q = q.filter(or_(
+            DiscoveredJob.min_years_required == None,
+            DiscoveredJob.min_years_required <= user_max,
+        ))
 
     # Source filtering — based on user's enabled_sources preference
     SOURCE_ID_PATTERNS = {
@@ -1404,6 +1403,21 @@ def get_discovered_jobs(
     # hard-excluded at scrape time (VP/Director roles, 5+ year requirements, etc.)
     q = q.filter(or_(DiscoveredJob.match_score == None, DiscoveredJob.match_score > 0))
 
+    # Experience preference: penalty per year OVER the preferred ceiling
+    # Jobs still appear (hard cutoff above) but rank lower if they overshoot
+    _exp_pref_ceiling = {"0+": 1, "1-2": 2, "3-5": 5, "5-10": 10, "10+": None}
+    _exp_pref_penalty = {"0+": 15, "1-2": 10, "3-5": 5,  "5-10": 3,  "10+": 0}
+
+    def _exp_adj(min_yrs_req) -> float:
+        if min_yrs_req is None or not years_experience:
+            return 0.0
+        ceiling = _exp_pref_ceiling.get(years_experience)
+        if ceiling is None:
+            return 0.0
+        penalty = _exp_pref_penalty.get(years_experience, 0)
+        overshoot = max(0, min_yrs_req - ceiling)
+        return -(overshoot * penalty)
+
     if user_profile_dict:
         # Personalized path: fetch ALL matching jobs, score in Python, then filter/sort/paginate
         all_jobs = q.all()
@@ -1413,7 +1427,9 @@ def get_discovered_jobs(
             p_score, p_reasons = compute_personal_score(
                 j.role or "", j.location or "", j.description or "", user_profile_dict
             )
-            d["match_score"] = p_score
+            # Apply experience preference adjustment
+            adjusted = max(1, p_score + _exp_adj(j.min_years_required))
+            d["match_score"] = adjusted
             d["match_reasons"] = "; ".join(p_reasons) if p_reasons else ""
             scored.append(d)
         # Hard floor: always strip score=0 jobs (hard-excluded / zero relevance)
@@ -1440,20 +1456,43 @@ def get_discovered_jobs(
                 DiscoveredJob.match_score == None,
                 DiscoveredJob.match_score >= min_score,
             ))
-        if sort == "score":
-            q = q.order_by(DiscoveredJob.match_score.desc())
+
+        # If an experience preference filter is active, fetch all, apply adjustment, re-sort
+        if years_experience and years_experience in _exp_pref_ceiling:
+            all_raw = q.all()
+            all_jobs = []
+            for j in all_raw:
+                d = discovered_to_dict(j)
+                base = d.get("match_score") or 0
+                d["match_score"] = max(0, base + _exp_adj(j.min_years_required)) if base else None
+                all_jobs.append(d)
+            if sort == "score":
+                all_jobs.sort(key=lambda d: d.get("match_score") or 0, reverse=True)
+            else:
+                all_jobs.sort(
+                    key=lambda d: (d.get("posted_date") or "0000", d.get("scraped_at") or ""),
+                    reverse=True,
+                )
+            if deduplicate_by_company:
+                page_jobs, total = _deduplicate_jobs(all_jobs, offset, limit)
+            else:
+                total = len(all_jobs)
+                page_jobs = all_jobs[offset:offset + limit]
         else:
-            q = q.order_by(
-                DiscoveredJob.posted_date.desc().nullslast(),
-                DiscoveredJob.scraped_at.desc(),
-            )
-        if deduplicate_by_company:
-            all_jobs = [discovered_to_dict(j) for j in q.all()]
-            page_jobs, total = _deduplicate_jobs(all_jobs, offset, limit)
-        else:
-            total = q.count()
-            jobs = q.offset(offset).limit(limit).all()
-            page_jobs = [discovered_to_dict(j) for j in jobs]
+            if sort == "score":
+                q = q.order_by(DiscoveredJob.match_score.desc())
+            else:
+                q = q.order_by(
+                    DiscoveredJob.posted_date.desc().nullslast(),
+                    DiscoveredJob.scraped_at.desc(),
+                )
+            if deduplicate_by_company:
+                all_jobs = [discovered_to_dict(j) for j in q.all()]
+                page_jobs, total = _deduplicate_jobs(all_jobs, offset, limit)
+            else:
+                total = q.count()
+                jobs = q.offset(offset).limit(limit).all()
+                page_jobs = [discovered_to_dict(j) for j in jobs]
         return {"total": total, "jobs": page_jobs}
 
 @app.post("/api/discovered-jobs/dismiss-company")
