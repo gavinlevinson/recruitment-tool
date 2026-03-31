@@ -52,8 +52,11 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Orion API")
 
-# Track when the last scrape was triggered (in-memory; resets on restart)
+# Track scrape state (in-memory; resets on restart)
 _last_scrape_triggered: Optional[str] = None
+_scrape_running: bool = False
+_scrape_last_saved: int = 0       # jobs saved in last completed scrape
+_scrape_completed_at: Optional[str] = None
 
 # In-memory cache for company summaries: company_name (lowercase) → summary string
 _company_summary_cache: dict = {}
@@ -1778,12 +1781,16 @@ async def trigger_scrape(background_tasks: BackgroundTasks):
 
 @app.get("/api/scrape/status")
 def get_scrape_status(db: Session = Depends(get_db)):
-    # Use the time the scrape was triggered if available; otherwise fall back to latest job's scraped_at
     last_scraped = _last_scrape_triggered
     if not last_scraped:
         latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
         last_scraped = latest.scraped_at.isoformat() if latest else None
-    return {"last_scraped": last_scraped}
+    return {
+        "last_scraped": last_scraped,
+        "is_running": _scrape_running,
+        "last_saved": _scrape_last_saved,
+        "completed_at": _scrape_completed_at,
+    }
 
 
 @app.get("/api/discovered-jobs/new-today")
@@ -1894,33 +1901,41 @@ async def run_scraper(db: Session = None):
     Core scraping logic. Creates its own DB session so it works safely
     as a FastAPI BackgroundTask (request session is closed by then).
     """
+    global _scrape_running, _scrape_last_saved, _scrape_completed_at
+    _scrape_running = True
+    _scrape_last_saved = 0
     from scraper import scrape_all_sources
     from database import SessionLocal
-    results = await scrape_all_sources()
-    # Always use a fresh session — never the request-scoped one
-    _db = SessionLocal()
     try:
-        saved = 0
-        for job_data in results:
-            existing = _db.query(DiscoveredJob).filter(
-                DiscoveredJob.company == job_data.get("company"),
-                DiscoveredJob.role == job_data.get("role"),
-            ).first()
-            if not existing:
-                _db.add(DiscoveredJob(**job_data))
-                saved += 1
-            else:
-                # Update job_url for existing jobs if it has changed (e.g., Ali Rohde now extracts direct links)
-                new_url = job_data.get("job_url")
-                if new_url and new_url != existing.job_url:
-                    existing.job_url = new_url
-        _db.commit()
-        print(f"[Scraper] Saved {saved} new jobs to database")
-    except Exception as e:
-        print(f"[Scraper] DB error: {e}")
-        _db.rollback()
+        results = await scrape_all_sources()
+        # Always use a fresh session — never the request-scoped one
+        _db = SessionLocal()
+        try:
+            saved = 0
+            for job_data in results:
+                existing = _db.query(DiscoveredJob).filter(
+                    DiscoveredJob.company == job_data.get("company"),
+                    DiscoveredJob.role == job_data.get("role"),
+                ).first()
+                if not existing:
+                    _db.add(DiscoveredJob(**job_data))
+                    saved += 1
+                else:
+                    # Update job_url for existing jobs if it has changed
+                    new_url = job_data.get("job_url")
+                    if new_url and new_url != existing.job_url:
+                        existing.job_url = new_url
+            _db.commit()
+            _scrape_last_saved = saved
+            print(f"[Scraper] Saved {saved} new jobs to database")
+        except Exception as e:
+            print(f"[Scraper] DB error: {e}")
+            _db.rollback()
+        finally:
+            _db.close()
     finally:
-        _db.close()
+        _scrape_running = False
+        _scrape_completed_at = datetime.utcnow().isoformat()
 
 
 # ─────────────────────────────────────────────

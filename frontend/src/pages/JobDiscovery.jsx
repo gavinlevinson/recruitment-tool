@@ -1324,6 +1324,7 @@ export default function JobDiscovery() {
   const [error, setError]     = useState(null)
   const [running, setRunning] = useState(false)
   const [runElapsed, setRunElapsed] = useState(0)
+  const [runResult, setRunResult] = useState(null)
 
   // Preferences — null until loaded from API (prevents double-fetch with wrong filters)
   const [preferences, setPreferences] = useState(null)
@@ -1491,17 +1492,30 @@ export default function JobDiscovery() {
   const handleRunAgent = async () => {
     setRunning(true)
     setRunElapsed(0)
+    setRunResult(null)
     // Start elapsed timer
     runTimerRef.current = setInterval(() => {
       setRunElapsed(prev => prev + 1)
     }, 1000)
     try {
       await discoveredApi.triggerScrape()
-      // Poll every 12 seconds for up to ~90 seconds (7 times)
-      const prevTotal = total
-      for (let i = 0; i < 7; i++) {
-        await new Promise(r => setTimeout(r, 12000))
-        await fetchJobs({ page: 1 })
+      // Poll status every 8s; stop as soon as is_running flips to false
+      for (let i = 0; i < 40; i++) {          // max ~5 min
+        await new Promise(r => setTimeout(r, 8000))
+        const statusRes = await discoveredApi.getStatus().catch(() => null)
+        const status = statusRes?.data
+        if (status && !status.is_running) {
+          // Scrape finished — refresh jobs and show result
+          await fetchJobs({ page: 1 })
+          const saved = status.last_saved ?? 0
+          setRunResult(saved > 0
+            ? `${saved} new job${saved === 1 ? '' : 's'} added`
+            : 'Up to date — no new jobs found'
+          )
+          break
+        }
+        // Refresh the list while scraping so counts update live
+        if (i % 2 === 1) await fetchJobs({ page: 1 })
       }
     } catch (err) {
       console.error('Scrape failed:', err)
@@ -1703,9 +1717,15 @@ export default function JobDiscovery() {
               <RefreshCw size={15} className={running ? 'animate-spin' : ''} />
               {running ? `Scanning… ${runElapsed}s` : 'Run Discovery Agent'}
             </button>
-            <p className="text-xs text-navy-400">
-              {running ? 'Searching 12 job boards — results appear as they load' : 'Searches 12 job boards & newsletters'}
-            </p>
+            {running ? (
+              <p className="text-xs text-navy-400">Searching all sources — will stop automatically when done</p>
+            ) : runResult ? (
+              <p className={`text-xs font-medium ${runResult.startsWith('Up to date') ? 'text-navy-400' : 'text-emerald-600'}`}>
+                {runResult.startsWith('Up to date') ? '✓' : '✦'} {runResult}
+              </p>
+            ) : (
+              <p className="text-xs text-navy-400">Searches all job boards &amp; newsletters</p>
+            )}
           </div>
         </div>
       </div>
