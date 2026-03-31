@@ -1352,8 +1352,8 @@ def get_discovered_jobs(
             q = q.filter(or_(*loc_conditions))
 
     # Years of experience filter
-    if years_experience and years_experience != "10+":
-        max_years_map = {"0+": 0, "1-2": 2, "3-5": 5, "5-10": 10}
+    if years_experience and years_experience not in ("10+", "0+"):
+        max_years_map = {"1-2": 2, "3-5": 5, "5-10": 10}
         user_max = max_years_map.get(years_experience)
         if user_max is not None:
             # Show jobs where experience requirement is unknown (null) OR within user's range
@@ -3536,6 +3536,12 @@ Keep replies SHORT (2-4 sentences). Be specific and actionable. Never make up fe
 #   GOOGLE_CLIENT_SECRET=...  (from Google Cloud Console)
 #   GOOGLE_REDIRECT_URI=...   (e.g. https://your-backend.railway.app/api/google/callback)
 
+_google_railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "") or os.getenv("RAILWAY_STATIC_URL", "")
+_google_default_backend = f"https://{_google_railway_domain}" if _google_railway_domain else os.getenv("BACKEND_URL", "http://localhost:8000")
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", f"{_google_default_backend}/api/google/callback")
+
 async def _google_get_valid_token(user: User, db: Session) -> str:
     """Return a valid Google access token, refreshing if needed."""
     import time
@@ -3770,10 +3776,7 @@ _railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "") or os.getenv("RAILWAY_S
 _default_backend = f"https://{_railway_domain}" if _railway_domain else os.getenv("BACKEND_URL", "http://localhost:8000")
 NYLAS_REDIRECT_URI = os.getenv("NYLAS_REDIRECT_URI", f"{_default_backend}/api/nylas/callback")
 
-# ── Google Docs OAuth config ───────────────────────────────────────────────────
-GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", f"{_default_backend}/api/google/callback")
+# ── Google Docs OAuth config ─── (defined near line 3523, above Google route handlers) ───
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
