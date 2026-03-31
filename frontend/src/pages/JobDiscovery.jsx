@@ -1145,6 +1145,13 @@ export default function JobDiscovery() {
   const [sortBy, setSortBy]                   = useState('score')
   const [page, setPage]                       = useState(1)
 
+  // New Today banner
+  const [newTodayJobs, setNewTodayJobs]       = useState([])
+  const [newTodayExpanded, setNewTodayExpanded] = useState(true)
+  const [newTodayDismissed, setNewTodayDismissed] = useState(
+    () => sessionStorage.getItem('riq_new_today_dismissed') === new Date().toDateString()
+  )
+
   const debounceRef = useRef(null)
   const runTimerRef = useRef(null)
 
@@ -1264,6 +1271,14 @@ export default function JobDiscovery() {
   useEffect(() => {
     fetchJobs()
   }, [page, sortBy, debouncedSearch, roleFilter, hideAdded, preferences]) // eslint-disable-line
+
+  // Fetch new-today jobs once on mount
+  useEffect(() => {
+    if (newTodayDismissed) return
+    discoveredApi.getNewToday()
+      .then(res => setNewTodayJobs(res.data?.jobs || []))
+      .catch(() => {})
+  }, []) // eslint-disable-line
 
   const handleRunAgent = async () => {
     setRunning(true)
@@ -1490,6 +1505,62 @@ export default function JobDiscovery() {
           </div>
         </div>
       </div>
+
+      {/* ── New Today Banner ─────────────────────────────────────────────── */}
+      {!newTodayDismissed && newTodayJobs.length > 0 && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 overflow-hidden">
+          {/* Header row */}
+          <div className="flex items-center justify-between px-4 py-3">
+            <button
+              onClick={() => setNewTodayExpanded(v => !v)}
+              className="flex items-center gap-2 text-left"
+            >
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-sky-500 text-white text-xs font-bold shrink-0">
+                {newTodayJobs.length}
+              </span>
+              <span className="text-sm font-semibold text-sky-800">
+                New companies added today
+              </span>
+              {newTodayExpanded
+                ? <ChevronUp size={15} className="text-sky-500" />
+                : <ChevronDown size={15} className="text-sky-500" />}
+            </button>
+            <button
+              onClick={() => {
+                setNewTodayDismissed(true)
+                sessionStorage.setItem('riq_new_today_dismissed', new Date().toDateString())
+              }}
+              className="p-1 rounded-lg text-sky-400 hover:text-sky-700 transition-colors"
+              title="Dismiss for today"
+            >
+              <X size={15} />
+            </button>
+          </div>
+
+          {/* Expanded job list */}
+          {newTodayExpanded && (
+            <div className="border-t border-sky-200 divide-y divide-sky-100 max-h-72 overflow-y-auto">
+              {newTodayJobs.map(job => (
+                <div key={job.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-sky-100/50 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-navy-900 truncate">{job.company}</p>
+                    <p className="text-xs text-navy-500 truncate">{job.role}</p>
+                  </div>
+                  {job.location && (
+                    <span className="text-xs text-navy-400 shrink-0 hidden sm:block">{job.location}</span>
+                  )}
+                  <button
+                    onClick={() => handleAddToTracker(job)}
+                    className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700 transition-colors"
+                  >
+                    + Add
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* No-resume banner */}
       {!hasResume && !resumeBannerDismissed && (

@@ -73,6 +73,7 @@ export const discoveredApi = {
   getNextAtCompany: (company, excludeId, params) => api.get('/discovered-jobs', {
     params: { ...params, company_filter: company, is_active: true, limit: 2, offset: 0 }
   }),
+  getNewToday: () => api.get('/discovered-jobs/new-today'),
 }
 
 export const recruitersApi = {

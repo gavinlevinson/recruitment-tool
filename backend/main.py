@@ -12,6 +12,8 @@ import os
 import shutil
 import pathlib
 import asyncio
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from database import (
     get_db, init_db, Job, Contact, DiscoveredJob, Recruiter,
     UserPreferences, JobCollection, JobCollectionItem,
@@ -77,10 +79,23 @@ app.add_middleware(
 )
 
 
+_scheduler = AsyncIOScheduler()
+
 @app.on_event("startup")
 def startup_event():
     init_db()
     asyncio.ensure_future(_daily_job_check_loop())
+
+    # ── Daily 9am ET auto-scrape ──────────────────────────────────────────────
+    _scheduler.add_job(
+        run_scraper,
+        CronTrigger(hour=9, minute=0, timezone="America/New_York"),
+        id="daily_9am_scrape",
+        name="Daily 9am ET job scrape",
+        replace_existing=True,
+    )
+    _scheduler.start()
+    print("[Scheduler] Daily 9am ET scrape scheduled.")
 
 
 async def _daily_job_check_loop():
@@ -1743,6 +1758,32 @@ def get_scrape_status(db: Session = Depends(get_db)):
         latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
         last_scraped = latest.scraped_at.isoformat() if latest else None
     return {"last_scraped": last_scraped}
+
+
+@app.get("/api/discovered-jobs/new-today")
+def get_new_today_jobs(db: Session = Depends(get_db)):
+    """Return jobs scraped since midnight UTC today — used for the 'New Today' banner."""
+    today_midnight = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    jobs = (
+        db.query(DiscoveredJob)
+        .filter(
+            DiscoveredJob.scraped_at >= today_midnight,
+            DiscoveredJob.is_active == True,
+            or_(DiscoveredJob.match_score == None, DiscoveredJob.match_score > 0),
+        )
+        .order_by(DiscoveredJob.scraped_at.desc())
+        .limit(200)
+        .all()
+    )
+    # Deduplicate by company — one entry per company, same as main feed
+    seen = set()
+    unique = []
+    for j in jobs:
+        key = (j.company or "").lower().strip()
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(discovered_to_dict(j))
+    return {"jobs": unique, "count": len(unique)}
 
 
 @app.get("/api/company-summary")
