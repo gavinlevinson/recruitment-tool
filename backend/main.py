@@ -1239,6 +1239,7 @@ def contact_to_dict(c):
         "graduation_year": c.graduation_year, "tags": c.tags,
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+        "doc_links": json.loads(c.doc_links) if getattr(c, 'doc_links', None) else [],
     }
 
 
@@ -1398,6 +1399,11 @@ def get_discovered_jobs(
         if user_profile_obj and (user_profile_obj.parsed_roles or user_profile_obj.context_roles):
             user_profile_dict = build_user_profile_for_scoring(current_user, user_profile_obj)
 
+    # Hard floor: exclude jobs that were explicitly hard-excluded (score=0) during scraping.
+    # This applies to both personalized and non-personalized paths — score=0 means
+    # hard-excluded at scrape time (VP/Director roles, 5+ year requirements, etc.)
+    q = q.filter(or_(DiscoveredJob.match_score == None, DiscoveredJob.match_score > 0))
+
     if user_profile_dict:
         # Personalized path: fetch ALL matching jobs, score in Python, then filter/sort/paginate
         all_jobs = q.all()
@@ -1428,8 +1434,7 @@ def get_discovered_jobs(
         return {"total": total, "jobs": page_jobs}
     else:
         # Non-personalized: DB handles filtering and pagination
-        # Hard floor: never show score=0 (hard-excluded) jobs; keep nulls (unscored)
-        q = q.filter(or_(DiscoveredJob.match_score == None, DiscoveredJob.match_score > 0))
+        # (Hard floor already applied above for both paths)
         if min_score is not None and min_score > 0:
             q = q.filter(or_(
                 DiscoveredJob.match_score == None,
@@ -3515,6 +3520,230 @@ Keep replies SHORT (2-4 sentences). Be specific and actionable. Never make up fe
         return {"reply": "I'm having trouble connecting right now. Please try again in a moment."}
 
 
+# ── Google Docs OAuth ──────────────────────────────────────────────────────────
+#
+# Flow:
+#   1. GET  /api/google/auth-url  → returns a URL the user visits to grant Drive access
+#   2. GET  /api/google/callback  → Google redirects here; exchange code → access/refresh tokens
+#   3. GET  /api/google/status    → returns { connected: bool, email: str|null }
+#   4. DELETE /api/google/disconnect → revokes and clears tokens
+#   5. POST /api/contacts/{id}/docs/create → creates a new Google Doc, attaches to contact
+#   6. POST /api/contacts/{id}/docs/link   → attaches an existing doc URL to contact
+#   7. DELETE /api/contacts/{id}/docs/{idx} → removes a doc link from contact
+#
+# Required .env vars:
+#   GOOGLE_CLIENT_ID=...      (from Google Cloud Console)
+#   GOOGLE_CLIENT_SECRET=...  (from Google Cloud Console)
+#   GOOGLE_REDIRECT_URI=...   (e.g. https://your-backend.railway.app/api/google/callback)
+
+async def _google_get_valid_token(user: User, db: Session) -> str:
+    """Return a valid Google access token, refreshing if needed."""
+    import time
+    if not user.google_refresh_token:
+        raise HTTPException(status_code=400, detail="Google account not connected. Connect via Profile → Integrations.")
+
+    # Refresh if expired or missing
+    if not user.google_access_token or (user.google_token_expiry and time.time() > user.google_token_expiry - 60):
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id":     GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "refresh_token": user.google_refresh_token,
+                    "grant_type":    "refresh_token",
+                },
+            )
+            if resp.status_code != 200:
+                raise HTTPException(status_code=400, detail="Failed to refresh Google token. Please reconnect.")
+            tokens = resp.json()
+            user.google_access_token = tokens.get("access_token")
+            user.google_token_expiry = time.time() + tokens.get("expires_in", 3600)
+            db.commit()
+
+    return user.google_access_token
+
+
+@app.get("/api/google/auth-url")
+async def google_auth_url(current_user: User = Depends(get_current_user)):
+    """Return the Google OAuth URL for the user to visit."""
+    import urllib.parse
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured (add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to env)")
+    params = {
+        "client_id":     GOOGLE_CLIENT_ID,
+        "redirect_uri":  GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope":         "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email",
+        "access_type":   "offline",
+        "prompt":        "consent",
+        "state":         str(current_user.id),
+    }
+    url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+    return {"url": url}
+
+
+@app.get("/api/google/callback")
+async def google_callback(code: str = "", state: str = "", error: str = "", db: Session = Depends(get_db)):
+    """Google redirects here after user grants access. Exchange code → tokens."""
+    from fastapi.responses import RedirectResponse
+    import time
+
+    if error or not code:
+        return RedirectResponse(url=f"{FRONTEND_URL}/profile?google=error&reason=denied")
+
+    try:
+        user_id = int(state)
+    except (ValueError, TypeError):
+        return RedirectResponse(url=f"{FRONTEND_URL}/profile?google=error&reason=invalid_state")
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Exchange code for tokens
+            resp = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code":          code,
+                    "client_id":     GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "redirect_uri":  GOOGLE_REDIRECT_URI,
+                    "grant_type":    "authorization_code",
+                },
+            )
+            if resp.status_code != 200:
+                return RedirectResponse(url=f"{FRONTEND_URL}/profile?google=error&reason=token_exchange")
+            tokens = resp.json()
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return RedirectResponse(url=f"{FRONTEND_URL}/profile?google=error&reason=user_not_found")
+
+        user.google_access_token  = tokens.get("access_token")
+        user.google_refresh_token = tokens.get("refresh_token") or user.google_refresh_token
+        user.google_token_expiry  = time.time() + tokens.get("expires_in", 3600)
+        db.commit()
+
+        return RedirectResponse(url=f"{FRONTEND_URL}/profile?google=connected")
+
+    except Exception as e:
+        return RedirectResponse(url=f"{FRONTEND_URL}/profile?google=error&reason=exception")
+
+
+@app.get("/api/google/status")
+async def google_status(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Return whether the user has Google connected."""
+    connected = bool(current_user.google_refresh_token)
+    return {"connected": connected, "email": None}
+
+
+@app.delete("/api/google/disconnect")
+async def google_disconnect(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Clear Google tokens."""
+    current_user.google_access_token  = None
+    current_user.google_refresh_token = None
+    current_user.google_token_expiry  = None
+    db.commit()
+    return {"ok": True}
+
+
+# ── Contact Google Doc routes ──────────────────────────────────────────────────
+
+@app.post("/api/contacts/{contact_id}/docs/create")
+async def create_contact_doc(
+    contact_id: int,
+    payload: dict = Body({}),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create a new Google Doc and attach it to this contact."""
+    from datetime import datetime as _dt
+
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    token = await _google_get_valid_token(current_user, db)
+
+    # Default title: "Notes: [Contact Name] — [Date]"
+    title = payload.get("title") or f"Notes: {contact.name} — {_dt.utcnow().strftime('%b %d, %Y')}"
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(
+            "https://www.googleapis.com/drive/v3/files",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type":  "application/json",
+            },
+            json={
+                "name":     title,
+                "mimeType": "application/vnd.google-apps.document",
+            },
+        )
+        if resp.status_code not in (200, 201):
+            raise HTTPException(status_code=502, detail=f"Google Drive API error: {resp.text[:200]}")
+        file_data = resp.json()
+
+    doc_url = f"https://docs.google.com/document/d/{file_data['id']}/edit"
+    doc_entry = {"url": doc_url, "title": title, "created_at": _dt.utcnow().isoformat()}
+
+    existing = json.loads(contact.doc_links) if getattr(contact, 'doc_links', None) else []
+    existing.append(doc_entry)
+    contact.doc_links = json.dumps(existing)
+    db.commit()
+
+    return {"doc": doc_entry, "doc_links": existing}
+
+
+@app.post("/api/contacts/{contact_id}/docs/link")
+async def link_contact_doc(
+    contact_id: int,
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Attach an existing Google Doc URL to this contact."""
+    from datetime import datetime as _dt
+
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    url   = (payload.get("url") or "").strip()
+    title = (payload.get("title") or url).strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="url is required")
+
+    doc_entry = {"url": url, "title": title, "created_at": _dt.utcnow().isoformat()}
+    existing  = json.loads(contact.doc_links) if getattr(contact, 'doc_links', None) else []
+    existing.append(doc_entry)
+    contact.doc_links = json.dumps(existing)
+    db.commit()
+
+    return {"doc": doc_entry, "doc_links": existing}
+
+
+@app.delete("/api/contacts/{contact_id}/docs/{doc_index}")
+async def unlink_contact_doc(
+    contact_id: int,
+    doc_index: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove a doc link from a contact by its index."""
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    existing = json.loads(contact.doc_links) if getattr(contact, 'doc_links', None) else []
+    if doc_index < 0 or doc_index >= len(existing):
+        raise HTTPException(status_code=404, detail="Doc index out of range")
+
+    existing.pop(doc_index)
+    contact.doc_links = json.dumps(existing)
+    db.commit()
+    return {"doc_links": existing}
+
+
 # ── Nylas Gmail Integration ────────────────────────────────────────────────────
 #
 # Flow:
@@ -3540,6 +3769,11 @@ NYLAS_API_BASE     = os.getenv("NYLAS_API_BASE", "https://api.us.nylas.com")
 _railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "") or os.getenv("RAILWAY_STATIC_URL", "")
 _default_backend = f"https://{_railway_domain}" if _railway_domain else os.getenv("BACKEND_URL", "http://localhost:8000")
 NYLAS_REDIRECT_URI = os.getenv("NYLAS_REDIRECT_URI", f"{_default_backend}/api/nylas/callback")
+
+# ── Google Docs OAuth config ───────────────────────────────────────────────────
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", f"{_default_backend}/api/google/callback")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

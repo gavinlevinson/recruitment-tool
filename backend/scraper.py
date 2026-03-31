@@ -269,6 +269,60 @@ def _make_vc_job(company: str, role: str, location: str, url: str,
     return job
 
 
+def extract_min_years(text: str):
+    """Return the minimum years of experience required from a description, or None.
+    Catches all common phrasings: '3+ years', '3-5 years', 'minimum 3 years',
+    '3 years of experience', 'requires 3 years', 'you have 3+ years', etc.
+    """
+    if not text:
+        return None
+    t = text.lower()
+
+    # Explicit entry-level signal overrides everything
+    if re.search(r'\bentry.?level\b|no experience required|\b0.?year|\bnew\s+grad|\brecent\s+graduate', t):
+        return 0
+
+    # Ordered most→least specific. All patterns capture the MINIMUM years.
+    patterns = [
+        # "minimum of 3 years" / "minimum 3 years" / "at least 3 years"
+        r'(?:minimum\s+(?:of\s+)?|at\s+least\s+)(\d+)\s*\+?\s*years?',
+        # "3+ years of professional/relevant/work/hands-on experience"
+        r'\b(\d+)\s*\+\s*years?\s+(?:of\s+)?(?:relevant\s+|professional\s+|work\s+|hands.on\s+|industry\s+)?experience',
+        # "3-5 years of experience" / "3 to 5 years of experience"
+        r'\b(\d+)\s*(?:[-–]|to)\s*\d+\s*years?\s+(?:of\s+)?(?:relevant\s+|professional\s+|work\s+)?experience',
+        # "3 years of experience" (no +/range)
+        r'\b(\d+)\s*years?\s+of\s+(?:relevant\s+|professional\s+|work\s+|hands.on\s+|industry\s+)?experience',
+        # "experience: 3+ years" / "experience (3+ years)"
+        r'experience[:\s(]+(\d+)\s*\+?\s*years?',
+        # "requires 3+ years" / "requires at least 3 years"
+        r'requires?\s+(?:at\s+least\s+)?(\d+)\s*\+?\s*years?',
+        # "you have 3+ years" / "you've built X over 3+ years"
+        r"you\s+(?:have|'ve|have\s+built)\s+(?:[a-z\s]{0,20})?(\d+)\s*\+?\s*years?",
+        # "3 or more years"
+        r'\b(\d+)\s+or\s+more\s+years?',
+        # "3 years experience" (no "of")
+        r'\b(\d+)\s*years?\s+experience',
+        # "3 years in [field]" — only if near "experience" or job-context words within 60 chars
+        r'\b(\d+)\s*\+?\s*years?\s+(?:in|working\s+(?:in|with|on)|building|managing|leading)\b',
+        # "5-7 year background" / "X year track record"
+        r'\b(\d+)\s*[-–]\s*\d+\s*year(?:s)?\s+(?:background|track\s+record)',
+        # fallback: "X years" anywhere near "experience" within 50 chars
+        r'\b(\d+)\s*\+?\s*years?\b(?=.{0,50}experience)',
+    ]
+
+    for pat in patterns:
+        m = re.search(pat, t)
+        if m:
+            try:
+                val = int(m.group(1))
+                if 0 <= val <= 30:  # sanity check
+                    return val
+            except (ValueError, IndexError):
+                pass
+
+    return None
+
+
 def score_job(company: str, role: str, location: str = "", description: str = ""):
     """
     New scoring breakdown (0-100):
@@ -335,33 +389,21 @@ def score_job(company: str, role: str, location: str = "", description: str = ""
     # Check description for experience requirements FIRST — these override positive signals.
     desc_lower = desc_lower_full
 
-    # ── Experience gate — check full description for any 5+ year requirement ──────
-    # Multiple patterns to catch "7+ years", "7-10 years", "minimum 7 years", "7 or more years"
-    hard_exp_patterns = [
-        r'\b([5-9]|\d{2})\+?\s*years?\s+(?:of\s+)?(?:professional\s+|relevant\s+|work\s+)?experience',
-        r'(?:minimum|at\s+least|minimum\s+of|at\s+minimum)\s+([5-9]|\d{2})\+?\s*years?',
-        r'\b([5-9]|\d{2})\s*[-–]\s*\d+\s*\+?\s*years?\s+(?:of\s+)?(?:professional\s+|relevant\s+|work\s+)?experience',
-        r'\b([5-9]|\d{2})\s+or\s+more\s+years?\s+(?:of\s+)?experience',
-    ]
-    hard_exp_in_desc = any(re.search(p, desc_lower) for p in hard_exp_patterns)
+    # ── Experience gate — hard filter for 5+ year requirements ──────────────────
+    # Use extract_min_years for consistent parsing across all code paths
+    desc_min_years = extract_min_years(desc_lower)
 
-    mid_exp_in_desc = re.search(
-        r'\b([3-4])\+?\s*years?\s+(?:of\s+)?(?:professional\s+)?(?:relevant\s+)?(?:work\s+)?experience',
-        desc_lower
-    )
-    one_two_exp_in_desc = re.search(
-        r'\b([1-2])\+?\s*years?\s+(?:of\s+)?(?:professional\s+)?(?:relevant\s+)?(?:work\s+)?experience',
-        desc_lower
-    )
-
-    if hard_exp_in_desc:
+    if desc_min_years is not None and desc_min_years >= 5:
         return 0, []
-    elif mid_exp_in_desc:
+    elif desc_min_years is not None and desc_min_years in (3, 4):
         entry_pts = 5
-        reasons.append(f"3-4 yrs exp (reach)")
-    elif one_two_exp_in_desc:
+        reasons.append(f"{desc_min_years}+ yrs exp required (reach)")
+    elif desc_min_years is not None and desc_min_years in (1, 2):
         entry_pts = 12
-        reasons.append(f"1-2 yrs exp (stretch)")
+        reasons.append(f"{desc_min_years} yr exp required (stretch)")
+    elif desc_min_years == 0:
+        entry_pts = 30
+        reasons.append("Entry-level friendly")
     else:
         clear_entry = [
             "new grad", "entry level", "entry-level", "0-2 years", "recent graduate",
@@ -440,42 +482,6 @@ def extract_company_metadata(description: str) -> dict:
                 pass
 
     return {"funding_stage": funding_stage, "employee_count": employee_count}
-
-
-def extract_min_years(text: str):
-    """Return the minimum years of experience required from a description, or None."""
-    if not text:
-        return None
-    t = text.lower()
-
-    # Ordered from most specific to least specific
-    patterns = [
-        r'(?:minimum|at\s+least|minimum\s+of)\s+(\d+)\s*\+?\s*years?',
-        r'\b(\d+)\s*[-–]\s*\d+\s*\+?\s*years?\s+(?:of\s+)?(?:relevant\s+|professional\s+|work\s+)?experience',
-        # "minimum of 3 years" / "at least 3 years of experience"
-        r'(?:minimum\s+(?:of\s+)?|at\s+least\s+)(\d+)\s*\+?\s*years?',
-        # "3+ years of professional/relevant/work experience"
-        r'\b(\d+)\s*\+\s*years?\s+(?:of\s+)?(?:relevant\s+|professional\s+|work\s+)?experience',
-        # "3 to 5 years of experience" / "3-5 years experience"
-        r'\b(\d+)\s*(?:to|-)\s*\d+\s*years?\s+(?:of\s+)?(?:relevant\s+|professional\s+|work\s+)?experience',
-        # "3 years of experience" (no +)
-        r'\b(\d+)\s*years?\s+of\s+(?:relevant\s+|professional\s+|work\s+)?experience',
-        # "3 years experience" (no "of")
-        r'\b(\d+)\s*years?\s+experience',
-        # "3 or more years"
-        r'\b(\d+)\s+or\s+more\s+years?',
-        # fallback: "X years" near the word "experience" within 40 chars
-        r'\b(\d+)\s*\+?\s*years?\b(?=.{0,40}experience)',
-    ]
-
-    for pat in patterns:
-        m = re.search(pat, t)
-        if m:
-            return int(m.group(1))
-
-    if re.search(r'\bentry.?level\b|no experience required|\b0.?year|\bnew\s+grad|\brecent\s+graduate', t):
-        return 0
-    return None
 
 
 def _clean_description(text: str) -> str:
@@ -1683,6 +1689,7 @@ async def scrape_vc_portfolio_pages() -> List[Dict]:
       - GV (Google Ventures): 637 companies via open Sanity CDN
       - True Ventures: 222 companies via api.trueventures.com WP REST API
       - Greylock: 155 companies via greylock.com WP REST API
+      - Lightspeed: 639 companies via window.companiesAutocomplete JS variable
 
     NOTE: Getro boards (jobs.generalcatalyst.com etc.) now return 403 and
     direct users to api@getro.com — they have blocked all web scraping.
@@ -1961,6 +1968,31 @@ async def scrape_vc_portfolio_pages() -> List[Dict]:
             print(f"[Greylock] done")
         except Exception as e:
             print(f"[Greylock] Error: {e}")
+
+        # ── Source 7: Lightspeed — 639 companies via window.companiesAutocomplete ─
+        try:
+            r = await client.get("https://lsvp.com/companies/", timeout=15.0)
+            m = re.search(r'window\.companiesAutocomplete\s*=\s*(\[.*?\]);', r.text, re.DOTALL)
+            if m:
+                ls_names = json.loads(m.group(1))
+                print(f"[Lightspeed] {len(ls_names)} companies found")
+                tasks_ls = []
+                for co_name in ls_names:
+                    if not co_name or not isinstance(co_name, str):
+                        continue
+                    # Convert company name to domain guess:
+                    # "1Password" → "1password.com", "Affirm" → "affirm.com"
+                    slug = re.sub(r'[^a-z0-9]', '', co_name.lower())
+                    if not slug:
+                        continue
+                    tasks_ls.append(discover_company(co_name, f"https://{slug}.com", "Lightspeed"))
+                results_ls = await asyncio.gather(*tasks_ls, return_exceptions=True)
+                for res in results_ls:
+                    if isinstance(res, list):
+                        jobs.extend(res)
+                print(f"[Lightspeed] done")
+        except Exception as e:
+            print(f"[Lightspeed] Error: {e}")
 
     print(f"[VC Portfolio Pages] {len(jobs)} total jobs found")
     return jobs
@@ -2586,7 +2618,7 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_himalayas(),
         scrape_weworkremotely(),
         scrape_vc_boards(),
-        scrape_vc_portfolio_pages(),  # a16z (800+), Sequoia, Founders Fund, GV (637), True Ventures (222), Greylock (155)
+        scrape_vc_portfolio_pages(),  # a16z (800+), Sequoia, Founders Fund, GV (637), True Ventures (222), Greylock (155), Lightspeed (639)
         scrape_topstartups(),         # dynamic discovery from topstartups.io AI list
         return_exceptions=True,
     )

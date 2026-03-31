@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Plus, Pencil, Trash2, ExternalLink, Search, X,
   ChevronDown, Mail, Check, RefreshCw, Users, Building2, Linkedin,
-  Copy, Sparkles, ArrowLeft, FileText, MapPin,
+  Copy, Sparkles, ArrowLeft, FileText, MapPin, PlusCircle, Link2,
 } from 'lucide-react'
-import { contactsApi, jobsApi, emailTemplatesApi, networkingApi, coachApi, nylasApi } from '../api'
+import { contactsApi, jobsApi, emailTemplatesApi, networkingApi, coachApi, nylasApi, googleDocsApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 const CONNECTION_TYPES = [
@@ -251,12 +251,61 @@ function DetailPanel({ contact, onClose, onUpdate, connectionTypes }) {
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  const [docLinks, setDocLinks]           = useState(contact.doc_links || [])
+  const [googleConnected, setGoogleConnected] = useState(false)
+  const [docCreating, setDocCreating]     = useState(false)
+  const [linkUrl, setLinkUrl]             = useState('')
+  const [linkTitle, setLinkTitle]         = useState('')
+  const [showLinkInput, setShowLinkInput] = useState(false)
+  const [docError, setDocError]           = useState(null)
+
+  useEffect(() => {
+    googleDocsApi.getStatus()
+      .then(res => setGoogleConnected(res.data?.connected || false))
+      .catch(() => setGoogleConnected(false))
+  }, [])
+
   const handleSave = async () => {
     setSaving(true)
     try {
       await onUpdate(contact.id, { outreach_status: status, follow_up_1: followUp1, follow_up_2: followUp2, meeting_notes: notes })
       onClose()
     } finally { setSaving(false) }
+  }
+
+  const handleCreateDoc = async () => {
+    setDocCreating(true)
+    setDocError(null)
+    try {
+      const res = await googleDocsApi.createDoc(contact.id, {})
+      setDocLinks(res.data.doc_links)
+      window.open(res.data.doc.url, '_blank')
+    } catch (err) {
+      setDocError(err?.response?.data?.detail || 'Could not create doc. Make sure Google Docs is connected in Profile.')
+    } finally { setDocCreating(false) }
+  }
+
+  const handleLinkDoc = async () => {
+    if (!linkUrl.trim()) return
+    setDocError(null)
+    try {
+      const res = await googleDocsApi.linkDoc(contact.id, { url: linkUrl.trim(), title: linkTitle.trim() || linkUrl.trim() })
+      setDocLinks(res.data.doc_links)
+      setLinkUrl('')
+      setLinkTitle('')
+      setShowLinkInput(false)
+    } catch (err) {
+      setDocError(err?.response?.data?.detail || 'Could not link doc.')
+    }
+  }
+
+  const handleUnlinkDoc = async (idx) => {
+    try {
+      const res = await googleDocsApi.unlinkDoc(contact.id, idx)
+      setDocLinks(res.data.doc_links)
+    } catch (err) {
+      setDocError('Could not remove doc.')
+    }
   }
 
   const copyEmail = () => {
@@ -335,6 +384,103 @@ function DetailPanel({ contact, onClose, onUpdate, connectionTypes }) {
           <div>
             <p className="text-xs font-semibold text-navy-400 uppercase tracking-wide mb-1.5">Meeting Notes</p>
             <textarea className="input resize-none text-sm" rows={4} placeholder="Notes from your conversations..." value={notes} onChange={e => setNotes(e.target.value)} />
+          </div>
+
+          {/* ── Conversation Notes (Google Docs) ────────────────────── */}
+          <div>
+            <p className="text-xs font-semibold text-navy-400 uppercase tracking-wide mb-2">Conversation Notes</p>
+
+            {docError && (
+              <p className="text-xs text-red-500 mb-2">{docError}</p>
+            )}
+
+            {/* Linked docs list */}
+            {docLinks.length > 0 && (
+              <div className="space-y-1.5 mb-3">
+                {docLinks.map((doc, idx) => (
+                  <div key={idx} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-50 border border-sky-100">
+                    <FileText size={13} className="text-sky-500 shrink-0" />
+                    <a
+                      href={doc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 text-xs text-sky-700 hover:text-sky-900 truncate font-medium"
+                    >
+                      {doc.title || 'Untitled Doc'}
+                    </a>
+                    <button
+                      onClick={() => handleUnlinkDoc(idx)}
+                      className="p-0.5 rounded text-navy-300 hover:text-red-500 transition-colors shrink-0"
+                      title="Remove link"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex gap-2 flex-wrap">
+              {googleConnected ? (
+                <button
+                  onClick={handleCreateDoc}
+                  disabled={docCreating}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700 transition-colors disabled:opacity-50"
+                >
+                  {docCreating
+                    ? <RefreshCw size={12} className="animate-spin" />
+                    : <PlusCircle size={12} />}
+                  New note
+                </button>
+              ) : (
+                <p className="text-xs text-navy-400 italic">
+                  Connect Google Docs in{' '}
+                  <a href="/profile" className="text-violet-500 hover:underline">Profile</a>
+                  {' '}to create notes.
+                </p>
+              )}
+              <button
+                onClick={() => setShowLinkInput(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-navy-200 text-navy-600 text-xs font-semibold hover:bg-navy-50 transition-colors"
+              >
+                <Link2 size={12} />
+                Link existing
+              </button>
+            </div>
+
+            {/* Link existing doc input */}
+            {showLinkInput && (
+              <div className="mt-2 space-y-1.5">
+                <input
+                  className="input text-xs"
+                  placeholder="Google Docs URL (https://docs.google.com/...)"
+                  value={linkUrl}
+                  onChange={e => setLinkUrl(e.target.value)}
+                />
+                <input
+                  className="input text-xs"
+                  placeholder="Label (optional)"
+                  value={linkTitle}
+                  onChange={e => setLinkTitle(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleLinkDoc}
+                    disabled={!linkUrl.trim()}
+                    className="flex-1 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 disabled:opacity-40 transition-colors"
+                  >
+                    Attach
+                  </button>
+                  <button
+                    onClick={() => { setShowLinkInput(false); setLinkUrl(''); setLinkTitle('') }}
+                    className="px-3 py-1.5 rounded-lg border border-navy-200 text-navy-500 text-xs hover:bg-navy-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="px-6 py-4 border-t border-navy-100 shrink-0">

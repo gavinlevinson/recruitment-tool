@@ -167,6 +167,15 @@ export const nylasApi = {
   disconnect:   ()       => api.delete('/nylas/disconnect'),
 }
 
+export const googleDocsApi = {
+  getAuthUrl:  ()                      => api.get('/google/auth-url'),
+  getStatus:   ()                      => api.get('/google/status'),
+  disconnect:  ()                      => api.delete('/google/disconnect'),
+  createDoc:   (contactId, data)       => api.post(`/contacts/${contactId}/docs/create`, data),
+  linkDoc:     (contactId, data)       => api.post(`/contacts/${contactId}/docs/link`, data),
+  unlinkDoc:   (contactId, docIndex)   => api.delete(`/contacts/${contactId}/docs/${docIndex}`),
+}
+
 export const helpApi = {
   chat: (data) => api.post('/help-chat', data),
 }

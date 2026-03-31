@@ -336,16 +336,32 @@ def compute_personal_score(
     }
     user_years = stage_years.get(career_stage, 0)
 
-    exp_match = re.search(
-        r'(\d+)\+?\s*(?:to\s*\d+\s*)?years?\s+(?:of\s+)?(?:relevant\s+)?(?:work\s+)?experience',
-        job_desc_lower
-    )
+    # Comprehensive experience extraction — matches all common phrasings
+    _exp_patterns = [
+        r'(?:minimum\s+(?:of\s+)?|at\s+least\s+)(\d+)\s*\+?\s*years?',
+        r'\b(\d+)\s*\+\s*years?\s+(?:of\s+)?(?:relevant\s+|professional\s+|work\s+|hands.on\s+)?experience',
+        r'\b(\d+)\s*(?:[-–]|to)\s*\d+\s*years?\s+(?:of\s+)?(?:relevant\s+|professional\s+|work\s+)?experience',
+        r'\b(\d+)\s*years?\s+of\s+(?:relevant\s+|professional\s+|work\s+)?experience',
+        r'experience[:\s(]+(\d+)\s*\+?\s*years?',
+        r'requires?\s+(?:at\s+least\s+)?(\d+)\s*\+?\s*years?',
+        r'\b(\d+)\s+or\s+more\s+years?',
+        r'\b(\d+)\s*years?\s+experience',
+        r'\b(\d+)\s*\+?\s*years?\s+(?:in|working\s+(?:in|with|on)|building|managing|leading)\b',
+        r'\b(\d+)\s*\+?\s*years?\b(?=.{0,50}experience)',
+    ]
     req_years = None
-    if exp_match:
-        try:
-            req_years = int(exp_match.group(1))
-        except ValueError:
-            pass
+    for _pat in _exp_patterns:
+        _m = re.search(_pat, job_desc_lower)
+        if _m:
+            try:
+                req_years = int(_m.group(1))
+                if 0 <= req_years <= 30:
+                    break
+            except ValueError:
+                pass
+    # Override with 0 if explicit entry-level signal
+    if re.search(r'\bentry.?level\b|no experience required|\b0.?year|\bnew\s+grad|\brecent\s+graduate', job_desc_lower):
+        req_years = 0
 
     if req_years is not None:
         if user_years == 0:  # college senior / no experience

@@ -43,6 +43,10 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     # Nylas Gmail integration
     nylas_grant_id = Column(String, nullable=True)   # set after OAuth callback
+    # Google Docs integration
+    google_access_token  = Column(Text, nullable=True)
+    google_refresh_token = Column(Text, nullable=True)
+    google_token_expiry  = Column(Float, nullable=True)   # Unix timestamp
 
 
 class UserProfile(Base):
@@ -136,6 +140,7 @@ class Contact(Base):
     follow_up_1 = Column(Boolean, default=False)
     follow_up_2 = Column(Boolean, default=False)
     meeting_notes = Column(Text, nullable=True)
+    doc_links = Column(Text, nullable=True)   # JSON array: [{url, title, created_at}]
     school = Column(String, nullable=True)
     graduation_year = Column(String, nullable=True)
     tags = Column(String, nullable=True)
@@ -310,6 +315,11 @@ def run_migrations():
         "ALTER TABLE user_profiles ADD COLUMN context_locations TEXT",
         "ALTER TABLE user_profiles ADD COLUMN context_skills TEXT",
         "ALTER TABLE interview_rounds ADD COLUMN thank_you_sent INTEGER DEFAULT 0",
+        # Google Docs integration columns
+        "ALTER TABLE users ADD COLUMN google_access_token TEXT",
+        "ALTER TABLE users ADD COLUMN google_refresh_token TEXT",
+        "ALTER TABLE users ADD COLUMN google_token_expiry REAL",
+        "ALTER TABLE contacts ADD COLUMN doc_links TEXT",
         # manual_calendar_events table is created via create_all, no ALTER needed
     ]
     with engine.connect() as conn:
@@ -358,6 +368,11 @@ def _run_pg_migrations():
         "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS preferred_roles TEXT",
         "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS preferred_work_types TEXT",
         "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS years_experience TEXT",
+        # Google Docs integration columns
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_access_token TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_refresh_token TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_token_expiry FLOAT",
+        "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS doc_links TEXT",
     ]
     with engine.connect() as conn:
         for sql in pg_migrations:
