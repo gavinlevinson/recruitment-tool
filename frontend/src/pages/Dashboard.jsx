@@ -7,6 +7,7 @@ import {
 import { jobsApi, contactsApi, discoveredApi, statsApi, nylasApi, interviewRoundsApi } from '../api'
 import OrionMark from '../components/OrionMark'
 import { useAuth } from '../context/AuthContext'
+import { daysSince as _daysSince } from '../utils/dates'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function greeting(name) {
@@ -14,10 +15,7 @@ function greeting(name) {
   const prefix = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
   return `${prefix}, ${(name || '').split(' ')[0]}`
 }
-function daysSince(d) {
-  if (!d) return null
-  return Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000)
-}
+function daysSince(d) { return _daysSince(d) }
 const AVATAR_COLORS = [
   'bg-violet-100 text-violet-700', 'bg-sky-100 text-sky-700',
   'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-700',

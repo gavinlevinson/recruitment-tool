@@ -3,6 +3,7 @@ import {
   MapPin, Clock, Calendar, ExternalLink, Plus, Users, Tag, Wifi, X, Search, Check,
 } from 'lucide-react'
 import { eventsApi } from '../api'
+import { parseUTCDateTime } from '../utils/dates'
 
 // ── Event type metadata ───────────────────────────────────────────────────────
 const EVENT_TYPE_META = {
@@ -41,8 +42,8 @@ const QUICK_LOCATIONS = [
 function parseDateParts(dateStr) {
   if (!dateStr) return { month: '—', day: '—', time: '—', full: '' }
   try {
-    const d = new Date(dateStr)
-    if (isNaN(d.getTime())) return { month: '—', day: '—', time: '—', full: '' }
+    const d = parseUTCDateTime(dateStr)
+    if (!d || isNaN(d.getTime())) return { month: '—', day: '—', time: '—', full: '' }
     const month = MONTH_ABBR[d.getMonth()]
     const day   = String(d.getDate()).padStart(2, '0')
     const hour  = d.getHours()

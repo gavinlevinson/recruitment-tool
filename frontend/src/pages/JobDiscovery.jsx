@@ -5,6 +5,7 @@ import {
   Settings, Save, MapPin, AlertCircle, Loader2, Sparkles,
 } from 'lucide-react'
 import { discoveredApi, preferencesApi, profileApi } from '../api'
+import { formatDate, formatDateTime } from '../utils/dates'
 import { useAuth } from '../context/AuthContext'
 import OrionMark from '../components/OrionMark'
 
@@ -373,9 +374,7 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
   }
 
   const postedDate = (job.posted_date || job.date_found)
-    ? new Date(job.posted_date || job.date_found).toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric',
-      })
+    ? formatDate(job.posted_date || job.date_found, { month: 'short', day: 'numeric', year: undefined })
     : null
 
   const workType = getWorkType(job)
@@ -1484,11 +1483,7 @@ export default function JobDiscovery() {
             <div>
               <p className="text-xs text-navy-400 uppercase tracking-wide font-semibold mb-0.5">Last Scraped</p>
               <p className="text-sm font-medium text-navy-800">
-                {lastScraped
-                  ? new Date(
-                      lastScraped.endsWith('Z') || lastScraped.includes('+') ? lastScraped : lastScraped + 'Z'
-                    ).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-                  : 'Never'}
+                {lastScraped ? formatDateTime(lastScraped) : 'Never'}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">

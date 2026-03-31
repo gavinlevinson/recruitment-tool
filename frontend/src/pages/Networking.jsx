@@ -5,6 +5,7 @@ import {
   Copy, Sparkles, ArrowLeft, FileText, MapPin, PlusCircle, Link2,
 } from 'lucide-react'
 import { contactsApi, jobsApi, emailTemplatesApi, networkingApi, coachApi, nylasApi, googleDocsApi } from '../api'
+import { parseUTCDateTime } from '../utils/dates'
 import { useAuth } from '../context/AuthContext'
 
 const CONNECTION_TYPES = [
@@ -1124,8 +1125,8 @@ function CompanyListView({ jobs, contacts, loading, onSelectCompany }) {
   // Unique companies sorted by most recently added job
   const companies = [...new Set(jobs.map(j => j.company).filter(Boolean))]
   const sortedCompanies = [...companies].sort((a, b) => {
-    const aTime = Math.max(...(jobsByCompany[a] || []).map(j => new Date(j.created_at || 0).getTime()), 0)
-    const bTime = Math.max(...(jobsByCompany[b] || []).map(j => new Date(j.created_at || 0).getTime()), 0)
+    const aTime = Math.max(...(jobsByCompany[a] || []).map(j => (parseUTCDateTime(j.created_at) || new Date(0)).getTime()), 0)
+    const bTime = Math.max(...(jobsByCompany[b] || []).map(j => (parseUTCDateTime(j.created_at) || new Date(0)).getTime()), 0)
     return bTime - aTime
   })
 

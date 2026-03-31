@@ -4,6 +4,7 @@ import {
   TrendingUp, Sparkles, AlertCircle,
 } from 'lucide-react'
 import { newsApi } from '../api'
+import { timeAgo as _timeAgo } from '../utils/dates'
 
 // ── Topic filter config ───────────────────────────────────────────────────────
 const TOPICS = [
@@ -33,25 +34,7 @@ const TOPIC_LABEL = {
 }
 
 // ── Time formatting ───────────────────────────────────────────────────────────
-function timeAgo(isoStr) {
-  if (!isoStr) return ''
-  try {
-    const ms = Date.now() - new Date(isoStr).getTime()
-    if (isNaN(ms) || ms < 0) return ''
-    const secs  = Math.floor(ms / 1000)
-    const mins  = Math.floor(secs / 60)
-    const hours = Math.floor(mins / 60)
-    const days  = Math.floor(hours / 24)
-    const weeks = Math.floor(days / 7)
-    if (weeks > 0)  return `${weeks}w ago`
-    if (days > 0)   return `${days}d ago`
-    if (hours > 0)  return `${hours}h ago`
-    if (mins > 0)   return `${mins}m ago`
-    return 'just now'
-  } catch {
-    return ''
-  }
-}
+function timeAgo(isoStr) { return _timeAgo(isoStr) }
 
 // ── Source initials fallback ──────────────────────────────────────────────────
 function sourceInitials(source) {

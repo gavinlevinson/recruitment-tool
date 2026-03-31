@@ -5,6 +5,7 @@ import {
   Building2,
 } from 'lucide-react'
 import { recruitersApi } from '../api'
+import { formatDate } from '../utils/dates'
 
 const OUTREACH_OPTIONS = [
   'Not Contacted',
@@ -275,7 +276,7 @@ function RecruiterCard({ recruiter, onEdit, onDelete, onStatusChange }) {
     : []
 
   const lastContact = recruiter.last_contact
-    ? new Date(recruiter.last_contact).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    ? formatDate(recruiter.last_contact)
     : null
 
   const handleStatusChange = async (e) => {
