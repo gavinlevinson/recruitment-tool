@@ -3619,7 +3619,7 @@ async def google_auth_url(current_user: User = Depends(get_current_user)):
         "client_id":     GOOGLE_CLIENT_ID,
         "redirect_uri":  GOOGLE_REDIRECT_URI,
         "response_type": "code",
-        "scope":         "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email",
+        "scope":         "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email",
         "access_type":   "offline",
         "prompt":        "consent",
         "state":         str(current_user.id),
@@ -3787,6 +3787,41 @@ async def unlink_contact_doc(
     contact.doc_links = json.dumps(existing)
     db.commit()
     return {"doc_links": existing}
+
+
+@app.get("/api/google/drive/files")
+async def google_drive_list_files(
+    folder_id: str = "root",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List Google Drive files/folders for the Drive browser UI.
+    Returns folders and Google Docs inside the given folder (default: root).
+    Requires drive.readonly scope — user must reconnect if they connected before this change.
+    """
+    token = await _google_get_valid_token(current_user, db)
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            "https://www.googleapis.com/drive/v3/files",
+            headers={"Authorization": f"Bearer {token}"},
+            params={
+                "q": (
+                    f"'{folder_id}' in parents and trashed=false and "
+                    "(mimeType='application/vnd.google-apps.folder' or "
+                    "mimeType='application/vnd.google-apps.document')"
+                ),
+                "fields": "files(id,name,mimeType,webViewLink,modifiedTime)",
+                "orderBy": "folder,name",
+                "pageSize": 200,
+            },
+        )
+        if resp.status_code == 403:
+            raise HTTPException(
+                status_code=403,
+                detail="Drive browsing requires updated permissions. Please disconnect and reconnect Google Docs in Profile.",
+            )
+        resp.raise_for_status()
+        return resp.json()
 
 
 # ── Nylas Gmail Integration ────────────────────────────────────────────────────

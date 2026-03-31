@@ -1926,6 +1926,130 @@ function EmailComposer({ contact, job, onClose, userUniversity }) {
   )
 }
 
+// ── Drive Picker Modal ────────────────────────────────────────────────────────
+function DrivePicker({ onSelect, onClose }) {
+  const [path, setPath]         = useState([{ id: 'root', name: 'My Drive' }])
+  const [files, setFiles]       = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [selected, setSelected] = useState(null)   // { id, name, webViewLink }
+  const [error, setError]       = useState(null)
+
+  const currentFolder = path[path.length - 1]
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    setSelected(null)
+    googleDocsApi.driveFiles(currentFolder.id)
+      .then(res => setFiles(res.data.files || []))
+      .catch(err => setError(err?.response?.data?.detail || 'Could not load Drive files.'))
+      .finally(() => setLoading(false))
+  }, [currentFolder.id])
+
+  const openFolder = (folder) => setPath(p => [...p, { id: folder.id, name: folder.name }])
+  const goTo = (idx) => setPath(p => p.slice(0, idx + 1))
+
+  const folders = files.filter(f => f.mimeType === 'application/vnd.google-apps.folder')
+  const docs    = files.filter(f => f.mimeType === 'application/vnd.google-apps.document')
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 flex flex-col" style={{ maxHeight: '70vh' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-navy-100">
+          <div className="flex items-center gap-2">
+            <FileText size={16} className="text-sky-500" />
+            <span className="text-sm font-semibold text-navy-900">Browse Google Drive</span>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-navy-400 hover:text-navy-700 hover:bg-navy-50 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-1 px-5 py-2.5 border-b border-navy-50 flex-wrap">
+          {path.map((crumb, idx) => (
+            <span key={crumb.id} className="flex items-center gap-1">
+              {idx > 0 && <ChevronDown size={11} className="text-navy-300 -rotate-90" />}
+              <button
+                onClick={() => goTo(idx)}
+                className={`text-xs font-medium transition-colors ${
+                  idx === path.length - 1
+                    ? 'text-navy-700 cursor-default'
+                    : 'text-sky-600 hover:text-sky-800'
+                }`}
+              >
+                {crumb.name}
+              </button>
+            </span>
+          ))}
+        </div>
+
+        {/* File list */}
+        <div className="flex-1 overflow-y-auto min-h-0 px-3 py-2">
+          {loading && (
+            <div className="flex items-center justify-center py-8 text-navy-400">
+              <RefreshCw size={16} className="animate-spin mr-2" /> Loading…
+            </div>
+          )}
+          {error && (
+            <p className="text-xs text-red-500 px-2 py-4 text-center">{error}</p>
+          )}
+          {!loading && !error && files.length === 0 && (
+            <p className="text-xs text-navy-400 text-center py-6">No folders or docs here</p>
+          )}
+          {!loading && !error && (
+            <div className="space-y-0.5">
+              {folders.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => openFolder(f)}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-navy-50 transition-colors text-left"
+                >
+                  <Folder size={15} className="text-amber-400 shrink-0" />
+                  <span className="text-sm text-navy-700 truncate">{f.name}</span>
+                  <ChevronDown size={12} className="text-navy-300 ml-auto -rotate-90 shrink-0" />
+                </button>
+              ))}
+              {docs.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setSelected(selected?.id === f.id ? null : f)}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-left ${
+                    selected?.id === f.id
+                      ? 'bg-sky-50 border border-sky-200'
+                      : 'hover:bg-navy-50'
+                  }`}
+                >
+                  <FileText size={15} className="text-sky-500 shrink-0" />
+                  <span className="text-sm text-navy-700 truncate flex-1">{f.name}</span>
+                  {selected?.id === f.id && (
+                    <Check size={13} className="text-sky-600 shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-navy-100 flex items-center justify-between">
+          <p className="text-xs text-navy-400">
+            {selected ? `Selected: ${selected.name}` : 'Click a doc to select it'}
+          </p>
+          <button
+            onClick={() => selected && onSelect(selected)}
+            disabled={!selected}
+            className="px-4 py-2 rounded-xl bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 disabled:opacity-40 transition-colors"
+          >
+            Attach
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Network Modal ─────────────────────────────────────────────────────────────
 function NetworkModal({ job, onClose }) {
   const { user } = useAuth()
@@ -1940,6 +2064,7 @@ function NetworkModal({ job, onClose }) {
   const [googleConnected, setGoogleConnected] = useState(false)
   const [docCreating, setDocCreating] = useState(null)   // contactId currently creating
   const [docLinking, setDocLinking]   = useState(null)   // contactId showing link input
+  const [drivePicking, setDrivePicking] = useState(null) // contactId showing drive picker
   const [linkUrl, setLinkUrl]         = useState('')
   const [linkTitle, setLinkTitle]     = useState('')
   const [docError, setDocError]       = useState(null)
@@ -2247,7 +2372,8 @@ function NetworkModal({ job, onClose }) {
                         {googleConnected ? (
                           <>
                             {/* Action buttons */}
-                            <div className="flex items-center gap-3">
+                            {/* Action buttons row */}
+                            <div className="flex items-center gap-3 flex-wrap">
                               <button
                                 onClick={() => handleCreateDoc(contact.id)}
                                 disabled={docCreating === contact.id}
@@ -2261,7 +2387,20 @@ function NetworkModal({ job, onClose }) {
                               <span className="text-navy-200 text-xs">·</span>
                               <button
                                 onClick={() => {
+                                  setDrivePicking(contact.id)
+                                  setDocLinking(null)
+                                  setDocError(null)
+                                }}
+                                className="flex items-center gap-1 text-xs text-navy-500 hover:text-navy-800 font-medium transition-colors"
+                              >
+                                <Folder size={11} />
+                                Browse Drive
+                              </button>
+                              <span className="text-navy-200 text-xs">·</span>
+                              <button
+                                onClick={() => {
                                   setDocLinking(docLinking === contact.id ? null : contact.id)
+                                  setDrivePicking(null)
                                   setLinkUrl('')
                                   setLinkTitle('')
                                   setDocError(null)
@@ -2269,11 +2408,11 @@ function NetworkModal({ job, onClose }) {
                                 className="flex items-center gap-1 text-xs text-navy-400 hover:text-navy-700 font-medium transition-colors"
                               >
                                 <Link2 size={11} />
-                                Link existing
+                                Paste URL
                               </button>
                             </div>
 
-                            {/* Link existing input */}
+                            {/* Paste URL input */}
                             {docLinking === contact.id && (
                               <div className="mt-2 space-y-1.5">
                                 <input
@@ -2334,6 +2473,25 @@ function NetworkModal({ job, onClose }) {
           job={job}
           userUniversity={user?.university || ''}
           onClose={() => setEmailContact(null)}
+        />
+      )}
+
+      {/* Drive picker — renders on top of everything */}
+      {drivePicking && (
+        <DrivePicker
+          onClose={() => setDrivePicking(null)}
+          onSelect={async (file) => {
+            setDrivePicking(null)
+            try {
+              await googleDocsApi.linkDoc(drivePicking, {
+                url:   file.webViewLink,
+                title: file.name,
+              })
+              await loadContacts()
+            } catch (err) {
+              setDocError(err?.response?.data?.detail || 'Could not attach doc.')
+            }
+          }}
         />
       )}
     </div>
