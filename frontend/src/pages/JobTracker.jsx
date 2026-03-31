@@ -1938,8 +1938,11 @@ function NetworkModal({ job, onClose }) {
   const [copied, setCopied]         = useState(null)
   const [emailContact, setEmailContact] = useState(null)  // contact to email
   const [googleConnected, setGoogleConnected] = useState(false)
-  const [docCreating, setDocCreating] = useState(null)   // contactId being processed
-  const [docError, setDocError]     = useState(null)
+  const [docCreating, setDocCreating] = useState(null)   // contactId currently creating
+  const [docLinking, setDocLinking]   = useState(null)   // contactId showing link input
+  const [linkUrl, setLinkUrl]         = useState('')
+  const [linkTitle, setLinkTitle]     = useState('')
+  const [docError, setDocError]       = useState(null)
 
   const loadContacts = useCallback(async () => {
     setLoading(true)
@@ -1978,6 +1981,20 @@ function NetworkModal({ job, onClose }) {
       await googleDocsApi.unlinkDoc(contactId, idx)
       await loadContacts()
     } catch { /* silent */ }
+  }
+
+  const handleLinkDoc = async (contactId) => {
+    if (!linkUrl.trim()) return
+    setDocError(null)
+    try {
+      await googleDocsApi.linkDoc(contactId, { url: linkUrl.trim(), title: linkTitle.trim() || null })
+      setLinkUrl('')
+      setLinkTitle('')
+      setDocLinking(null)
+      await loadContacts()
+    } catch (err) {
+      setDocError(err?.response?.data?.detail || 'Could not link doc.')
+    }
   }
 
   const handleSave = async (form) => {
@@ -2204,11 +2221,13 @@ function NetworkModal({ job, onClose }) {
 
                       {/* Conversation Notes (Google Docs) */}
                       <div className="ml-12 mt-2">
-                        {docError && docCreating === null && (
+                        {docError && (
                           <p className="text-xs text-red-500 mb-1">{docError}</p>
                         )}
+
+                        {/* Linked docs */}
                         {(contact.doc_links || []).length > 0 && (
-                          <div className="space-y-1 mb-1.5">
+                          <div className="space-y-1 mb-2">
                             {(contact.doc_links || []).map((doc, idx) => (
                               <div key={idx} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-sky-50 border border-sky-100">
                                 <FileText size={11} className="text-sky-500 shrink-0" />
@@ -2224,20 +2243,74 @@ function NetworkModal({ job, onClose }) {
                             ))}
                           </div>
                         )}
+
                         {googleConnected ? (
-                          <button
-                            onClick={() => handleCreateDoc(contact.id)}
-                            disabled={docCreating === contact.id}
-                            className="flex items-center gap-1 text-xs text-sky-600 hover:text-sky-800 font-medium transition-colors disabled:opacity-50"
-                          >
-                            {docCreating === contact.id
-                              ? <RefreshCw size={11} className="animate-spin" />
-                              : <PlusCircle size={11} />}
-                            New conversation note
-                          </button>
+                          <>
+                            {/* Action buttons */}
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => handleCreateDoc(contact.id)}
+                                disabled={docCreating === contact.id}
+                                className="flex items-center gap-1 text-xs text-sky-600 hover:text-sky-800 font-medium transition-colors disabled:opacity-50"
+                              >
+                                {docCreating === contact.id
+                                  ? <RefreshCw size={11} className="animate-spin" />
+                                  : <PlusCircle size={11} />}
+                                New note
+                              </button>
+                              <span className="text-navy-200 text-xs">·</span>
+                              <button
+                                onClick={() => {
+                                  setDocLinking(docLinking === contact.id ? null : contact.id)
+                                  setLinkUrl('')
+                                  setLinkTitle('')
+                                  setDocError(null)
+                                }}
+                                className="flex items-center gap-1 text-xs text-navy-400 hover:text-navy-700 font-medium transition-colors"
+                              >
+                                <Link2 size={11} />
+                                Link existing
+                              </button>
+                            </div>
+
+                            {/* Link existing input */}
+                            {docLinking === contact.id && (
+                              <div className="mt-2 space-y-1.5">
+                                <input
+                                  type="url"
+                                  placeholder="Google Doc URL"
+                                  value={linkUrl}
+                                  onChange={e => setLinkUrl(e.target.value)}
+                                  className="w-full text-xs border border-navy-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-400"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Label (optional)"
+                                  value={linkTitle}
+                                  onChange={e => setLinkTitle(e.target.value)}
+                                  className="w-full text-xs border border-navy-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-400"
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleLinkDoc(contact.id)}
+                                    disabled={!linkUrl.trim()}
+                                    className="flex-1 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700 disabled:opacity-40 transition-colors"
+                                  >
+                                    Attach
+                                  </button>
+                                  <button
+                                    onClick={() => { setDocLinking(null); setLinkUrl(''); setLinkTitle('') }}
+                                    className="px-3 py-1.5 rounded-lg border border-navy-200 text-xs text-navy-500 hover:bg-navy-50 transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <a href="/profile" className="text-xs text-navy-400 hover:text-violet-500 transition-colors">
-                            Connect Google Docs to add notes
+                            Connect Google Docs in Profile to add notes
                           </a>
                         )}
                       </div>
