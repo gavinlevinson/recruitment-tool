@@ -3761,21 +3761,22 @@ async def help_chat(payload: dict, current_user: User = Depends(get_current_user
 
 Orion features:
 - **Dashboard**: Stats overview, recent activity, quick actions
-- **Job Tracker**: Kanban board for applications. Statuses: Not Applied → Applied → Phone Screen → Interviewing → Offer → Accepted/Rejected/Withdrawn. Features: interview rounds (Screening, Technical, Behavioral, Case Study, Final Round, Offer Discussion), deadlines, interview dates (shown on Calendar), reminders, folders, starred jobs, drag-and-drop status changes
-- **Job Discovery**: AI-scored jobs from 12+ sources (Greenhouse, Lever, Ashby, HN Who's Hiring, Ali Rohde Newsletter, Remote OK, Wellfound, YC Jobs, Himalayas, We Work Remotely, VC Portfolio boards). Click "Run Discovery Agent" to scrape fresh listings. Filter by location, funding stage, company size. Upload a resume for personalized scores.
+- **Job Tracker**: Kanban board for applications. Statuses: Not Applied → Applied → Phone Screen → Interviewing → Offer → Accepted/Rejected/Withdrawn. Features: interview rounds (Screening, Technical, Behavioral, Case Study, Final Round, Offer Discussion), deadlines, interview dates, reminders, folders, starred jobs, drag-and-drop status changes. Interview rounds and deadlines auto-sync to Google Calendar when Google is connected.
+- **Job Discovery**: AI-scored jobs from 16+ sources including Greenhouse, Lever, Ashby, Workable, HN Who's Hiring, Ali Rohde Newsletter, Remote OK, Wellfound, the full YC company directory (~4,000+ companies), Himalayas, We Work Remotely, VC job boards, VC portfolio pages (a16z, Sequoia, Founders Fund, GV, Greylock, Lightspeed), TopStartups.io, Forbes Best Startup Employers, and LinkedIn Top 50 Startups. LinkedIn & Indeed available via Apify. Click "Run Discovery Agent" to scrape fresh listings. Filter by location, funding stage, company size, role type (including "Undefined" for roles outside main categories). Upload a resume for personalized scores (0-100).
 - **AI Coach**: Scan resume for gaps, generate cover letters, get help with application questions — all powered by AI
-- **Calendar**: Auto-synced from Job Tracker. Shows interview dates, application deadlines, reminders per job. Also shows individual interview round dates.
+- **Calendar**: Two-way sync with Google Calendar. Auto-shows interview dates, deadlines, reminders from Job Tracker. Also displays your existing Google Calendar events (in blue). Manual events added in Orion auto-push to Google Calendar. Connect Google in Profile to enable sync.
 - **Events**: Local networking events, tech meetups, and career fairs in your city
 - **News**: Curated industry news relevant to your job search and target companies
-- **Networking**: Find contacts at companies via Apollo/Hunter integrations. Send cold outreach emails through connected Gmail.
-- **Profile**: Upload resume (PDF), add career context text, connect Gmail (Nylas), edit account info (school, major, LinkedIn, graduation year)
+- **Networking**: Find contacts at companies via Apollo/Hunter integrations. Send cold outreach emails through connected Gmail. Attach Google Docs notes to contacts.
+- **Profile**: Upload resume (PDF), add career context text, connect Gmail (Nylas) for email, connect Google (Docs + Calendar) for calendar sync and contact notes, edit account info (school, major, LinkedIn, graduation year)
 
 Helpful tips to share:
-- After adding a job to Not Applied → encourage them to find a contact in Networking and reach out
-- After uploading a resume → encourage running Job Discovery for personalized results
-- When in Interviewing status → add interview rounds with details (type, date, interviewer)
-- Calendar reflects all interview rounds automatically
-- Gmail integration lets you send networking emails without leaving Orion
+- After adding a job to Not Applied → find a contact in Networking and reach out
+- After uploading a resume → run Job Discovery for personalized results
+- When in Interviewing status → add interview rounds with type, date, and interviewer — they auto-sync to Google Calendar
+- Connect Google in Profile to get two-way calendar sync (Orion ↔ Google Calendar)
+- Use the "Select All" buttons in Discovery preferences to see all locations and role types at once
+- The "Undefined" role type in Discovery shows roles that don't fit standard categories
 
 Keep replies SHORT (2-4 sentences). Be specific and actionable. Never make up features that don't exist."""
 

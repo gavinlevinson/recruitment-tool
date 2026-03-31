@@ -772,7 +772,7 @@ function HowItWorks() {
       {open && (
         <div className="px-4 pb-4 pt-1 border-t border-navy-50">
           <p className="text-sm text-navy-500 leading-relaxed">
-            The agent scrapes <strong className="text-navy-700">12 sources</strong>: HN Who&apos;s Hiring, Ali Rohde&apos;s newsletter, Greenhouse (50+ AI startup boards), Lever, Ashby (35+ modern boards), Workable, Remote OK, Wellfound, YC Work at a Startup, Himalayas, We Work Remotely, and VC Portfolio boards (via Greenhouse &amp; Ashby APIs). LinkedIn &amp; Indeed available via Apify. Jobs are scored 0&ndash;100 based on <strong className="text-navy-700">your target roles, location preferences, and skill overlap</strong> from your resume. Upload your resume in Profile to enable personalized scoring.
+            The agent scrapes <strong className="text-navy-700">16+ sources</strong>: HN Who&apos;s Hiring, Ali Rohde&apos;s newsletter, Greenhouse, Lever, Ashby, Workable, Remote OK, Wellfound, the full <strong className="text-navy-700">YC company directory (~4,000+ companies)</strong>, Himalayas, We Work Remotely, VC job boards, VC portfolio pages (a16z, Sequoia, Founders Fund, GV, Greylock, Lightspeed), TopStartups.io, Forbes Best Startup Employers, and LinkedIn Top 50 Startups. LinkedIn &amp; Indeed available via Apify. Jobs are scored 0&ndash;100 based on <strong className="text-navy-700">your target roles, location preferences, and skill overlap</strong> from your resume. Upload your resume in Profile to enable personalized scoring.
           </p>
         </div>
       )}
@@ -1914,7 +1914,7 @@ export default function JobDiscovery() {
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-navy-800">No jobs discovered yet</h3>
             <p className="text-sm text-navy-400 max-w-sm leading-relaxed">
-              Click "Run Discovery Agent" to find opportunities tailored to your profile across 12 sources.
+              Click "Run Discovery Agent" to find opportunities tailored to your profile across 16+ sources.
             </p>
           </div>
           <button onClick={handleRunAgent} disabled={running} className="btn-primary">
