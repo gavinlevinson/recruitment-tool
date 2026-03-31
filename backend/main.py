@@ -762,12 +762,12 @@ def get_calendar_events(
 
 
 @app.post("/api/calendar/events")
-def create_manual_calendar_event(
+async def create_manual_calendar_event(
     payload: dict = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create a manual calendar event (reminder, deadline, custom)."""
+    """Create a manual calendar event and auto-sync to Google Calendar if connected."""
     title = (payload.get("title") or "").strip()
     date  = (payload.get("date") or "").strip()
     if not title:
@@ -788,6 +788,23 @@ def create_manual_calendar_event(
     db.add(ev)
     db.commit()
     db.refresh(ev)
+
+    # Auto-push to Google Calendar if user has Google connected
+    if current_user.google_refresh_token:
+        try:
+            token = await _google_get_valid_token(current_user, db)
+            event_body = {
+                "summary": title,
+                "start": {"date": date},
+                "end":   {"date": date},
+                "description": ev.notes or "",
+            }
+            gcal_id = await _gcal_upsert_event(token, None, event_body)
+            ev.gcal_event_id = gcal_id
+            db.commit()
+        except Exception:
+            pass  # Silently skip — Orion event is saved regardless
+
     return {
         "id": f"manual-{ev.id}",
         "type": ev.type,
@@ -800,21 +817,84 @@ def create_manual_calendar_event(
 
 
 @app.delete("/api/calendar/events/manual/{event_id}")
-def delete_manual_calendar_event(
+async def delete_manual_calendar_event(
     event_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete a manual calendar event."""
+    """Delete a manual calendar event and remove from Google Calendar if synced."""
     ev = db.query(ManualCalendarEvent).filter(
         ManualCalendarEvent.id == event_id,
         ManualCalendarEvent.user_id == current_user.id,
     ).first()
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
+    gcal_id = getattr(ev, "gcal_event_id", None)
     db.delete(ev)
     db.commit()
+
+    # Remove from Google Calendar if it was synced
+    if gcal_id and current_user.google_refresh_token:
+        try:
+            token = await _google_get_valid_token(current_user, db)
+            await _gcal_delete_event(token, gcal_id)
+        except Exception:
+            pass
+
     return {"deleted": True}
+
+
+@app.get("/api/gcal/events")
+async def get_gcal_events(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fetch events from the user's primary Google Calendar (past 30 days → next 90 days)."""
+    if not current_user.google_refresh_token:
+        return []
+    try:
+        token = await _google_get_valid_token(current_user, db)
+    except Exception:
+        return []
+
+    import datetime as dt
+    now      = dt.datetime.utcnow()
+    time_min = (now - dt.timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    time_max = (now + dt.timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            headers={"Authorization": f"Bearer {token}"},
+            params={
+                "timeMin":      time_min,
+                "timeMax":      time_max,
+                "singleEvents": "true",
+                "orderBy":      "startTime",
+                "maxResults":   250,
+            },
+        )
+
+    if r.status_code != 200:
+        return []
+
+    events = []
+    for item in r.json().get("items", []):
+        start = item.get("start", {})
+        # All-day events use "date"; timed events use "dateTime"
+        date = start.get("date") or (start.get("dateTime", "")[:10] if start.get("dateTime") else None)
+        if not date:
+            continue
+        events.append({
+            "id":     f"gcal-{item['id']}",
+            "type":   "google",
+            "title":  item.get("summary") or "(No title)",
+            "date":   date,
+            "notes":  item.get("description") or "",
+            "url":    item.get("htmlLink") or "",
+            "source": "google",
+        })
+    return events
 
 
 # ─────────────────────────────────────────────

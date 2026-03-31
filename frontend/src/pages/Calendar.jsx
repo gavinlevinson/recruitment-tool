@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, CalendarDays, Briefcase,
   Clock, Bell, X, ExternalLink, Download, RefreshCw, Users, Plus, Trash2,
 } from 'lucide-react'
-import { calendarApi } from '../api'
+import { calendarApi, googleDocsApi } from '../api'
 import { useNavigate } from 'react-router-dom'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -50,6 +50,15 @@ const EVENT_CONFIG = {
     dot:    'bg-emerald-500',
     pill:   'bg-emerald-600 text-white',
     Icon:   Users,
+  },
+  google: {
+    label:  'Google Calendar',
+    bg:     'bg-teal-50',
+    text:   'text-teal-700',
+    border: 'border-teal-200',
+    dot:    'bg-teal-500',
+    pill:   'bg-teal-600 text-white',
+    Icon:   CalendarDays,
   },
 }
 
@@ -211,6 +220,15 @@ function EventPopover({ event, onClose, onDelete }) {
               >
                 <Trash2 size={13} /> Delete
               </button>
+            ) : event.type === 'google' ? (
+              event.url ? (
+                <button
+                  onClick={() => { window.open(event.url, '_blank', 'noopener,noreferrer'); onClose() }}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 transition-colors"
+                >
+                  <ExternalLink size={13} /> Open in Google Calendar
+                </button>
+              ) : null
             ) : event.type === 'networking' ? (
               event.url ? (
                 <button
@@ -228,7 +246,7 @@ function EventPopover({ event, onClose, onDelete }) {
                 <ExternalLink size={13} /> View in Tracker
               </button>
             )}
-            {event.date && (
+            {event.date && event.type !== 'google' && (
               <button
                 onClick={() => exportIcs(event)}
                 title="Export to Google Calendar / Apple Calendar"
@@ -365,7 +383,7 @@ function EventChip({ event, onClick }) {
 
 // ── Upcoming Sidebar ──────────────────────────────────────────────────────────
 
-function UpcomingSidebar({ events, onEventClick, loadError }) {
+function UpcomingSidebar({ events, onEventClick, loadError, googleConnected }) {
   const today = todayStr()
   const upcoming = events
     .filter(e => e.date && e.date >= today)
@@ -436,12 +454,14 @@ function UpcomingSidebar({ events, onEventClick, loadError }) {
       {/* Legend */}
       <div className="mt-auto pt-4 border-t border-navy-100 space-y-1.5">
         <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide mb-2">Legend</p>
-        {Object.entries(EVENT_CONFIG).map(([key, cfg]) => (
-          <div key={key} className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-            <span className="text-xs text-navy-500">{cfg.label}</span>
-          </div>
-        ))}
+        {Object.entries(EVENT_CONFIG)
+          .filter(([key]) => key !== 'google' || googleConnected)
+          .map(([key, cfg]) => (
+            <div key={key} className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+              <span className="text-xs text-navy-500">{cfg.label}</span>
+            </div>
+          ))}
       </div>
     </aside>
   )
@@ -598,23 +618,50 @@ function WeekView({ anchor, events, onEventClick }) {
 
 export default function Calendar() {
   const today = new Date()
-  const [anchor, setAnchor]       = useState(today)   // drives both month and week navigation
-  const [view, setView]           = useState('month')  // 'month' | 'week'
-  const [events, setEvents]       = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [loadError, setLoadError] = useState(null)
-  const [selected, setSelected]   = useState(null)
+  const [anchor, setAnchor]           = useState(today)   // drives both month and week navigation
+  const [view, setView]               = useState('month')  // 'month' | 'week'
+  const [events, setEvents]           = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [loadError, setLoadError]     = useState(null)
+  const [selected, setSelected]       = useState(null)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [googleConnected, setGoogleConnected] = useState(false)
 
   const year  = anchor.getFullYear()
   const month = anchor.getMonth()
+
+  // Check Google connection status once on mount
+  useEffect(() => {
+    googleDocsApi.getStatus()
+      .then(res => setGoogleConnected(res.data?.connected || false))
+      .catch(() => setGoogleConnected(false))
+  }, [])
 
   const fetchEvents = useCallback(async () => {
     setLoading(true)
     setLoadError(null)
     try {
-      const res = await calendarApi.getEvents()
-      setEvents(res.data || [])
+      // Fetch Orion events and Google Calendar events in parallel
+      const [orionRes, gcalRes] = await Promise.allSettled([
+        calendarApi.getEvents(),
+        calendarApi.getGcalEvents(),
+      ])
+      const orionEvents = orionRes.status === 'fulfilled' ? (orionRes.value.data || []) : []
+      const gcalEvents  = gcalRes.status  === 'fulfilled' ? (gcalRes.value.data  || []) : []
+
+      // Deduplicate: skip GCal events that were pushed from Orion
+      // (Orion events already know their own date/title — avoid showing twice)
+      const orionGcalIds = new Set(
+        orionEvents.flatMap(e => e.gcal_event_id ? [e.gcal_event_id] : [])
+      )
+      const filteredGcal = gcalEvents.filter(e => {
+        const rawId = String(e.id).replace('gcal-', '')
+        return !orionGcalIds.has(rawId)
+      })
+
+      const merged = [...orionEvents, ...filteredGcal]
+      merged.sort((a, b) => (a.date || '9999-99-99') < (b.date || '9999-99-99') ? -1 : 1)
+      setEvents(merged)
     } catch (err) {
       console.error('Failed to load calendar events', err)
       setLoadError('Could not load events. Check that the backend is running.')
@@ -737,7 +784,7 @@ export default function Calendar() {
       {/* Body */}
       <div className="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
         {/* Sidebar */}
-        <UpcomingSidebar events={events} onEventClick={setSelected} loadError={loadError} />
+        <UpcomingSidebar events={events} onEventClick={setSelected} loadError={loadError} googleConnected={googleConnected} />
 
         {/* Calendar grid */}
         <div className="flex-1 bg-white border border-navy-100 rounded-2xl overflow-hidden flex flex-col min-h-0">
