@@ -892,7 +892,7 @@ function PreferencesPanel({ open, onClose, preferences, onSave }) {
           <div>
             <div className="flex items-center justify-between mb-1">
               <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide">Location</p>
-              {local.locations.length > 0 && (
+              {local.locations.length > 0 ? (
                 <button
                   type="button"
                   onClick={() => setLocal(prev => ({ ...prev, locations: [] }))}
@@ -900,6 +900,10 @@ function PreferencesPanel({ open, onClose, preferences, onSave }) {
                 >
                   Show All
                 </button>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+                  <Check size={10} /> All locations
+                </span>
               )}
             </div>
             <p className="text-xs text-navy-400 mb-3">Select your preferred cities, or show all</p>
