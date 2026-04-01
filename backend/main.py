@@ -1715,22 +1715,14 @@ ROLE_CATEGORIES = {
 }
 
 def classify_role(role: str, description: str = "") -> str:
-    """Return the best-matching folder category for a job, or 'Undefined'."""
+    """Return the best-matching folder category for a job, or 'Undefined'.
+    Classification is title-only to stay consistent with the Discovery filter."""
     title = (role or "").lower()
-    desc = (description or "").lower()[:800]
-    best_cat = None
-    best_score = 0
     for category, keywords in ROLE_CATEGORIES.items():
-        score = 0
         for kw in keywords:
             if kw in title:
-                score += 5  # title match = 5× weight
-            elif kw in desc:
-                score += 1
-        if score > best_score:
-            best_score = score
-            best_cat = category
-    return best_cat if best_score > 0 else "Undefined"
+                return category
+    return "Undefined"
 
 
 @app.post("/api/discovered-jobs/{job_id}/add-to-tracker")
