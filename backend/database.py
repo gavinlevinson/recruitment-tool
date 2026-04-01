@@ -331,6 +331,11 @@ def run_migrations():
         "ALTER TABLE users ADD COLUMN google_token_expiry REAL",
         "ALTER TABLE contacts ADD COLUMN doc_links TEXT",
         # manual_calendar_events table is created via create_all, no ALTER needed
+        # Salary and industry filtering columns
+        "ALTER TABLE discovered_jobs ADD COLUMN salary_min INTEGER",
+        "ALTER TABLE discovered_jobs ADD COLUMN industry TEXT",
+        "ALTER TABLE user_preferences ADD COLUMN min_salary INTEGER",
+        "ALTER TABLE user_preferences ADD COLUMN preferred_industries TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -387,6 +392,11 @@ def _run_pg_migrations():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_refresh_token TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_token_expiry FLOAT",
         "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS doc_links TEXT",
+        # Salary and industry filtering columns
+        "ALTER TABLE discovered_jobs ADD COLUMN IF NOT EXISTS salary_min INTEGER",
+        "ALTER TABLE discovered_jobs ADD COLUMN IF NOT EXISTS industry TEXT",
+        "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS min_salary INTEGER",
+        "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS preferred_industries TEXT",
     ]
     with engine.connect() as conn:
         for sql in pg_migrations:
