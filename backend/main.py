@@ -115,8 +115,23 @@ def _backfill_industry_and_salary():
 
 @app.on_event("startup")
 def startup_event():
+    global _scrape_completed_at
     init_db()
     _backfill_industry_and_salary()
+
+    # Restore last scrape timestamp from DB so it survives restarts
+    from database import SessionLocal
+    _startup_db = SessionLocal()
+    try:
+        latest = _startup_db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
+        if latest and latest.scraped_at:
+            _scrape_completed_at = latest.scraped_at.isoformat()
+            print(f"[Startup] Restored last scrape time: {_scrape_completed_at}")
+    except Exception:
+        pass
+    finally:
+        _startup_db.close()
+
     asyncio.ensure_future(_daily_job_check_loop())
 
     # ── Daily 9am ET auto-scrape ──────────────────────────────────────────────

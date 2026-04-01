@@ -453,6 +453,11 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
 
       {/* Company metadata */}
       <div className="flex flex-wrap items-center gap-2">
+        {job.salary_range && (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+            {job.salary_range}
+          </span>
+        )}
         {job.funding_stage && (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
             {job.funding_stage}
@@ -1342,9 +1347,14 @@ function NewTodayRow({ job, onAdd }) {
             <p className="text-xs text-navy-400 italic">No description available for this role.</p>
           )}
 
-          {/* Funding / employees if available */}
-          {(job.funding_stage || job.employee_count) && (
+          {/* Funding / employees / salary if available */}
+          {(job.funding_stage || job.employee_count || job.salary_range) && (
             <div className="flex flex-wrap gap-1.5">
+              {job.salary_range && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {job.salary_range}
+                </span>
+              )}
               {job.funding_stage && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
                   {job.funding_stage}
