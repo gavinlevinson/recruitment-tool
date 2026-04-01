@@ -416,19 +416,20 @@ export default function Dashboard() {
   const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [jr, cr, dr, sr] = await Promise.allSettled([
+      const [jr, cr, sr, ntRes] = await Promise.allSettled([
         jobsApi.getAll(),
         contactsApi.getAll(),
-        discoveredApi.getAll({ limit: 30 }),
         statsApi.getAll(),
+        discoveredApi.getNewToday(),
       ])
       if (jr.status === 'fulfilled') setJobs(jr.value.data || [])
       if (cr.status === 'fulfilled') setContacts(cr.value.data || [])
-      if (dr.status === 'fulfilled') {
-        const d = dr.value.data
-        setDiscovered(Array.isArray(d) ? d : (d?.jobs || d?.items || []))
-      }
       if (sr.status === 'fulfilled') setStats(sr.value.data)
+      // Use new-today count (deduplicated, capped per source — matches Discovery page)
+      if (ntRes.status === 'fulfilled') {
+        const ntJobs = ntRes.value.data?.jobs || []
+        setDiscovered(ntJobs)
+      }
     } finally { setLoading(false) }
   }, [])
 
@@ -478,7 +479,7 @@ export default function Dashboard() {
 
   const D    = loading ? null : analyse(jobs, contacts, discovered)
   const hasData = jobs.length > 0
-  const newToday = stats?.new_jobs_today ?? 0
+  const newToday = discovered.length
 
   // ── Build sorted panel list ───────────────────────────────────────────────
   const buildPanels = (D) => {
