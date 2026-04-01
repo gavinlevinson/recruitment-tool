@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Component } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Briefcase, RefreshCw, ChevronRight,
@@ -48,182 +48,179 @@ function isWrappedWindow() {
   return (day === 0 && hour >= 17) || (day === 1 && hour < 17)
 }
 
-function AnimatedNumber({ value, duration = 1000 }) {
-  const [display, setDisplay] = useState(0)
-  useEffect(() => {
-    if (!value) { setDisplay(0); return }
-    const start = Date.now()
-    const tick = () => {
-      const elapsed = Date.now() - start
-      const progress = Math.min(elapsed / duration, 1)
-      setDisplay(Math.round(progress * value))
-      if (progress < 1) requestAnimationFrame(tick)
-    }
-    requestAnimationFrame(tick)
-  }, [value, duration])
-  return <>{display}</>
+// Error boundary so Weekly Wrapped can never crash the Dashboard
+class WrappedErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(err) { console.error('[WeeklyWrapped] Render error:', err) }
+  render() { return this.state.hasError ? null : this.props.children }
 }
 
 function WeeklyWrapped({ jobs, onClose }) {
-  const active = jobs.filter(j => !['Accepted', 'Rejected'].includes(j.status))
-  const appliedThisWeek = jobs.filter(j => {
-    const d = j.date_applied || j.created_at
-    return d && _daysSince(d) < 7 && j.status !== 'Not Applied'
-  })
-  const interviewsThisWeek = jobs.filter(j => {
-    return j.status === 'Interviewing' && j.updated_at && _daysSince(j.updated_at) < 7
-  })
-  const addedThisWeek = jobs.filter(j => j.created_at && _daysSince(j.created_at) < 7)
-
-  const stale = jobs.filter(j =>
-    j.status === 'Under Review' && j.updated_at && _daysSince(j.updated_at) >= 14
-  )
-
-  const today0 = new Date(); today0.setHours(0, 0, 0, 0)
-  const deadlines = jobs
-    .filter(j => j.deadline && !['Accepted', 'Rejected'].includes(j.status))
-    .map(j => {
-      const [y, m, d] = j.deadline.split('-').map(Number)
-      const dt = new Date(y, m - 1, d); dt.setHours(0, 0, 0, 0)
-      return { ...j, daysUntil: Math.round((dt - today0) / 86400000) }
+  try {
+    const safe = Array.isArray(jobs) ? jobs : []
+    const active = safe.filter(j => !['Accepted', 'Rejected'].includes(j.status))
+    const appliedThisWeek = safe.filter(j => {
+      try { const d = j.date_applied || j.created_at; return d && _daysSince(d) < 7 && j.status !== 'Not Applied' } catch { return false }
     })
-    .filter(j => j.daysUntil >= 0 && j.daysUntil <= 7)
-    .sort((a, b) => a.daysUntil - b.daysUntil)
+    const interviewsThisWeek = safe.filter(j => {
+      try { return j.status === 'Interviewing' && j.updated_at && _daysSince(j.updated_at) < 7 } catch { return false }
+    })
+    const addedThisWeek = safe.filter(j => { try { return j.created_at && _daysSince(j.created_at) < 7 } catch { return false } })
 
-  const allDates = jobs.map(j => j.date_applied || j.created_at).filter(Boolean).map(d => new Date(d))
-  const earliest = allDates.length ? Math.min(...allDates) : null
-  const weeksOnPlatform = earliest ? Math.max(1, Math.ceil((Date.now() - earliest) / (7 * 86400000))) : null
+    const stale = safe.filter(j => {
+      try { return j.status === 'Under Review' && j.updated_at && _daysSince(j.updated_at) >= 14 } catch { return false }
+    })
 
-  const cards = [
-    // Card 1 — Your Week
-    <div key="week" className="min-h-screen snap-start flex items-center justify-center p-8">
-      <div className="max-w-md w-full text-center space-y-8">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-500/20 text-violet-300 text-xs font-semibold uppercase tracking-widest">
-          <Sparkles size={14} /> Your Week
-        </div>
-        <div className="grid grid-cols-3 gap-6">
-          <div>
-            <p className="text-5xl font-black text-white"><AnimatedNumber value={appliedThisWeek.length} /></p>
-            <p className="text-sm text-violet-300 mt-2">Applied</p>
-          </div>
-          <div>
-            <p className="text-5xl font-black text-white"><AnimatedNumber value={interviewsThisWeek.length} /></p>
-            <p className="text-sm text-violet-300 mt-2">Interviews</p>
-          </div>
-          <div>
-            <p className="text-5xl font-black text-white"><AnimatedNumber value={addedThisWeek.length} /></p>
-            <p className="text-sm text-violet-300 mt-2">Jobs Added</p>
-          </div>
-        </div>
-        <p className="text-violet-400 text-sm">Scroll for more</p>
-        <ChevronRight size={20} className="text-violet-400 mx-auto rotate-90 animate-bounce" />
-      </div>
-    </div>,
+    const today0 = new Date(); today0.setHours(0, 0, 0, 0)
+    const deadlines = safe
+      .filter(j => j.deadline && typeof j.deadline === 'string' && j.deadline.includes('-') && !['Accepted', 'Rejected'].includes(j.status))
+      .map(j => {
+        try {
+          const parts = j.deadline.split('-').map(Number)
+          if (parts.length < 3 || parts.some(isNaN)) return null
+          const dt = new Date(parts[0], parts[1] - 1, parts[2]); dt.setHours(0, 0, 0, 0)
+          return { ...j, daysUntil: Math.round((dt - today0) / 86400000) }
+        } catch { return null }
+      })
+      .filter(j => j && j.daysUntil >= 0 && j.daysUntil <= 7)
+      .sort((a, b) => a.daysUntil - b.daysUntil)
 
-    // Card 2 — Needs Attention
-    <div key="stale" className="min-h-screen snap-start flex items-center justify-center p-8">
-      <div className="max-w-md w-full text-center space-y-6">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-semibold uppercase tracking-widest">
-          <AlertTriangle size={14} /> Needs Attention
-        </div>
-        {stale.length > 0 ? (
-          <>
-            <p className="text-lg text-white/80">
-              <span className="text-3xl font-black text-amber-400">{stale.length}</span> application{stale.length !== 1 ? 's have' : ' has'} gone quiet
-            </p>
-            <div className="space-y-3 text-left">
-              {stale.slice(0, 5).map(j => (
-                <div key={j.id} className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-3">
-                  <div>
-                    <p className="text-sm font-semibold text-white">{j.company}</p>
-                    <p className="text-xs text-violet-300">{j.role}</p>
-                  </div>
-                  <span className="text-xs font-medium text-amber-400">
-                    {_daysSince(j.updated_at)}d stale
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="text-sm text-violet-400">Consider following up or archiving these.</p>
-          </>
-        ) : (
-          <>
-            <p className="text-3xl font-black text-emerald-400">All clear!</p>
-            <p className="text-sm text-violet-300">No stale applications — you're staying on top of things.</p>
-          </>
-        )}
-      </div>
-    </div>,
+    const allDates = safe.map(j => j.date_applied || j.created_at).filter(Boolean)
+    const allTimestamps = allDates.map(d => { try { return new Date(d).getTime() } catch { return NaN } }).filter(t => !isNaN(t) && t > 0)
+    const earliest = allTimestamps.length > 0 ? Math.min(...allTimestamps) : null
+    const weeksOnPlatform = earliest ? Math.max(1, Math.ceil((Date.now() - earliest) / (7 * 86400000))) : null
 
-    // Card 3 — Coming Up
-    <div key="deadlines" className="min-h-screen snap-start flex items-center justify-center p-8">
-      <div className="max-w-md w-full text-center space-y-6">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-500/20 text-sky-300 text-xs font-semibold uppercase tracking-widest">
-          <Clock size={14} /> Coming Up
-        </div>
-        {deadlines.length > 0 ? (
-          <>
-            <p className="text-lg text-white/80">
-              <span className="text-3xl font-black text-sky-400">{deadlines.length}</span> deadline{deadlines.length !== 1 ? 's' : ''} this week
-            </p>
-            <div className="space-y-3 text-left">
-              {deadlines.map(j => (
-                <div key={j.id} className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-3">
-                  <div>
-                    <p className="text-sm font-semibold text-white">{j.company}</p>
-                    <p className="text-xs text-violet-300">{j.role}</p>
-                  </div>
-                  <span className={`text-xs font-bold ${j.daysUntil <= 2 ? 'text-red-400' : 'text-sky-400'}`}>
-                    {j.daysUntil === 0 ? 'Today' : j.daysUntil === 1 ? 'Tomorrow' : `${j.daysUntil} days`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-3xl font-black text-emerald-400">No deadlines</p>
-            <p className="text-sm text-violet-300">Nothing due in the next 7 days. Stay proactive!</p>
-          </>
-        )}
-      </div>
-    </div>,
-
-    // Card 4 — Keep Going
-    <div key="motivation" className="min-h-screen snap-start flex items-center justify-center p-8">
-      <div className="max-w-md w-full text-center space-y-8">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold uppercase tracking-widest">
-          <TrendingUp size={14} /> Keep Going
-        </div>
-        <div className="space-y-6">
-          <div>
-            <p className="text-6xl font-black text-white"><AnimatedNumber value={active.length} duration={1200} /></p>
-            <p className="text-sm text-violet-300 mt-2">Active Applications</p>
-          </div>
-          {weeksOnPlatform && (
-            <p className="text-white/60 text-sm">
-              You've been on Orion for <span className="text-white font-semibold">{weeksOnPlatform} week{weeksOnPlatform !== 1 ? 's' : ''}</span>
-            </p>
-          )}
-        </div>
-        <button onClick={onClose}
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors">
-          Back to Dashboard <ArrowRight size={16} />
+    return (
+      <div className="fixed inset-0 z-50 bg-navy-900/95 backdrop-blur-md">
+        <button onClick={onClose} className="fixed top-6 right-6 z-[60] p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
+          <X size={20} />
         </button>
-      </div>
-    </div>,
-  ]
+        <div className="h-full overflow-y-auto snap-y snap-mandatory">
+          {/* Card 1 — Your Week */}
+          <div className="min-h-screen snap-start flex items-center justify-center p-8">
+            <div className="max-w-md w-full text-center space-y-8">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-500/20 text-violet-300 text-xs font-semibold uppercase tracking-widest">
+                <Sparkles size={14} /> Your Week
+              </div>
+              <div className="grid grid-cols-3 gap-6">
+                <div>
+                  <p className="text-5xl font-black text-white">{appliedThisWeek.length}</p>
+                  <p className="text-sm text-violet-300 mt-2">Applied</p>
+                </div>
+                <div>
+                  <p className="text-5xl font-black text-white">{interviewsThisWeek.length}</p>
+                  <p className="text-sm text-violet-300 mt-2">Interviews</p>
+                </div>
+                <div>
+                  <p className="text-5xl font-black text-white">{addedThisWeek.length}</p>
+                  <p className="text-sm text-violet-300 mt-2">Jobs Added</p>
+                </div>
+              </div>
+              <p className="text-violet-400 text-sm">Scroll for more</p>
+              <ChevronRight size={20} className="text-violet-400 mx-auto rotate-90 animate-bounce" />
+            </div>
+          </div>
 
-  return (
-    <div className="fixed inset-0 z-50 bg-navy-900/95 backdrop-blur-md">
-      <button onClick={onClose} className="fixed top-6 right-6 z-[60] p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
-        <X size={20} />
-      </button>
-      <div className="h-full overflow-y-auto snap-y snap-mandatory">
-        {cards}
+          {/* Card 2 — Needs Attention */}
+          <div className="min-h-screen snap-start flex items-center justify-center p-8">
+            <div className="max-w-md w-full text-center space-y-6">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-semibold uppercase tracking-widest">
+                <AlertTriangle size={14} /> Needs Attention
+              </div>
+              {stale.length > 0 ? (
+                <>
+                  <p className="text-lg text-white/80">
+                    <span className="text-3xl font-black text-amber-400">{stale.length}</span> application{stale.length !== 1 ? 's have' : ' has'} gone quiet
+                  </p>
+                  <div className="space-y-3 text-left">
+                    {stale.slice(0, 5).map(j => (
+                      <div key={j.id} className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{j.company}</p>
+                          <p className="text-xs text-violet-300">{j.role}</p>
+                        </div>
+                        <span className="text-xs font-medium text-amber-400">
+                          {_daysSince(j.updated_at) || 0}d stale
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-sm text-violet-400">Consider following up or archiving these.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-3xl font-black text-emerald-400">All clear!</p>
+                  <p className="text-sm text-violet-300">No stale applications — you're staying on top of things.</p>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Card 3 — Coming Up */}
+          <div className="min-h-screen snap-start flex items-center justify-center p-8">
+            <div className="max-w-md w-full text-center space-y-6">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-500/20 text-sky-300 text-xs font-semibold uppercase tracking-widest">
+                <Clock size={14} /> Coming Up
+              </div>
+              {deadlines.length > 0 ? (
+                <>
+                  <p className="text-lg text-white/80">
+                    <span className="text-3xl font-black text-sky-400">{deadlines.length}</span> deadline{deadlines.length !== 1 ? 's' : ''} this week
+                  </p>
+                  <div className="space-y-3 text-left">
+                    {deadlines.map(j => (
+                      <div key={j.id} className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{j.company}</p>
+                          <p className="text-xs text-violet-300">{j.role}</p>
+                        </div>
+                        <span className={`text-xs font-bold ${j.daysUntil <= 2 ? 'text-red-400' : 'text-sky-400'}`}>
+                          {j.daysUntil === 0 ? 'Today' : j.daysUntil === 1 ? 'Tomorrow' : `${j.daysUntil} days`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-3xl font-black text-emerald-400">No deadlines</p>
+                  <p className="text-sm text-violet-300">Nothing due in the next 7 days. Stay proactive!</p>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Card 4 — Keep Going */}
+          <div className="min-h-screen snap-start flex items-center justify-center p-8">
+            <div className="max-w-md w-full text-center space-y-8">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold uppercase tracking-widest">
+                <TrendingUp size={14} /> Keep Going
+              </div>
+              <div className="space-y-6">
+                <div>
+                  <p className="text-6xl font-black text-white">{active.length}</p>
+                  <p className="text-sm text-violet-300 mt-2">Active Applications</p>
+                </div>
+                {weeksOnPlatform && (
+                  <p className="text-white/60 text-sm">
+                    You've been on Orion for <span className="text-white font-semibold">{weeksOnPlatform} week{weeksOnPlatform !== 1 ? 's' : ''}</span>
+                  </p>
+                )}
+              </div>
+              <button onClick={onClose}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors">
+                Back to Dashboard <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  )
+    )
+  } catch (err) {
+    console.error('[WeeklyWrapped] Error:', err)
+    return null
+  }
 }
 
 // ── Company Logo ──────────────────────────────────────────────────────────────
@@ -820,6 +817,27 @@ export default function Dashboard() {
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>
+
+      {/* Weekly Wrapped — visible Sunday 5pm through Monday 5pm */}
+      <WrappedErrorBoundary>
+        {isWrappedWindow() && !loading && jobs.length > 0 && (
+          <button onClick={() => setWrappedOpen(true)}
+            className="w-full flex items-center justify-between gap-4 rounded-xl px-5 py-4 text-white shadow-lg hover:opacity-95 transition-opacity"
+            style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 40%, #4c1d95 100%)' }}>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <Sparkles size={17} className="text-white" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-bold">Your Weekly Wrapped is ready</p>
+                <p className="text-xs text-white/70 mt-0.5">See how your job search went this week</p>
+              </div>
+            </div>
+            <ArrowRight size={18} className="text-white/70 shrink-0" />
+          </button>
+        )}
+        {wrappedOpen && <WeeklyWrapped jobs={jobs} onClose={() => setWrappedOpen(false)} />}
+      </WrappedErrorBoundary>
 
       {/* Thank-you email reminder — shown at 8pm on interview days */}
       {todayRounds.length > 0 && new Date().getHours() >= 20 && (
