@@ -295,11 +295,17 @@ function CompanyJobsModal({ company, filterParams, onClose, onAddToTracker, onDi
   )
 }
 
-// ── Google favicon helper ─────────────────────────────────────────────────────
+// ── Company logo helper ──────────────────────────────────────────────────────
+function companyDomain(companyName) {
+  return (companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
+}
+function companyLogoUrl(companyName) {
+  // Clearbit Logo API — higher quality, more reliable than Google favicons
+  return `https://logo.clearbit.com/${companyDomain(companyName)}`
+}
 function companyFaviconUrl(companyName) {
-  // Guess domain from company name, then use Google's reliable favicon service
-  const domain = (companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
-  return `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=64`
+  // Google favicon as fallback
+  return `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${companyDomain(companyName)}&size=64`
 }
 
 // Extract a company blurb from job description
@@ -334,9 +340,10 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
   const isAdded = job.added_to_tracker
   const sourceMeta = getSourceMeta(job.source)
 
-  // Logo: Google favicon service with fallback to colored initial
-  const [logoFailed, setLogoFailed] = useState(false)
-  const logoSrc = companyFaviconUrl(job.company)
+  // Logo: Clearbit → Google favicon → colored initial
+  const [logoLevel, setLogoLevel] = useState(0) // 0=clearbit, 1=google, 2=initial
+  const logoSrc = logoLevel === 0 ? companyLogoUrl(job.company) : companyFaviconUrl(job.company)
+  const logoFailed = logoLevel >= 2
 
   // Company description popup — AI-generated, lazily fetched, cached per company
   const [showDesc, setShowDesc] = useState(false)
@@ -391,7 +398,7 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
             <img
               src={logoSrc}
               alt={job.company}
-              onError={() => setLogoFailed(true)}
+              onError={() => setLogoLevel(prev => prev + 1)}
               className="w-8 h-8 rounded-lg object-contain shrink-0 border border-navy-100 bg-white p-0.5"
             />
           ) : (
@@ -1268,24 +1275,25 @@ function PreferencesPanel({ open, onClose, preferences, onSave }) {
 // ── New Today Row ─────────────────────────────────────────────────────────────
 function NewTodayRow({ job, onAdd }) {
   const [expanded, setExpanded] = useState(false)
-  const [logoFailed, setLogoFailed] = useState(false)
+  const [logoLevel2, setLogoLevel2] = useState(0)
   const isAdded = job.added_to_tracker
 
   const sourceMeta = getSourceMeta(job.source)
   const blurb = extractCompanyBlurb(job.description)
   const genericUrl = isGenericCareerUrl(job.job_url)
-  const logoSrc = companyFaviconUrl(job.company)
+  const logoSrc2 = logoLevel2 === 0 ? companyLogoUrl(job.company) : companyFaviconUrl(job.company)
+  const logoFailed2 = logoLevel2 >= 2
 
   return (
     <div className="transition-colors hover:bg-sky-50/70">
       {/* Compact top row — always visible */}
       <div className="flex items-center gap-3 px-4 py-2.5">
         {/* Logo */}
-        {!logoFailed ? (
+        {!logoFailed2 ? (
           <img
-            src={logoSrc}
+            src={logoSrc2}
             alt={job.company}
-            onError={() => setLogoFailed(true)}
+            onError={() => setLogoLevel2(prev => prev + 1)}
             className="w-7 h-7 rounded-md object-contain shrink-0 border border-sky-100 bg-white p-0.5"
           />
         ) : (
