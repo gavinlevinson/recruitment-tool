@@ -53,6 +53,7 @@ export const contactsApi = {
   create:       (data)   => api.post('/contacts', data),
   update:       (id, data) => api.put(`/contacts/${id}`, data),
   delete:       (id)     => api.delete(`/contacts/${id}`),
+  searchApolloOrgs: (data) => api.post('/contacts/search-apollo-orgs', data),
   searchApollo: (data)   => api.post('/contacts/search-apollo', data),
   enrichApollo: (data)   => api.post('/contacts/enrich-apollo', data),
   hunterDomain: (data)   => api.post('/contacts/hunter-domain', data),

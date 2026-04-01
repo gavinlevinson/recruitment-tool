@@ -1326,10 +1326,57 @@ async def hunter_find_email(payload: dict):
     except Exception as e:
         return {"error": "exception", "message": str(e)}
 
+@app.post("/api/contacts/search-apollo-orgs")
+async def search_apollo_orgs(payload: dict):
+    """Search Apollo for organizations matching a company name. Returns top matches with domain and details."""
+    apollo_key = os.getenv("APOLLO_API_KEY", "")
+    if not apollo_key:
+        return {"error": "no_key", "organizations": []}
+
+    company = payload.get("company", "")
+    if not company:
+        return {"error": "company name required", "organizations": []}
+
+    headers = {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+        "X-Api-Key": apollo_key,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://api.apollo.io/api/v1/mixed_companies/search",
+                headers=headers,
+                json={
+                    "q_organization_name": company,
+                    "page": 1,
+                    "per_page": 10,
+                },
+            )
+        raw = resp.json()
+        orgs = []
+        for o in raw.get("organizations", raw.get("accounts", [])):
+            orgs.append({
+                "id": o.get("id", ""),
+                "name": o.get("name", ""),
+                "domain": o.get("primary_domain") or o.get("domain") or "",
+                "logo_url": o.get("logo_url", ""),
+                "industry": o.get("industry", ""),
+                "estimated_num_employees": o.get("estimated_num_employees"),
+                "city": (o.get("city") or ""),
+                "state": (o.get("state") or ""),
+                "country": (o.get("country") or ""),
+            })
+        return {"organizations": orgs}
+    except Exception as e:
+        return {"error": str(e), "organizations": []}
+
+
 @app.post("/api/contacts/search-apollo")
 async def search_apollo(payload: dict):
     """
-    Step 1: search Apollo for people at a company.
+    Search Apollo for people at a company.
+    Accepts optional organization_id for exact matching.
     Returns preview rows (first_name + obfuscated last name + title).
     Use /contacts/enrich-apollo to get full details before saving.
     """
@@ -1337,13 +1384,18 @@ async def search_apollo(payload: dict):
     if not apollo_key:
         return {"error": "no_key", "people": []}
 
-    company        = payload.get("company", "")
-    title_keywords = payload.get("title_keywords", [])
-    seniority      = payload.get("seniority", [])
-    page           = payload.get("page", 1)
-    per_page       = min(payload.get("per_page", 25), 50)
+    company          = payload.get("company", "")
+    organization_id  = payload.get("organization_id", "")
+    title_keywords   = payload.get("title_keywords", [])
+    seniority        = payload.get("seniority", [])
+    page             = payload.get("page", 1)
+    per_page         = min(payload.get("per_page", 25), 50)
 
-    body: dict = {"q_organization_name": company, "page": page, "per_page": per_page}
+    body: dict = {"page": page, "per_page": per_page}
+    if organization_id:
+        body["organization_ids"] = [organization_id]
+    else:
+        body["q_organization_name"] = company
     if title_keywords:
         body["person_titles"] = title_keywords
     if seniority:

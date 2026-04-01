@@ -1278,11 +1278,37 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
   const [totalPages, setTotalPages]       = useState(1)
   const [total, setTotal]                 = useState(0)
 
+  // Org picker state
+  const [orgOptions, setOrgOptions]       = useState(null)  // null = not searched, [] = no results
+  const [selectedOrg, setSelectedOrg]     = useState(null)  // { id, name, domain, ... }
+  const [orgLoading, setOrgLoading]       = useState(false)
+
   const existingSet = new Set(existingContacts.map(c => (c.name || '').toLowerCase().trim()))
 
   const toggleChip = (label) =>
     setSelectedChips(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label])
 
+  // Step 1: search for the organization
+  const searchOrgs = async () => {
+    setOrgLoading(true); setError(null)
+    try {
+      const res = await contactsApi.searchApolloOrgs({ company: job.company })
+      const data = res.data
+      if (data.error === 'no_key') { setError('Apollo API key not configured.'); return }
+      if (data.error) { setError(`Apollo error: ${data.error}`); return }
+      const orgs = data.organizations || []
+      setOrgOptions(orgs)
+      // Auto-select if there's exactly one result
+      if (orgs.length === 1) { setSelectedOrg(orgs[0]) }
+    } catch {
+      setError('Organization search failed.')
+    } finally { setOrgLoading(false) }
+  }
+
+  // Auto-search orgs on mount
+  useEffect(() => { searchOrgs() }, [job.company])
+
+  // Step 2: search for people at the selected org
   const doSearch = async (pg = 1) => {
     setLoading(true); setError(null); setPage(pg); setExpanded({})
     try {
@@ -1290,7 +1316,8 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
         label => TITLE_CHIPS.find(c => c.label === label)?.keywords ?? []
       )
       const res  = await contactsApi.searchApollo({
-        company:        job.company,
+        company:        selectedOrg?.name || job.company,
+        organization_id: selectedOrg?.id || '',
         title_keywords: keywords,          // empty = all titles
         seniority:      SENIORITY_OPTS[seniority].values,
         page: pg, per_page: 20,
@@ -1415,8 +1442,8 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
               </button>
             ))}
           </div>
-          <button onClick={() => doSearch(1)} disabled={loading}
-            className="ml-auto btn-primary text-xs py-1.5 px-4">
+          <button onClick={() => doSearch(1)} disabled={loading || !selectedOrg}
+            className="ml-auto btn-primary text-xs py-1.5 px-4 disabled:opacity-40">
             {loading
               ? <><RefreshCw size={12} className="animate-spin" /> Searching…</>
               : <><Sparkles size={12} /> Search Apollo</>}
@@ -1427,17 +1454,60 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
       {/* Body */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {/* Pre-search */}
-        {results === null && !loading && (
+        {/* Org picker — shown when orgs are loaded but none selected yet */}
+        {orgOptions !== null && !selectedOrg && !orgLoading && (
+          <div className="px-6 pt-4 pb-2">
+            <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide mb-2">
+              Select the correct company
+            </p>
+            {orgOptions.length === 0 ? (
+              <p className="text-xs text-navy-400">No organizations found for "{job.company}"</p>
+            ) : (
+              <div className="space-y-2">
+                {orgOptions.map(o => (
+                  <button key={o.id} onClick={() => setSelectedOrg(o)}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-navy-200 hover:border-violet-400 hover:bg-violet-50/50 transition-all text-left">
+                    {o.logo_url ? (
+                      <img src={o.logo_url} alt="" className="w-8 h-8 rounded-md object-contain bg-white border border-navy-100" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-md bg-violet-100 text-violet-700 font-bold flex items-center justify-center text-xs">
+                        {(o.name?.[0] || '?').toUpperCase()}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-navy-800 truncate">{o.name}</p>
+                      <p className="text-[10px] text-navy-400 truncate">
+                        {[o.domain, o.industry, o.estimated_num_employees ? `~${o.estimated_num_employees} employees` : '', [o.city, o.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {orgLoading && (
+          <div className="flex items-center justify-center py-14 gap-2 text-navy-400">
+            <RefreshCw size={14} className="animate-spin" /> Finding companies...
+          </div>
+        )}
+
+        {results === null && !loading && selectedOrg && (
           <div className="flex flex-col items-center justify-center py-14 gap-3 text-center px-8">
             <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center">
               <Sparkles size={22} className="text-violet-400" />
             </div>
             <div>
-              <p className="font-semibold text-navy-700 text-sm">Find people at {job.company}</p>
+              <p className="font-semibold text-navy-700 text-sm">Find people at {selectedOrg.name}</p>
               <p className="text-xs text-navy-400 mt-1">
                 Pick a role type &amp; seniority, then Search.<br/>
                 Click <strong>▼ View Profile</strong> to see LinkedIn before adding.
               </p>
+              <button onClick={() => { setSelectedOrg(null); setResults(null) }}
+                className="text-xs text-violet-600 hover:text-violet-800 font-medium mt-2">
+                Change company
+              </button>
             </div>
           </div>
         )}
