@@ -1429,17 +1429,20 @@ export default function JobDiscovery() {
   // Toast notification after adding to tracker
   const [toast, setToast] = useState(null) // { folder } or null
 
-  // Filters
-  const [search, setSearch]                   = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [roleFilter, setRoleFilter]           = useState([])
-  const [hideAdded, setHideAdded]             = useState(false)
-  const [sortBy, setSortBy]                   = useState('score')
-  const [page, _setPage]                      = useState(() => {
-    const saved = sessionStorage.getItem('discovery_page')
-    return saved ? parseInt(saved, 10) : 1
-  })
-  const setPage = (p) => { _setPage(p); sessionStorage.setItem('discovery_page', p) }
+  // Filters — persisted to sessionStorage so they survive navigation
+  const _ss = (key, fallback) => { try { const v = sessionStorage.getItem(key); return v !== null ? JSON.parse(v) : fallback } catch { return fallback } }
+  const [search, _setSearch]                   = useState(() => _ss('discovery_search', ''))
+  const [debouncedSearch, setDebouncedSearch] = useState(() => _ss('discovery_search', ''))
+  const [roleFilter, _setRoleFilter]           = useState(() => _ss('discovery_roles', []))
+  const [hideAdded, _setHideAdded]             = useState(() => _ss('discovery_hideAdded', false))
+  const [sortBy, _setSortBy]                   = useState(() => _ss('discovery_sort', 'score'))
+  const [page, _setPage]                       = useState(() => _ss('discovery_page', 1))
+
+  const setSearch     = (v) => { _setSearch(v);     sessionStorage.setItem('discovery_search', JSON.stringify(v)) }
+  const setRoleFilter = (v) => { const next = typeof v === 'function' ? v(roleFilter) : v; _setRoleFilter(next); sessionStorage.setItem('discovery_roles', JSON.stringify(next)) }
+  const setHideAdded  = (v) => { _setHideAdded(v);  sessionStorage.setItem('discovery_hideAdded', JSON.stringify(v)) }
+  const setSortBy     = (v) => { _setSortBy(v);     sessionStorage.setItem('discovery_sort', JSON.stringify(v)) }
+  const setPage       = (p) => { _setPage(p);       sessionStorage.setItem('discovery_page', JSON.stringify(p)) }
 
   // New Today banner
   const [newTodayJobs, setNewTodayJobs]       = useState([])
