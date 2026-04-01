@@ -1061,7 +1061,7 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
             while True:
                 try:
                     resp = await client.get(
-                        f"https://api.ycombinator.com/v0.1/companies?page={page}&per_page=25",
+                        f"https://api.ycombinator.com/v0.1/companies?page={page}&per_page=100",
                         timeout=15.0,
                     )
                     if resp.status_code != 200:
@@ -1086,7 +1086,7 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
             print(f"[YC Jobs] {len(all_companies)} YC companies fetched")
 
             # ── Step 2: Fast slug-based ATS discovery for all companies ──────────
-            sem = asyncio.Semaphore(40)
+            sem = asyncio.Semaphore(60)
             MAX_PER_CO = 25
 
             async def discover_yc_ats(co: dict):
@@ -1109,7 +1109,7 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
                             try:
                                 r = await client.get(
                                     f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
-                                    timeout=6.0,
+                                    timeout=3.0,
                                 )
                                 if r.status_code == 200:
                                     for j in r.json().get("jobs", []):
@@ -1132,7 +1132,7 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
                             try:
                                 r = await client.get(
                                     f"https://api.lever.co/v0/postings/{slug}?mode=json",
-                                    timeout=6.0,
+                                    timeout=3.0,
                                 )
                                 if r.status_code == 200 and isinstance(r.json(), list) and r.json():
                                     for p in r.json():
@@ -1155,7 +1155,7 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
                             try:
                                 r = await client.get(
                                     f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
-                                    timeout=6.0,
+                                    timeout=3.0,
                                 )
                                 if r.status_code == 200:
                                     for j in r.json().get("jobs", []):
@@ -1588,7 +1588,7 @@ async def scrape_vc_boards() -> List[Dict]:
     Hits Greenhouse, Lever, and Ashby ATSs for each company.
     """
     jobs = []
-    sem = asyncio.Semaphore(40)
+    sem = asyncio.Semaphore(60)
 
     # Deduplicate against the base lists
     gh_set   = set(GREENHOUSE_COMPANIES)
@@ -1606,7 +1606,7 @@ async def scrape_vc_boards() -> List[Dict]:
                 try:
                     resp = await client.get(
                         f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
-                        timeout=10.0,
+                        timeout=6.0,
                     )
                     if resp.status_code != 200:
                         return []
@@ -1628,7 +1628,7 @@ async def scrape_vc_boards() -> List[Dict]:
                 try:
                     resp = await client.get(
                         f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
-                        timeout=10.0,
+                        timeout=6.0,
                     )
                     if resp.status_code != 200:
                         return []
@@ -1652,7 +1652,7 @@ async def scrape_vc_boards() -> List[Dict]:
                 try:
                     resp = await client.get(
                         f"https://api.lever.co/v0/postings/{slug}?mode=json",
-                        timeout=10.0,
+                        timeout=6.0,
                     )
                     if resp.status_code != 200:
                         return []

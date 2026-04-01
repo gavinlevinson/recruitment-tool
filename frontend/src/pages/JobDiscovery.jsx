@@ -1721,7 +1721,7 @@ export default function JobDiscovery() {
                 {runResult.startsWith('Up to date') ? '✓' : '✦'} {runResult}
               </p>
             ) : (
-              <p className="text-xs text-navy-400">Searches all job boards &amp; newsletters</p>
+              <p className="text-xs text-navy-400">Scans 16+ sources to find roles matched to your resume &amp; preferences</p>
             )}
           </div>
         </div>
