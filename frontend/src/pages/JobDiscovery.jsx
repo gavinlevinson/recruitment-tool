@@ -1435,7 +1435,11 @@ export default function JobDiscovery() {
   const [roleFilter, setRoleFilter]           = useState([])
   const [hideAdded, setHideAdded]             = useState(false)
   const [sortBy, setSortBy]                   = useState('score')
-  const [page, setPage]                       = useState(1)
+  const [page, _setPage]                      = useState(() => {
+    const saved = sessionStorage.getItem('discovery_page')
+    return saved ? parseInt(saved, 10) : 1
+  })
+  const setPage = (p) => { _setPage(p); sessionStorage.setItem('discovery_page', p) }
 
   // New Today banner
   const [newTodayJobs, setNewTodayJobs]       = useState([])
