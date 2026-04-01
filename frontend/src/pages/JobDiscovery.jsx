@@ -1500,7 +1500,7 @@ export default function JobDiscovery() {
     try {
       await discoveredApi.triggerScrape()
       // Poll status every 8s; stop as soon as is_running flips to false
-      for (let i = 0; i < 40; i++) {          // max ~5 min
+      for (let i = 0; i < 75; i++) {          // max ~10 min
         await new Promise(r => setTimeout(r, 8000))
         const statusRes = await discoveredApi.getStatus().catch(() => null)
         const status = statusRes?.data
@@ -1717,7 +1717,7 @@ export default function JobDiscovery() {
             </button>
             {running ? (
               <p className="text-xs text-navy-400">
-                Scanning 16+ sources in parallel — typically takes <span className="font-medium text-navy-600">2–4 min</span>
+                Scanning 16+ sources in parallel — typically takes <span className="font-medium text-navy-600">5–8 min</span>
               </p>
             ) : runResult ? (
               <p className={`text-xs font-medium ${runResult.startsWith('Up to date') ? 'text-navy-400' : 'text-emerald-600'}`}>
