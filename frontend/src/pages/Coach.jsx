@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   FileText, Sparkles, ChevronDown, ChevronUp, Copy, Check,
   Loader2, AlertTriangle, BookOpen, Lightbulb, RotateCcw,
-  Star, Target, Building2, MessageSquare,
+  Star, Target, Building2, MessageSquare, Mic, MicOff,
+  Square, Play, Clock, Volume2,
 } from 'lucide-react'
 import { coachApi, jobsApi, profileApi } from '../api'
+import INTERVIEW_QUESTIONS, { ROLE_QUESTION_WEIGHTS, CATEGORY_LABELS } from '../data/interviewQuestions'
 
 // ── Analysis progress bar ─────────────────────────────────────────────────────
 function useAnalysisProgress(loading) {
@@ -1028,6 +1030,7 @@ const TABS = [
   { id: 'resume',    label: 'Resume Scanner',        icon: FileText },
   { id: 'cl',        label: 'Cover Letter Coach',     icon: BookOpen },
   { id: 'questions', label: 'Application Questions',  icon: MessageSquare },
+  { id: 'interview', label: 'Interview Practice',     icon: Mic },
 ]
 
 export default function Coach() {
@@ -1092,6 +1095,518 @@ export default function Coach() {
       )}
       {activeTab === 'questions' && (
         <ApplicationQuestions trackerJobs={trackerJobs} />
+      )}
+      {activeTab === 'interview' && (
+        <InterviewPractice trackerJobs={trackerJobs} />
+      )}
+    </div>
+  )
+}
+
+
+// ── Interview Practice ───────────────────────────────────────────────────────
+const INTERVIEW_LENGTHS = [
+  { minutes: 5,  label: '5 min',  questions: 3 },
+  { minutes: 10, label: '10 min', questions: 5 },
+  { minutes: 15, label: '15 min', questions: 7 },
+  { minutes: 30, label: '30 min', questions: 12 },
+]
+
+const SpeechRecognition = typeof window !== 'undefined'
+  ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+  : null
+
+function InterviewPractice({ trackerJobs }) {
+  // Setup state
+  const [selectedJob, setSelectedJob] = useState(null)
+  const [lengthIdx, setLengthIdx] = useState(1) // default 10 min
+  const [phase, setPhase] = useState('setup') // setup | active | scoring | results
+
+  // Active interview state
+  const [currentQuestion, setCurrentQuestion] = useState('')
+  const [currentCategory, setCurrentCategory] = useState('')
+  const [questionsAsked, setQuestionsAsked] = useState(0)
+  const [conversation, setConversation] = useState([])
+  const [qaHistory, setQaHistory] = useState([])
+  const [transcript, setTranscript] = useState('')
+  const [interimText, setInterimText] = useState('')
+  const [voiceState, setVoiceState] = useState('idle') // idle | speaking | listening | processing
+  const [timeLeft, setTimeLeft] = useState(0)
+  const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  // Results state
+  const [results, setResults] = useState(null)
+
+  // Refs
+  const recognitionRef = useRef(null)
+  const timerRef = useRef(null)
+  const endTimeRef = useRef(null)
+  const synthRef = useRef(typeof window !== 'undefined' ? window.speechSynthesis : null)
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) { try { recognitionRef.current.stop() } catch {} }
+      if (timerRef.current) clearInterval(timerRef.current)
+      if (synthRef.current) synthRef.current.cancel()
+    }
+  }, [])
+
+  // Browser support check
+  if (!SpeechRecognition) {
+    return (
+      <div className="card p-8 text-center">
+        <AlertTriangle size={32} className="text-amber-500 mx-auto mb-3" />
+        <h3 className="text-lg font-semibold text-navy-900 mb-2">Browser Not Supported</h3>
+        <p className="text-sm text-navy-500">
+          Interview Practice requires speech recognition, which is only available in Chrome and Edge.
+          Please open Orion in Google Chrome to use this feature.
+        </p>
+      </div>
+    )
+  }
+
+  const companies = [...new Set(trackerJobs.map(j => j.company).filter(Boolean))]
+
+  const startInterview = async () => {
+    const length = INTERVIEW_LENGTHS[lengthIdx]
+    endTimeRef.current = Date.now() + length.minutes * 60 * 1000
+    setTimeLeft(length.minutes * 60)
+    setPhase('active')
+    setQaHistory([])
+    setConversation([])
+    setQuestionsAsked(0)
+    setError(null)
+
+    // Start timer
+    timerRef.current = setInterval(() => {
+      const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000))
+      setTimeLeft(remaining)
+      if (remaining <= 0) {
+        clearInterval(timerRef.current)
+        endInterview()
+      }
+    }, 1000)
+
+    // Get first question
+    await fetchNextQuestion([], 0, '')
+  }
+
+  const fetchNextQuestion = async (conv, asked, questionText) => {
+    setVoiceState('processing')
+    setLoading(true)
+    try {
+      const res = await coachApi.interview({
+        company: selectedJob?.company || '',
+        role: selectedJob?.role || '',
+        folder: selectedJob?.folder || '',
+        job_description: selectedJob?.description || '',
+        job_url: selectedJob?.job_url || '',
+        conversation: conv,
+        questions_asked: asked,
+        question_text: questionText,
+      })
+      const data = res.data
+      setCurrentQuestion(data.question)
+      setCurrentCategory(data.category || '')
+      if (!data.is_follow_up) setQuestionsAsked(prev => prev + 1)
+      speakQuestion(data.question)
+    } catch (e) {
+      setError('Failed to get next question. Please try again.')
+      setVoiceState('idle')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const speakQuestion = (text) => {
+    setVoiceState('speaking')
+    if (synthRef.current) synthRef.current.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = 0.95
+    utterance.pitch = 1.0
+    utterance.onend = () => startListening()
+    utterance.onerror = () => startListening()
+    synthRef.current.speak(utterance)
+  }
+
+  const startListening = () => {
+    setVoiceState('listening')
+    setTranscript('')
+    setInterimText('')
+
+    const recognition = new SpeechRecognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+
+    recognition.onresult = (event) => {
+      let final = ''
+      let interim = ''
+      for (let i = 0; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          final += event.results[i][0].transcript + ' '
+        } else {
+          interim = event.results[i][0].transcript
+        }
+      }
+      setTranscript(final.trim())
+      setInterimText(interim)
+    }
+
+    recognition.onerror = (e) => {
+      if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        console.error('Speech recognition error:', e.error)
+      }
+    }
+
+    recognition.onend = () => {
+      // Only restart if still in listening state
+      if (recognitionRef.current === recognition) {
+        try { recognition.start() } catch {}
+      }
+    }
+
+    recognitionRef.current = recognition
+    recognition.start()
+  }
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      const ref = recognitionRef.current
+      recognitionRef.current = null
+      try { ref.stop() } catch {}
+    }
+  }
+
+  const submitAnswer = async () => {
+    stopListening()
+    const answer = transcript.trim()
+    if (!answer) { startListening(); return }
+
+    const newConv = [
+      ...conversation,
+      { role: 'interviewer', content: currentQuestion },
+      { role: 'candidate', content: answer },
+    ]
+    const newQa = [...qaHistory, { question: currentQuestion, answer, category: currentCategory }]
+    setConversation(newConv)
+    setQaHistory(newQa)
+    setTranscript('')
+    setInterimText('')
+
+    // Check if we should end
+    const maxQ = INTERVIEW_LENGTHS[lengthIdx].questions
+    if (questionsAsked >= maxQ || timeLeft <= 10) {
+      endInterview(newQa)
+      return
+    }
+
+    await fetchNextQuestion(newConv, questionsAsked, currentQuestion)
+  }
+
+  const endInterview = async (finalQa) => {
+    clearInterval(timerRef.current)
+    stopListening()
+    if (synthRef.current) synthRef.current.cancel()
+    setVoiceState('idle')
+
+    const qa = finalQa || qaHistory
+    if (qa.length === 0) {
+      setPhase('setup')
+      return
+    }
+
+    setPhase('scoring')
+    try {
+      const res = await coachApi.interviewScore({
+        company: selectedJob?.company || '',
+        role: selectedJob?.role || '',
+        folder: selectedJob?.folder || '',
+        qa_pairs: qa,
+      })
+      setResults(res.data)
+      setPhase('results')
+    } catch {
+      setError('Failed to score interview. Please try again.')
+      setPhase('setup')
+    }
+  }
+
+  const resetInterview = () => {
+    setPhase('setup')
+    setResults(null)
+    setQaHistory([])
+    setConversation([])
+    setCurrentQuestion('')
+    setQuestionsAsked(0)
+    setTranscript('')
+    setInterimText('')
+    setError(null)
+    setVoiceState('idle')
+  }
+
+  const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+
+  // ── SETUP PHASE ──
+  if (phase === 'setup') {
+    return (
+      <div className="space-y-6">
+        <div className="card p-6 space-y-5">
+          <div>
+            <h3 className="text-lg font-semibold text-navy-900 flex items-center gap-2">
+              <Mic size={18} className="text-violet-600" />
+              Behavioral Interview Practice
+            </h3>
+            <p className="text-sm text-navy-500 mt-1">
+              Practice answering behavioral questions with an AI interviewer. Uses your microphone for a realistic experience.
+              Works best in Google Chrome.
+            </p>
+          </div>
+
+          {/* Job selection */}
+          <div>
+            <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
+              Practice for a specific role <span className="text-navy-300 font-normal normal-case">(optional)</span>
+            </label>
+            <select
+              className="input"
+              value={selectedJob ? trackerJobs.indexOf(selectedJob) : ''}
+              onChange={e => setSelectedJob(e.target.value !== '' ? trackerJobs[e.target.value] : null)}
+            >
+              <option value="">General behavioral interview</option>
+              {trackerJobs.map((j, i) => (
+                <option key={i} value={i}>{j.company} — {j.role}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Interview length */}
+          <div>
+            <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
+              Interview Length
+            </label>
+            <div className="flex rounded-lg border border-navy-200 overflow-hidden">
+              {INTERVIEW_LENGTHS.map((len, i) => (
+                <button
+                  key={i}
+                  onClick={() => setLengthIdx(i)}
+                  className={`flex-1 px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    lengthIdx === i
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-white text-navy-600 hover:bg-navy-50'
+                  }`}
+                >
+                  {len.label}
+                  <span className="block text-[10px] font-normal opacity-70">~{len.questions} questions</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={startInterview}
+            className="w-full btn-primary py-3 text-base font-semibold flex items-center justify-center gap-2"
+          >
+            <Play size={18} /> Start Interview
+          </button>
+        </div>
+
+        {error && (
+          <div className="card p-4 border-l-4 border-red-400 flex items-start gap-2">
+            <AlertTriangle size={16} className="text-red-500 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── SCORING PHASE ──
+  if (phase === 'scoring') {
+    return (
+      <div className="card p-12 flex flex-col items-center text-center gap-4">
+        <Loader2 size={32} className="text-violet-600 animate-spin" />
+        <h3 className="text-lg font-semibold text-navy-900">Scoring your interview...</h3>
+        <p className="text-sm text-navy-500">Evaluating {qaHistory.length} answer{qaHistory.length !== 1 ? 's' : ''}</p>
+      </div>
+    )
+  }
+
+  // ── RESULTS PHASE ──
+  if (phase === 'results' && results) {
+    const scoreColor = results.overall_score >= 70 ? 'text-emerald-600' :
+                       results.overall_score >= 45 ? 'text-amber-600' : 'text-red-600'
+    const scoreBg = results.overall_score >= 70 ? 'bg-emerald-50 border-emerald-200' :
+                    results.overall_score >= 45 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'
+
+    return (
+      <div className="space-y-6">
+        {/* Overall score */}
+        <div className={`card p-6 border ${scoreBg} text-center`}>
+          <p className={`text-5xl font-black ${scoreColor}`}>{results.overall_score}</p>
+          <p className="text-sm font-semibold text-navy-700 mt-1">Overall Score</p>
+          <p className="text-sm text-navy-500 mt-3 max-w-lg mx-auto">{results.narrative_summary}</p>
+        </div>
+
+        {/* Per-question scores */}
+        <div className="space-y-4">
+          {(results.questions || []).map((q, i) => {
+            const avg = ((q.structure + q.specificity + q.relevance) / 3).toFixed(1)
+            const sevClass = q.severity === 'strong' ? 'bg-emerald-50 border-emerald-200' :
+                             q.severity === 'developing' ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'
+            const sevDot = q.severity === 'strong' ? 'bg-emerald-400' :
+                           q.severity === 'developing' ? 'bg-amber-400' : 'bg-red-400'
+            return (
+              <div key={i} className={`card p-5 border ${sevClass}`}>
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`w-2 h-2 rounded-full ${sevDot}`} />
+                      <span className="text-xs font-semibold text-navy-500 uppercase">Question {i + 1}</span>
+                    </div>
+                    <p className="text-sm font-medium text-navy-800">{q.question}</p>
+                  </div>
+                  <span className="text-lg font-bold text-navy-700">{avg}</span>
+                </div>
+                {q.answer_summary && (
+                  <p className="text-xs text-navy-400 italic mb-3">Your answer: {q.answer_summary}</p>
+                )}
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  {[
+                    { label: 'Structure', val: q.structure },
+                    { label: 'Specificity', val: q.specificity },
+                    { label: 'Relevance', val: q.relevance },
+                  ].map(d => (
+                    <div key={d.label} className="text-center">
+                      <p className="text-lg font-bold text-navy-800">{d.val}</p>
+                      <p className="text-[10px] text-navy-400 uppercase">{d.label}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-navy-600">{q.feedback}</p>
+              </div>
+            )
+          })}
+        </div>
+
+        <button onClick={resetInterview} className="btn-secondary w-full py-3 flex items-center justify-center gap-2">
+          <RotateCcw size={16} /> Try Another Interview
+        </button>
+      </div>
+    )
+  }
+
+  // ── ACTIVE INTERVIEW PHASE ──
+  return (
+    <div className="space-y-4">
+      {/* Timer + controls bar */}
+      <div className="card p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold ${
+            timeLeft <= 60 ? 'bg-red-100 text-red-700' : 'bg-navy-100 text-navy-700'
+          }`}>
+            <Clock size={14} />
+            {formatTime(timeLeft)}
+          </div>
+          <span className="text-xs text-navy-400">
+            Question {questionsAsked} of ~{INTERVIEW_LENGTHS[lengthIdx].questions}
+          </span>
+        </div>
+        <button
+          onClick={() => endInterview()}
+          className="px-4 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm font-semibold hover:bg-red-100 transition-colors flex items-center gap-1.5"
+        >
+          <Square size={12} /> End Interview
+        </button>
+      </div>
+
+      {/* Current question */}
+      <div className="card p-6">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center shrink-0 mt-0.5">
+            <Volume2 size={16} className="text-violet-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-xs text-navy-400 uppercase tracking-wide mb-1">
+              {currentCategory ? CATEGORY_LABELS[currentCategory] || currentCategory : 'Question'}
+            </p>
+            <p className="text-base text-navy-900 font-medium leading-relaxed">
+              {currentQuestion || 'Preparing your question...'}
+            </p>
+          </div>
+        </div>
+
+        {/* Voice state indicator */}
+        <div className="flex items-center justify-center py-4">
+          {voiceState === 'speaking' && (
+            <div className="flex items-center gap-2 text-violet-600">
+              <Volume2 size={20} className="animate-pulse" />
+              <span className="text-sm font-medium">Interviewer is speaking...</span>
+            </div>
+          )}
+          {voiceState === 'listening' && (
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center animate-pulse">
+                <Mic size={28} className="text-red-600" />
+              </div>
+              <span className="text-sm font-medium text-red-600">Listening... speak your answer</span>
+            </div>
+          )}
+          {voiceState === 'processing' && (
+            <div className="flex items-center gap-2 text-navy-500">
+              <Loader2 size={20} className="animate-spin" />
+              <span className="text-sm font-medium">Thinking...</span>
+            </div>
+          )}
+        </div>
+
+        {/* Live transcript */}
+        {(transcript || interimText) && (
+          <div className="bg-navy-50 rounded-xl p-4 mt-2">
+            <p className="text-xs text-navy-400 uppercase tracking-wide mb-1">Your answer</p>
+            <p className="text-sm text-navy-700 leading-relaxed">
+              {transcript}
+              {interimText && <span className="text-navy-400">{interimText}</span>}
+            </p>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        {voiceState === 'listening' && (
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={submitAnswer}
+              disabled={!transcript.trim()}
+              className="flex-1 btn-primary py-2.5 flex items-center justify-center gap-2 disabled:opacity-40"
+            >
+              Next Question
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Q&A history */}
+      {qaHistory.length > 0 && (
+        <div className="card p-4">
+          <p className="text-xs text-navy-400 uppercase tracking-wide mb-3">Previous answers</p>
+          <div className="space-y-3">
+            {qaHistory.map((qa, i) => (
+              <div key={i} className="bg-navy-50 rounded-lg p-3">
+                <p className="text-xs font-semibold text-navy-600 mb-1">Q{i + 1}: {qa.question}</p>
+                <p className="text-xs text-navy-500 line-clamp-2">{qa.answer}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="card p-4 border-l-4 border-red-400 flex items-start gap-2">
+          <AlertTriangle size={16} className="text-red-500 shrink-0 mt-0.5" />
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
       )}
     </div>
   )

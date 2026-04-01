@@ -1240,6 +1240,29 @@ function scoreRelevance(person, selectedChips, userUniversity, enriched) {
   return score
 }
 
+function extractDomain(jobUrl, companyName) {
+  if (!jobUrl) {
+    return companyName ? companyName.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com' : ''
+  }
+  try {
+    const url = new URL(jobUrl)
+    const host = url.hostname.toLowerCase().replace(/^www\./, '')
+    const ATS_HOSTS = ['lever.co', 'greenhouse.io', 'ashbyhq.com', 'ashby.io', 'workable.com', 'boards.greenhouse.io']
+    for (const ats of ATS_HOSTS) {
+      if (host.endsWith(ats) || host === ats) {
+        const slug = url.pathname.split('/').filter(Boolean)[0]
+        return slug ? slug.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com' : ''
+      }
+    }
+    if (host.includes('linkedin.com') || host.includes('indeed.com')) {
+      return companyName ? companyName.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com' : ''
+    }
+    return host
+  } catch {
+    return companyName ? companyName.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com' : ''
+  }
+}
+
 function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
   const { user } = useAuth()
   const [selectedChips, setSelectedChips] = useState([])
@@ -1268,6 +1291,7 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
       )
       const res  = await contactsApi.searchApollo({
         company:        job.company,
+        domain:         extractDomain(job.job_url, job.company),
         title_keywords: keywords,          // empty = all titles
         seniority:      SENIORITY_OPTS[seniority].values,
         page: pg, per_page: 20,

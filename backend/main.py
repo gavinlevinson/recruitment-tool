@@ -1332,12 +1332,15 @@ async def search_apollo(payload: dict):
         return {"error": "no_key", "people": []}
 
     company        = payload.get("company", "")
+    domain         = payload.get("domain", "")
     title_keywords = payload.get("title_keywords", [])
     seniority      = payload.get("seniority", [])
     page           = payload.get("page", 1)
     per_page       = min(payload.get("per_page", 25), 50)
 
     body: dict = {"q_organization_name": company, "page": page, "per_page": per_page}
+    if domain:
+        body["q_organization_domains"] = [domain]
     if title_keywords:
         body["person_titles"] = title_keywords
     if seniority:
@@ -3385,6 +3388,175 @@ Return ONLY this JSON — no commentary outside it:
 Return ONLY the JSON."""
 
     result = await _call_claude_json_async(prompt, max_tokens=1800)
+    return result
+
+
+# ─────────────────────────────────────────────
+# COACH — INTERVIEW PRACTICE
+# ─────────────────────────────────────────────
+
+@app.post("/api/coach/interview")
+async def coach_interview(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate the next behavioral interview question or follow-up."""
+    company = payload.get("company", "")
+    role = payload.get("role", "")
+    folder = payload.get("folder", "")
+    job_description = payload.get("job_description", "")
+    conversation = payload.get("conversation", [])  # [{role, content}]
+    questions_asked = payload.get("questions_asked", 0)
+    question_text = payload.get("question_text", "")  # current question for follow-up
+
+    # Fetch company context
+    job_url = payload.get("job_url", "")
+    company_context = await _fetch_company_context(company, job_url) if company else ""
+
+    context_parts = []
+    if company_context:
+        context_parts.append(f"Company ({company}): {company_context[:1200]}")
+    if role:
+        context_parts.append(f"Role: {role}")
+    if folder:
+        context_parts.append(f"Role category: {folder}")
+    if job_description:
+        context_parts.append(f"Job description: {job_description[:800]}")
+
+    # Get user resume for context
+    profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+    if profile and profile.resume_text:
+        context_parts.append(f"Candidate resume (for context only): {profile.resume_text[:1500]}")
+
+    context_section = "\n".join(context_parts)
+
+    # Build conversation history for Claude
+    conv_text = ""
+    if conversation:
+        for msg in conversation[-6:]:  # last 3 exchanges
+            speaker = "Interviewer" if msg.get("role") == "interviewer" else "Candidate"
+            conv_text += f"{speaker}: {msg['content']}\n"
+
+    system = """You are a professional behavioral interview coach. You are conducting a mock behavioral interview.
+Your job is to ask one behavioral question at a time, listen to the candidate's response, and decide whether to:
+1. Ask a follow-up question to probe deeper (if the answer was vague or incomplete)
+2. Move on to a new question (if the answer was sufficient)
+
+Guidelines:
+- Ask clear, specific behavioral questions ("Tell me about a time when...")
+- Follow-up questions should probe for specifics: metrics, outcomes, your specific role
+- Be conversational but professional
+- Vary question categories (leadership, teamwork, problem-solving, etc.)
+- Tailor questions to the role and company when possible
+- Never give feedback during the interview — save that for scoring"""
+
+    if not conversation:
+        # First question
+        prompt = f"""Context about the role:
+{context_section}
+
+This is the START of the interview. Ask your first behavioral question.
+Choose a question relevant to the {folder or 'general'} role category.
+
+Return JSON:
+{{"question": "<your behavioral question>", "category": "<one of: leadership, teamwork, conflict, problem_solving, communication, adaptability, initiative, time_management>", "is_follow_up": false, "question_number": 1}}
+
+Return ONLY the JSON."""
+    else:
+        prompt = f"""Context about the role:
+{context_section}
+
+Conversation so far:
+{conv_text}
+
+The current question was: "{question_text}"
+Questions asked so far: {questions_asked}
+
+Based on the candidate's last response, decide:
+- If their answer was vague, lacked specifics, or could be deeper: ask a follow-up question
+- If their answer was reasonably complete: ask a NEW behavioral question from a different category
+
+Return JSON:
+{{"question": "<your next question or follow-up>", "category": "<category>", "is_follow_up": <true if follow-up to same question, false if new question>, "question_number": {questions_asked + 1}}}
+
+Return ONLY the JSON."""
+
+    result = await _call_claude_json_async(prompt, max_tokens=400, system=system)
+    return result
+
+
+@app.post("/api/coach/interview-score")
+async def coach_interview_score(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Score a completed behavioral interview practice session."""
+    company = payload.get("company", "")
+    role = payload.get("role", "")
+    folder = payload.get("folder", "")
+    qa_pairs = payload.get("qa_pairs", [])  # [{question, answer, category}]
+
+    if not qa_pairs:
+        return {"overall_score": 0, "narrative_summary": "No questions were answered.", "questions": []}
+
+    # Build the QA text
+    qa_text = ""
+    for i, qa in enumerate(qa_pairs, 1):
+        qa_text += f"\nQuestion {i} [{qa.get('category', 'general')}]: {qa['question']}\nCandidate's Answer: {qa['answer']}\n"
+
+    role_context = f"Role: {role} ({folder})" if role else "General interview"
+    weight_note = ""
+    if folder:
+        weight_map = {
+            "Engineering": "problem_solving and adaptability",
+            "Revenue": "communication and initiative",
+            "Operations": "time_management and problem_solving",
+            "Strategy": "problem_solving and communication",
+            "Research": "problem_solving and initiative",
+            "Growth": "initiative and communication",
+        }
+        emphasis = weight_map.get(folder, "all categories equally")
+        weight_note = f"For this {folder} role, weight {emphasis} more heavily in your scoring."
+
+    system = """You are an expert interview coach scoring a behavioral interview practice session.
+Score each answer on three dimensions (1-10 scale):
+- Structure: Did they use STAR format (Situation, Task, Action, Result)? Was the answer organized?
+- Specificity: Did they include concrete details, metrics, names, timeframes? Or was it vague?
+- Relevance: Did the answer actually address the question asked? Was it on-topic?
+
+Be fair but rigorous. Most candidates score 4-7. Reserve 8-10 for truly exceptional answers.
+A score of 1-3 means the answer was largely off-topic, incoherent, or missing entirely."""
+
+    prompt = f"""{role_context}
+{weight_note}
+
+Here is the full interview transcript:
+{qa_text}
+
+Score each question-answer pair and provide an overall assessment.
+
+Return JSON:
+{{
+  "overall_score": <0-100 overall interview score>,
+  "narrative_summary": "<3-4 sentence overall assessment of the candidate's performance>",
+  "questions": [
+    {{
+      "question": "<the question text>",
+      "answer_summary": "<1 sentence summary of what they said>",
+      "structure": <1-10>,
+      "specificity": <1-10>,
+      "relevance": <1-10>,
+      "feedback": "<2-3 sentences of specific, actionable feedback>",
+      "severity": "<'strong' if avg >= 7, 'developing' if avg >= 4, 'weak' if avg < 4>"
+    }}
+  ]
+}}
+
+Return ONLY the JSON."""
+
+    result = await _call_claude_json_async(prompt, max_tokens=4000, system=system)
     return result
 
 
