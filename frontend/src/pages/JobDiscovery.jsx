@@ -1439,7 +1439,13 @@ export default function JobDiscovery() {
   const [page, _setPage]                       = useState(() => _ss('discovery_page', 1))
 
   const setSearch     = (v) => { _setSearch(v);     sessionStorage.setItem('discovery_search', JSON.stringify(v)) }
-  const setRoleFilter = (v) => { const next = typeof v === 'function' ? v(roleFilter) : v; _setRoleFilter(next); sessionStorage.setItem('discovery_roles', JSON.stringify(next)) }
+  const setRoleFilter = (v) => {
+    if (typeof v === 'function') {
+      _setRoleFilter(prev => { const next = v(prev); sessionStorage.setItem('discovery_roles', JSON.stringify(next)); return next })
+    } else {
+      _setRoleFilter(v); sessionStorage.setItem('discovery_roles', JSON.stringify(v))
+    }
+  }
   const setHideAdded  = (v) => { _setHideAdded(v);  sessionStorage.setItem('discovery_hideAdded', JSON.stringify(v)) }
   const setSortBy     = (v) => { _setSortBy(v);     sessionStorage.setItem('discovery_sort', JSON.stringify(v)) }
   const setPage       = (p) => { _setPage(p);       sessionStorage.setItem('discovery_page', JSON.stringify(p)) }
@@ -1451,8 +1457,14 @@ export default function JobDiscovery() {
   const debounceRef = useRef(null)
   const runTimerRef = useRef(null)
 
-  // Debounce search
+  // Debounce search — skip page reset on initial mount
+  const searchMountedRef = useRef(false)
   useEffect(() => {
+    if (!searchMountedRef.current) {
+      searchMountedRef.current = true
+      setDebouncedSearch(search)
+      return
+    }
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       setDebouncedSearch(search)
@@ -1561,6 +1573,12 @@ export default function JobDiscovery() {
       setJobs(jobList)
       setTotal(jobTotal)
       if (statusData) setStatus(statusData)
+
+      // If page is beyond available results, reset to page 1
+      const totalPages = Math.ceil(jobTotal / PAGE_SIZE)
+      if (curPage > 1 && totalPages > 0 && curPage > totalPages) {
+        setPage(1)
+      }
 
     } catch (err) {
       setError('Failed to load discovered jobs. Make sure the backend is running.')
