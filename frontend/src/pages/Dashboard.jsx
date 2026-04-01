@@ -821,34 +821,6 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Weekly Wrapped — visible Sunday 5pm through Monday 5pm */}
-      {isWrappedWindow() && !loading && jobs.length > 0 && (
-        <button onClick={() => setWrappedOpen(true)}
-          className="w-full flex items-center justify-between gap-4 rounded-xl px-5 py-4 text-white shadow-lg hover:opacity-95 transition-opacity"
-          style={{
-            background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 40%, #4c1d95 100%)',
-            animation: 'wrappedGlow 2s ease-in-out infinite',
-          }}>
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-              <Sparkles size={17} className="text-white" />
-            </div>
-            <div className="text-left">
-              <p className="text-sm font-bold">Your Weekly Wrapped is ready</p>
-              <p className="text-xs text-white/70 mt-0.5">See how your job search went this week</p>
-            </div>
-          </div>
-          <ArrowRight size={18} className="text-white/70 shrink-0" />
-        </button>
-      )}
-      {wrappedOpen && <WeeklyWrapped jobs={jobs} onClose={() => setWrappedOpen(false)} />}
-      <style>{`
-        @keyframes wrappedGlow {
-          0%, 100% { box-shadow: 0 0 15px rgba(124, 58, 237, 0.3), 0 0 30px rgba(124, 58, 237, 0.1); }
-          50% { box-shadow: 0 0 25px rgba(124, 58, 237, 0.5), 0 0 50px rgba(124, 58, 237, 0.2); }
-        }
-      `}</style>
-
       {/* Thank-you email reminder — shown at 8pm on interview days */}
       {todayRounds.length > 0 && new Date().getHours() >= 20 && (
         <div className="card p-5 border-l-4 border-amber-400">
