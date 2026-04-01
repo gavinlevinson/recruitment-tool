@@ -1143,6 +1143,31 @@ function InterviewPractice({ trackerJobs }) {
   const timerRef = useRef(null)
   const endTimeRef = useRef(null)
   const synthRef = useRef(typeof window !== 'undefined' ? window.speechSynthesis : null)
+  const voiceRef = useRef(null)
+
+  // Select the best available voice (prefer natural/enhanced voices)
+  useEffect(() => {
+    const pickVoice = () => {
+      if (!synthRef.current) return
+      const voices = synthRef.current.getVoices()
+      if (!voices.length) return
+      // Prefer: Google UK English > any "Natural" or "Enhanced" voice > first English voice
+      const preferred = [
+        v => /google.*uk/i.test(v.name),
+        v => /natural|enhanced|premium/i.test(v.name) && /en/i.test(v.lang),
+        v => v.name.includes('Samantha'),
+        v => v.name.includes('Daniel'),
+        v => v.lang.startsWith('en') && !v.localService,
+        v => v.lang.startsWith('en'),
+      ]
+      for (const test of preferred) {
+        const match = voices.find(test)
+        if (match) { voiceRef.current = match; return }
+      }
+    }
+    pickVoice()
+    if (synthRef.current) synthRef.current.onvoiceschanged = pickVoice
+  }, [])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1223,12 +1248,43 @@ function InterviewPractice({ trackerJobs }) {
   const speakQuestion = (text) => {
     setVoiceState('speaking')
     if (synthRef.current) synthRef.current.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.rate = 0.95
-    utterance.pitch = 1.0
-    utterance.onend = () => startListening()
-    utterance.onerror = () => startListening()
-    synthRef.current.speak(utterance)
+
+    // Chrome has a bug where SpeechSynthesis cuts off after ~15s.
+    // Fix: split into sentence chunks and chain them, plus use a
+    // periodic resume() call to keep the audio stream alive.
+    const sentences = text.match(/[^.!?]+[.!?]+\s*/g) || [text]
+    const chunks = []
+    let current = ''
+    for (const s of sentences) {
+      if ((current + s).length > 120) {
+        if (current) chunks.push(current.trim())
+        current = s
+      } else {
+        current += s
+      }
+    }
+    if (current.trim()) chunks.push(current.trim())
+
+    // Chrome workaround: periodically call resume() to prevent audio cutoff
+    const keepAlive = setInterval(() => {
+      if (synthRef.current && synthRef.current.speaking) synthRef.current.resume()
+    }, 5000)
+
+    const speakChunk = (i) => {
+      if (i >= chunks.length) {
+        clearInterval(keepAlive)
+        startListening()
+        return
+      }
+      const utterance = new SpeechSynthesisUtterance(chunks[i])
+      if (voiceRef.current) utterance.voice = voiceRef.current
+      utterance.rate = 0.92
+      utterance.pitch = 1.0
+      utterance.onend = () => speakChunk(i + 1)
+      utterance.onerror = () => { clearInterval(keepAlive); startListening() }
+      synthRef.current.speak(utterance)
+    }
+    speakChunk(0)
   }
 
   const startListening = () => {
@@ -1312,7 +1368,11 @@ function InterviewPractice({ trackerJobs }) {
     if (synthRef.current) synthRef.current.cancel()
     setVoiceState('idle')
 
-    const qa = finalQa || qaHistory
+    let qa = finalQa || qaHistory
+    // If user ends mid-question, include their in-progress answer
+    if (!finalQa && transcript.trim() && currentQuestion) {
+      qa = [...qa, { question: currentQuestion, answer: transcript.trim(), category: currentCategory }]
+    }
     if (qa.length === 0) {
       setPhase('setup')
       return

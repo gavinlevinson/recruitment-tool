@@ -123,12 +123,18 @@ def startup_event():
     from database import SessionLocal
     _startup_db = SessionLocal()
     try:
-        latest = _startup_db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
-        if latest and latest.scraped_at:
-            _scrape_completed_at = latest.scraped_at.isoformat()
+        # Use raw SQL to avoid any ORM column-mapping issues with new columns
+        from sqlalchemy import text as _text
+        row = _startup_db.execute(
+            _text("SELECT scraped_at FROM discovered_jobs WHERE scraped_at IS NOT NULL ORDER BY scraped_at DESC LIMIT 1")
+        ).fetchone()
+        if row and row[0]:
+            _scrape_completed_at = row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0])
             print(f"[Startup] Restored last scrape time: {_scrape_completed_at}")
-    except Exception:
-        pass
+        else:
+            print("[Startup] No discovered jobs with scraped_at found")
+    except Exception as e:
+        print(f"[Startup] Error restoring scrape time: {e}")
     finally:
         _startup_db.close()
 
@@ -1982,8 +1988,11 @@ def get_scrape_status(db: Session = Depends(get_db)):
     # Show completion time when available (more meaningful than trigger time)
     last_scraped = _scrape_completed_at or _last_scrape_triggered
     if not last_scraped:
-        latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
-        last_scraped = latest.scraped_at.isoformat() if latest else None
+        try:
+            latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
+            last_scraped = latest.scraped_at.isoformat() if latest and latest.scraped_at else None
+        except Exception:
+            last_scraped = None
     return {
         "last_scraped": last_scraped,
         "is_running": _scrape_running,
