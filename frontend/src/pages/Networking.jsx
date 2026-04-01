@@ -561,7 +561,7 @@ const TONE_OPTIONS = [
   { value: 'formal', label: 'Formal', desc: 'Professional & respectful' },
 ]
 
-function EmailComposerModal({ isOpen, onClose, contact, templates, userUniversity }) {
+function EmailComposerModal({ isOpen, onClose, contact, templates, userUniversity, onTemplatesChange }) {
   const [templateId, setTemplateId] = useState('')
   const [jobContext, setJobContext] = useState('')
   const [userNotes, setUserNotes] = useState('')
@@ -574,6 +574,11 @@ function EmailComposerModal({ isOpen, onClose, contact, templates, userUniversit
   const [error, setError] = useState(null)
   const [showTemplateSave, setShowTemplateSave] = useState(false)
   const [newTemplateName, setNewTemplateName] = useState('')
+  const [showCreateTemplate, setShowCreateTemplate] = useState(false)
+  const [newTplName, setNewTplName] = useState('')
+  const [newTplSubject, setNewTplSubject] = useState('')
+  const [newTplBody, setNewTplBody] = useState('')
+  const [savingNewTpl, setSavingNewTpl] = useState(false)
   const [gmailConnected, setGmailConnected] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState(null)  // { ok, text }
@@ -642,11 +647,26 @@ function EmailComposerModal({ isOpen, onClose, contact, templates, userUniversit
   const saveAsTemplate = async () => {
     if (!newTemplateName.trim() || !body) return
     try {
-      await emailTemplatesApi.create({ name: newTemplateName.trim(), subject, body })
+      const res = await emailTemplatesApi.create({ name: newTemplateName.trim(), subject, body })
       setSavedAsTemplate(true)
       setShowTemplateSave(false)
+      if (onTemplatesChange) onTemplatesChange()
       setTimeout(() => setSavedAsTemplate(false), 2500)
     } catch (e) { console.error('[saveAsTemplate]', e) }
+  }
+
+  const createNewTemplate = async () => {
+    if (!newTplName.trim() || !newTplBody.trim()) return
+    setSavingNewTpl(true)
+    try {
+      const res = await emailTemplatesApi.create({ name: newTplName.trim(), subject: newTplSubject, body: newTplBody.trim() })
+      const created = res.data
+      if (created?.id) setTemplateId(String(created.id))
+      setShowCreateTemplate(false)
+      setNewTplName(''); setNewTplSubject(''); setNewTplBody('')
+      if (onTemplatesChange) onTemplatesChange()
+    } catch (e) { console.error('[createNewTemplate]', e) }
+    finally { setSavingNewTpl(false) }
   }
 
   if (!isOpen) return null
@@ -692,9 +712,30 @@ function EmailComposerModal({ isOpen, onClose, contact, templates, userUniversit
 
           {/* Template */}
           <div>
-            <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
-              Base Template <span className="text-navy-300 font-normal normal-case">(optional)</span>
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-navy-500 uppercase tracking-wide">
+                Template <span className="text-navy-300 font-normal normal-case">(optional)</span>
+              </label>
+              <button onClick={() => setShowCreateTemplate(p => !p)}
+                className="text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors">
+                {showCreateTemplate ? 'Cancel' : '+ New template'}
+              </button>
+            </div>
+
+            {showCreateTemplate && (
+              <div className="mb-3 p-3 rounded-xl bg-navy-50 border border-navy-100 space-y-2">
+                <input className="input text-sm py-1.5" placeholder="Template name" value={newTplName} onChange={e => setNewTplName(e.target.value)} />
+                <input className="input text-sm py-1.5" placeholder="Subject line (use [Company], [Role], [Name] as placeholders)" value={newTplSubject} onChange={e => setNewTplSubject(e.target.value)} />
+                <textarea className="input text-sm resize-none py-1.5" rows={5}
+                  placeholder={"Write your template here. Use placeholders like:\n[Name] — recipient's name\n[Company] — their company\n[Role] — the role you're interested in"}
+                  value={newTplBody} onChange={e => setNewTplBody(e.target.value)} />
+                <button onClick={createNewTemplate} disabled={savingNewTpl || !newTplName.trim() || !newTplBody.trim()}
+                  className="btn-primary text-xs py-1.5 w-full disabled:opacity-40">
+                  {savingNewTpl ? 'Saving...' : 'Save Template'}
+                </button>
+              </div>
+            )}
+
             <div className="relative">
               <select className="input appearance-none pr-8 text-sm" value={templateId} onChange={e => setTemplateId(e.target.value)}>
                 <option value="">Generate from scratch</option>
@@ -913,7 +954,8 @@ function MyNetworkSection({ company, contacts, jobCompanies, connectionTypes, on
 
       {emailModalOpen && emailTarget && (
         <EmailComposerModal isOpen={emailModalOpen} onClose={() => { setEmailModalOpen(false); setEmailTarget(null) }}
-          contact={emailTarget} templates={templates || []} userUniversity={userUniversity} />
+          contact={emailTarget} templates={templates || []} userUniversity={userUniversity}
+            onTemplatesChange={() => emailTemplatesApi.getAll().then(res => setTemplates(res.data || [])).catch(() => {})} />
       )}
     </div>
   )

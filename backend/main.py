@@ -2923,37 +2923,53 @@ async def generate_networking_email(
         context_lines.append(f"About {contact_company} (from their site):\n{company_context[:900]}")
     if resume_snippet:
         context_lines.append(f"Sender's background:\n{resume_snippet}")
-    if template_body:
-        context_lines.append(f"Base template to adapt:\n{template_body}")
-
     tone_instructions = {
         "warm":   "conversational and genuine — like a message to someone you'd like to know",
         "direct": "efficient and to the point — no pleasantries, lead with value",
         "formal": "professional and respectful — suitable for senior executives",
     }
 
-    system_prompt = (
-        "You are a career coach writing a personalized networking email on behalf of the sender. "
-        f"Tone: {tone_instructions.get(tone, tone_instructions['warm'])}. "
+    if template_body:
+        # Template mode: use template verbatim, only swap variables
+        context_lines.append(f"Email template to use EXACTLY:\n{template_body}")
 
-        "ABSOLUTE RULE — NO HALLUCINATION: Only use facts, experiences, and background details explicitly provided in the context below. "
-        "Never invent achievements, projects, relationships, or shared history not stated. Omit rather than fabricate. "
+        system_prompt = (
+            "You are filling in a saved email template. Your job is to take the template EXACTLY as written "
+            "and ONLY replace placeholder variables like company name, role/position, and recipient name. "
+            "Do NOT rewrite, rephrase, restructure, or add to the template in any way. "
+            "Keep every word, sentence, and paragraph identical except for inserting the correct: "
+            f"- Recipient name: {contact_name or '[Name]'}\n"
+            f"- Recipient company: {contact_company or '[Company]'}\n"
+            f"- Role/position of interest: {job_context or '[Role]'}\n"
+            "If the template has a subject line, fill in variables there too. "
+            "If the template does not have a subject line, create a short one that matches the template's tone. "
+            "NEVER add content that isn't in the template. NEVER remove content from the template. "
+            "Return JSON only: {\"subject\": \"...\", \"body\": \"...\"}"
+        )
+    else:
+        # No template: generate from scratch
+        system_prompt = (
+            "You are a career coach writing a personalized networking email on behalf of the sender. "
+            f"Tone: {tone_instructions.get(tone, tone_instructions['warm'])}. "
 
-        "FORMATTING RULES: Never use em dashes (—) or en dashes anywhere in the email — they read as AI-generated. "
-        "Use short sentences. No bullet points. No formal salutations like 'I hope this message finds you well'. "
-        "Write the way a real, sharp person actually emails someone cold. "
+            "ABSOLUTE RULE — NO HALLUCINATION: Only use facts, experiences, and background details explicitly provided in the context below. "
+            "Never invent achievements, projects, relationships, or shared history not stated. Omit rather than fabricate. "
 
-        "WHAT MAKES A GREAT COLD EMAIL: "
-        "(1) Open with a specific, genuine observation about the recipient's work, company, or a recent thing they did — not a compliment, a connection. "
-        "E.g. 'Saw the [Company] Series B announcement — the focus on [specific thing] caught my attention.' or "
-        "'Your team's work on [specific product/initiative] is exactly the kind of problem I've been thinking about.' "
-        "(2) One crisp sentence on who the sender is and why it's relevant — not their life story. "
-        "(3) One concrete, specific ask. Not 'pick your brain' — something like 'Would you be open to a 15-minute call?' or 'Happy to share what I've been working on if useful.' "
-        "(4) Under 100 words total. Shorter is almost always better. "
-        "(5) Subject line: specific, not salesy. E.g. 'Quick question re: [Company] ops role' or 'Intro from a [shared school] alum'. "
+            "FORMATTING RULES: Never use em dashes (—) or en dashes anywhere in the email — they read as AI-generated. "
+            "Use short sentences. No bullet points. No formal salutations like 'I hope this message finds you well'. "
+            "Write the way a real, sharp person actually emails someone cold. "
 
-        "Return JSON only: {\"subject\": \"...\", \"body\": \"...\"}"
-    )
+            "WHAT MAKES A GREAT COLD EMAIL: "
+            "(1) Open with a specific, genuine observation about the recipient's work, company, or a recent thing they did — not a compliment, a connection. "
+            "E.g. 'Saw the [Company] Series B announcement — the focus on [specific thing] caught my attention.' or "
+            "'Your team's work on [specific product/initiative] is exactly the kind of problem I've been thinking about.' "
+            "(2) One crisp sentence on who the sender is and why it's relevant — not their life story. "
+            "(3) One concrete, specific ask. Not 'pick your brain' — something like 'Would you be open to a 15-minute call?' or 'Happy to share what I've been working on if useful.' "
+            "(4) Under 100 words total. Shorter is almost always better. "
+            "(5) Subject line: specific, not salesy. E.g. 'Quick question re: [Company] ops role' or 'Intro from a [shared school] alum'. "
+
+            "Return JSON only: {\"subject\": \"...\", \"body\": \"...\"}"
+        )
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
