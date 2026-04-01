@@ -1303,9 +1303,7 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
         if (data.error) { setSelectedOrg({ id: '', name: job.company }); setOrgOptions([]); return }
         const orgs = data.organizations || []
         setOrgOptions(orgs)
-        if (orgs.length === 1 && orgs[0].name.toLowerCase() === job.company.toLowerCase()) {
-          setSelectedOrg(orgs[0])
-        }
+        // Never auto-select — always let user confirm the right company
       })
       .catch(() => { setSelectedOrg({ id: '', name: job.company }); setOrgOptions([]) })
       .finally(() => setOrgLoading(false))
@@ -1460,7 +1458,7 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
             <RefreshCw size={14} className="animate-spin" /> Finding companies...
           </div>
         )}
-        {orgOptions !== null && orgOptions.length > 1 && !selectedOrg && !orgLoading && (
+        {orgOptions !== null && orgOptions.length >= 1 && !selectedOrg && !orgLoading && (
           <div className="px-6 pt-4 pb-2">
             <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide mb-2">Select the correct company</p>
             <div className="space-y-2">
@@ -1495,7 +1493,7 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
                 Pick a role type &amp; seniority, then Search.<br/>
                 Click <strong>▼ Profile</strong> to verify company details before adding.
               </p>
-              {orgOptions && orgOptions.length > 1 && (
+              {orgOptions && orgOptions.length >= 1 && (
                 <button onClick={() => { setSelectedOrg(null); setResults(null) }}
                   className="text-xs text-violet-600 hover:text-violet-800 font-medium mt-2">
                   Change company
