@@ -68,6 +68,8 @@ _allow_origins = [
     "http://localhost:3000",
     "https://recruitment-tool-orcin.vercel.app",
     "https://orion-app.vercel.app",
+    "https://orionrecruit.co",
+    "https://www.orionrecruit.co",
 ]
 if _frontend_url and _frontend_url not in _allow_origins:
     _allow_origins.append(_frontend_url)
