@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   User, Mail, Lock, Eye, EyeOff, RefreshCw, AlertCircle,
@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { profileApi, preferencesApi } from '../api'
 import OrionMark from '../components/OrionMark'
+import UNIVERSITIES from '../data/universities'
 
 const STEPS = ['Account', 'Background', 'Resume']
 
@@ -37,6 +38,9 @@ export default function Register() {
   const [resumeFile, setResumeFile]     = useState(null)
   const [dragOver, setDragOver]         = useState(false)
   const [uploadStatus, setUploadStatus] = useState(null)
+  const [uniOpen, setUniOpen]           = useState(false)
+  const [uniQuery, setUniQuery]         = useState('')
+  const uniRef = useRef(null)
 
   const [form, setForm] = useState({
     name: '',
@@ -52,6 +56,16 @@ export default function Register() {
   })
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const uniFiltered = uniQuery.trim()
+    ? UNIVERSITIES.filter(u => u.toLowerCase().includes(uniQuery.toLowerCase())).slice(0, 8)
+    : []
+
+  useEffect(() => {
+    const handler = (e) => { if (uniRef.current && !uniRef.current.contains(e.target)) setUniOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const setYears = (n) => {
     const clamped = Math.max(0, Math.min(40, n))
@@ -267,15 +281,28 @@ export default function Register() {
               {/* University / Major / Minor — only relevant for students & new grads */}
               {form.years_num < 3 && (
                 <>
-                  <div>
+                  <div ref={uniRef} className="relative">
                     <label className="block text-xs font-semibold text-navy-500 mb-1.5 uppercase tracking-wide">
                       University <span className="text-navy-300 font-normal normal-case">(optional)</span>
                     </label>
                     <div className="relative">
                       <GraduationCap size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
                       <input className="input pl-9" placeholder="e.g. University of Michigan"
-                        value={form.university} onChange={e => set('university', e.target.value)} />
+                        value={uniOpen ? uniQuery : form.university}
+                        onFocus={() => { setUniOpen(true); setUniQuery(form.university || '') }}
+                        onKeyDown={e => { if (e.key === 'Escape') setUniOpen(false) }}
+                        onChange={e => { setUniQuery(e.target.value); set('university', e.target.value); setUniOpen(true) }} />
                     </div>
+                    {uniOpen && uniFiltered.length > 0 && (
+                      <ul className="absolute z-50 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-navy-100 bg-white shadow-lg">
+                        {uniFiltered.map(u => (
+                          <li key={u} className="px-3 py-2 text-sm cursor-pointer hover:bg-navy-50 text-navy-700"
+                            onMouseDown={() => { set('university', u); setUniQuery(u); setUniOpen(false) }}>
+                            {u}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">

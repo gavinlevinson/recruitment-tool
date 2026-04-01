@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { profileApi, authApi, nylasApi, googleDocsApi } from '../api'
+import UNIVERSITIES from '../data/universities'
 
 const BASE_API = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api'
 function fileDownloadUrl(fileType) {
@@ -196,6 +197,11 @@ export default function Profile() {
   const [infoForm, setInfoForm] = useState({})
   const [savingInfo, setSavingInfo] = useState(false)
 
+  // University combobox
+  const [uniOpen, setUniOpen]     = useState(false)
+  const [uniQuery, setUniQuery]   = useState('')
+  const uniRef = useRef(null)
+
   // Nylas Gmail state
   const [nylasStatus, setNylasStatus]       = useState({ connected: false, email: null })
   const [nylasConfig, setNylasConfig]       = useState(null)
@@ -207,6 +213,16 @@ export default function Profile() {
   const [googleStatus, setGoogleStatus]   = useState({ connected: false, email: null })
   const [googleLoading, setGoogleLoading] = useState(false)
   const [googleMsg, setGoogleMsg]         = useState(null)
+
+  const uniFiltered = uniQuery.trim()
+    ? UNIVERSITIES.filter(u => u.toLowerCase().includes(uniQuery.toLowerCase())).slice(0, 8)
+    : []
+
+  useEffect(() => {
+    const handler = (e) => { if (uniRef.current && !uniRef.current.contains(e.target)) setUniOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   useEffect(() => {
     profileApi.get()
@@ -408,10 +424,23 @@ export default function Profile() {
               <input className="input" placeholder="https://linkedin.com/in/yourname" value={infoForm.linkedin_url || ''}
                 onChange={e => setInfoForm(f => ({ ...f, linkedin_url: e.target.value }))} />
             </div>
-            <div>
+            <div ref={uniRef} className="relative">
               <label className="block text-xs font-semibold text-navy-500 mb-1 uppercase tracking-wide">University</label>
-              <input className="input" placeholder="e.g. University of Michigan" value={infoForm.university || ''}
-                onChange={e => setInfoForm(f => ({ ...f, university: e.target.value }))} />
+              <input className="input" placeholder="e.g. University of Michigan"
+                value={uniOpen ? uniQuery : (infoForm.university || '')}
+                onFocus={() => { setUniOpen(true); setUniQuery(infoForm.university || '') }}
+                onKeyDown={e => { if (e.key === 'Escape') setUniOpen(false) }}
+                onChange={e => { setUniQuery(e.target.value); setInfoForm(f => ({ ...f, university: e.target.value })); setUniOpen(true) }} />
+              {uniOpen && uniFiltered.length > 0 && (
+                <ul className="absolute z-50 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-navy-100 bg-white shadow-lg">
+                  {uniFiltered.map(u => (
+                    <li key={u} className="px-3 py-2 text-sm cursor-pointer hover:bg-navy-50 text-navy-700"
+                      onMouseDown={() => { setInfoForm(f => ({ ...f, university: u })); setUniQuery(u); setUniOpen(false) }}>
+                      {u}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-navy-500 mb-1 uppercase tracking-wide">Graduation Year</label>
