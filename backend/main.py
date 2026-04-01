@@ -1328,7 +1328,11 @@ async def hunter_find_email(payload: dict):
 
 @app.post("/api/contacts/search-apollo-orgs")
 async def search_apollo_orgs(payload: dict):
-    """Search Apollo for organizations matching a company name. Returns top matches with domain and details."""
+    """
+    Find distinct organizations for a company name by searching people
+    and extracting unique orgs from results. Works with all Apollo plans
+    (unlike mixed_companies/search which requires higher-tier access).
+    """
     apollo_key = os.getenv("APOLLO_API_KEY", "")
     if not apollo_key:
         return {"error": "no_key", "organizations": []}
@@ -1343,35 +1347,46 @@ async def search_apollo_orgs(payload: dict):
         "X-Api-Key": apollo_key,
     }
     try:
+        # Use people search (which works on all plans) and extract unique orgs
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                "https://api.apollo.io/api/v1/mixed_companies/search",
+                "https://api.apollo.io/api/v1/mixed_people/search",
                 headers=headers,
                 json={
                     "q_organization_name": company,
                     "page": 1,
-                    "per_page": 10,
+                    "per_page": 50,
                 },
             )
         if resp.status_code != 200:
             print(f"[Apollo Org Search] HTTP {resp.status_code}: {resp.text[:500]}")
             return {"error": f"Apollo returned HTTP {resp.status_code}", "organizations": []}
         raw = resp.json()
-        # Apollo returns orgs under "organizations" or "accounts" depending on endpoint version
-        org_list = raw.get("organizations") or raw.get("accounts") or []
+        people = raw.get("people", [])
+
+        # Extract unique organizations from the people results
+        seen_ids = set()
         orgs = []
-        for o in org_list:
+        for p in people:
+            org = p.get("organization") or {}
+            org_id = org.get("id", "")
+            if not org_id or org_id in seen_ids:
+                continue
+            seen_ids.add(org_id)
             orgs.append({
-                "id": o.get("id", ""),
-                "name": o.get("name", ""),
-                "domain": o.get("primary_domain") or o.get("domain") or o.get("website_url") or "",
-                "logo_url": o.get("logo_url") or o.get("logo") or "",
-                "industry": o.get("industry", ""),
-                "estimated_num_employees": o.get("estimated_num_employees"),
-                "city": (o.get("city") or ""),
-                "state": (o.get("state") or ""),
-                "country": (o.get("country") or ""),
+                "id": org_id,
+                "name": org.get("name", ""),
+                "domain": org.get("primary_domain") or org.get("domain") or org.get("website_url") or "",
+                "logo_url": org.get("logo_url") or "",
+                "industry": org.get("industry", ""),
+                "estimated_num_employees": org.get("estimated_num_employees"),
+                "city": org.get("city") or "",
+                "state": org.get("state") or "",
+                "country": org.get("country") or "",
             })
+        # Sort: orgs whose name matches more closely come first
+        company_lower = company.lower()
+        orgs.sort(key=lambda o: (0 if o["name"].lower() == company_lower else 1 if company_lower in o["name"].lower() else 2, o["name"]))
         return {"organizations": orgs}
     except Exception as e:
         print(f"[Apollo Org Search] Exception: {e}")
