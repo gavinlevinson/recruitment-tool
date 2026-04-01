@@ -1330,8 +1330,8 @@ async def hunter_find_email(payload: dict):
 async def search_apollo_orgs(payload: dict):
     """
     Find distinct organizations for a company name by searching people
-    and extracting unique orgs from results. Works with all Apollo plans
-    (unlike mixed_companies/search which requires higher-tier access).
+    via api_search (works on all Apollo plans, including free) and
+    extracting unique org names from results.
     """
     apollo_key = os.getenv("APOLLO_API_KEY", "")
     if not apollo_key:
@@ -1347,15 +1347,15 @@ async def search_apollo_orgs(payload: dict):
         "X-Api-Key": apollo_key,
     }
     try:
-        # Use people search (which works on all plans) and extract unique orgs
+        # Use api_search (free-tier compatible, no credits consumed)
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                "https://api.apollo.io/api/v1/mixed_people/search",
+                "https://api.apollo.io/api/v1/mixed_people/api_search",
                 headers=headers,
                 json={
                     "q_organization_name": company,
                     "page": 1,
-                    "per_page": 50,
+                    "per_page": 100,
                 },
             )
         if resp.status_code != 200:
@@ -1364,27 +1364,27 @@ async def search_apollo_orgs(payload: dict):
         raw = resp.json()
         people = raw.get("people", [])
 
-        # Extract unique organizations from the people results
-        seen_ids = set()
+        # Extract unique org names from results (api_search doesn't return org IDs)
+        seen_names = set()
         orgs = []
         for p in people:
             org = p.get("organization") or {}
-            org_id = org.get("id", "")
-            if not org_id or org_id in seen_ids:
+            org_name = (org.get("name") or "").strip()
+            if not org_name or org_name.lower() in seen_names:
                 continue
-            seen_ids.add(org_id)
+            seen_names.add(org_name.lower())
             orgs.append({
-                "id": org_id,
-                "name": org.get("name", ""),
-                "domain": org.get("primary_domain") or org.get("domain") or org.get("website_url") or "",
-                "logo_url": org.get("logo_url") or "",
-                "industry": org.get("industry", ""),
-                "estimated_num_employees": org.get("estimated_num_employees"),
-                "city": org.get("city") or "",
-                "state": org.get("state") or "",
-                "country": org.get("country") or "",
+                "id": "",  # api_search doesn't return org IDs
+                "name": org_name,
+                "domain": "",
+                "logo_url": "",
+                "industry": "",
+                "estimated_num_employees": None,
+                "city": "",
+                "state": "",
+                "country": "",
             })
-        # Sort: orgs whose name matches more closely come first
+        # Sort: exact match first, then partial match, then alphabetical
         company_lower = company.lower()
         orgs.sort(key=lambda o: (0 if o["name"].lower() == company_lower else 1 if company_lower in o["name"].lower() else 2, o["name"]))
         return {"organizations": orgs}
@@ -1412,11 +1412,7 @@ async def search_apollo(payload: dict):
     page             = payload.get("page", 1)
     per_page         = min(payload.get("per_page", 25), 50)
 
-    body: dict = {"page": page, "per_page": per_page}
-    if organization_id:
-        body["organization_ids"] = [organization_id]
-    else:
-        body["q_organization_name"] = company
+    body: dict = {"q_organization_name": company, "page": page, "per_page": per_page}
     if title_keywords:
         body["person_titles"] = title_keywords
     if seniority:
@@ -1435,11 +1431,15 @@ async def search_apollo(payload: dict):
             )
         raw = resp.json()
         people = []
+        company_lower = company.lower().strip()
         for p in raw.get("people", []):
             first  = p.get("first_name", "") or ""
             last_o = p.get("last_name_obfuscated", "") or ""   # e.g. "Si***h"
             display_name = f"{first} {last_o}".strip()
             org = (p.get("organization") or {}).get("name", "") or company
+            # Filter to only people at the exact selected company
+            if company_lower and org.lower().strip() != company_lower:
+                continue
             people.append({
                 "apollo_id":   p.get("id", ""),
                 "name":        display_name,
@@ -1448,7 +1448,7 @@ async def search_apollo(payload: dict):
                 "company":     org,
                 "obfuscated":  True,   # flag: last name is hidden until enrich
             })
-        total = raw.get("total_entries", len(people))
+        total = len(people)  # filtered count
         per   = per_page if per_page else 25
         return {
             "people":      people,
