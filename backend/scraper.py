@@ -1174,18 +1174,16 @@ async def scrape_yc_startup_jobs() -> List[Dict]:
                                 pass
                 return found
 
-            # Process in chunks of 500 (safe on Hobby 8GB plan)
-            CHUNK = 500
-            for i in range(0, len(all_companies), CHUNK):
-                chunk = all_companies[i:i + CHUNK]
-                chunk_results = await asyncio.gather(
-                    *[discover_yc_ats(co) for co in chunk],
-                    return_exceptions=True,
-                )
-                for r in chunk_results:
-                    if isinstance(r, list):
-                        jobs.extend(r)
-                print(f"[YC Jobs] Processed {min(i + CHUNK, len(all_companies))}/{len(all_companies)} companies, {len(jobs)} jobs so far")
+            # Process all companies at once — semaphore(60) gates concurrency.
+            # No chunking means slow companies don't block the rest of the queue.
+            all_results = await asyncio.gather(
+                *[discover_yc_ats(co) for co in all_companies],
+                return_exceptions=True,
+            )
+            for r in all_results:
+                if isinstance(r, list):
+                    jobs.extend(r)
+            print(f"[YC Jobs] Processed {len(all_companies)} companies, {len(jobs)} jobs found")
 
     except Exception as e:
         print(f"[YC Jobs] Error: {e}")
