@@ -1353,14 +1353,19 @@ async def search_apollo_orgs(payload: dict):
                     "per_page": 10,
                 },
             )
+        if resp.status_code != 200:
+            print(f"[Apollo Org Search] HTTP {resp.status_code}: {resp.text[:500]}")
+            return {"error": f"Apollo returned HTTP {resp.status_code}", "organizations": []}
         raw = resp.json()
+        # Apollo returns orgs under "organizations" or "accounts" depending on endpoint version
+        org_list = raw.get("organizations") or raw.get("accounts") or []
         orgs = []
-        for o in raw.get("organizations", raw.get("accounts", [])):
+        for o in org_list:
             orgs.append({
                 "id": o.get("id", ""),
                 "name": o.get("name", ""),
-                "domain": o.get("primary_domain") or o.get("domain") or "",
-                "logo_url": o.get("logo_url", ""),
+                "domain": o.get("primary_domain") or o.get("domain") or o.get("website_url") or "",
+                "logo_url": o.get("logo_url") or o.get("logo") or "",
                 "industry": o.get("industry", ""),
                 "estimated_num_employees": o.get("estimated_num_employees"),
                 "city": (o.get("city") or ""),
@@ -1369,6 +1374,7 @@ async def search_apollo_orgs(payload: dict):
             })
         return {"organizations": orgs}
     except Exception as e:
+        print(f"[Apollo Org Search] Exception: {e}")
         return {"error": str(e), "organizations": []}
 
 

@@ -1295,13 +1295,22 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
       const res = await contactsApi.searchApolloOrgs({ company: job.company })
       const data = res.data
       if (data.error === 'no_key') { setError('Apollo API key not configured.'); return }
-      if (data.error) { setError(`Apollo error: ${data.error}`); return }
+      if (data.error) {
+        // Org search failed — fall back to name-based search (skip org picker)
+        console.warn('Apollo org search failed, falling back to name search:', data.error)
+        setSelectedOrg({ id: '', name: job.company })
+        setOrgOptions([])
+        return
+      }
       const orgs = data.organizations || []
       setOrgOptions(orgs)
       // Auto-select if there's exactly one result
       if (orgs.length === 1) { setSelectedOrg(orgs[0]) }
     } catch {
-      setError('Organization search failed.')
+      // Network/parsing error — fall back to name-based search
+      console.warn('Apollo org search exception, falling back to name search')
+      setSelectedOrg({ id: '', name: job.company })
+      setOrgOptions([])
     } finally { setOrgLoading(false) }
   }
 
