@@ -879,7 +879,7 @@ export default function Dashboard() {
               <OrionMark className="w-4 h-4" light />
             </div>
             <div>
-              <p className="text-sm font-semibold">{newToday} new job{newToday !== 1 ? 's' : ''} discovered in the last 24 hours</p>
+              <p className="text-sm font-semibold">{newToday} new job{newToday !== 1 ? 's' : ''} discovered today</p>
               <p className="text-xs text-white/70 mt-0.5">Click to review in Job Discovery</p>
             </div>
           </div>

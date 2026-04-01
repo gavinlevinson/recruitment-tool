@@ -3095,11 +3095,11 @@ def get_all_stats(
     accepted     = status_counts.get("Accepted", 0)
     rejected     = status_counts.get("Rejected", 0)
 
-    # New jobs discovered in last 24 hours
-    cutoff_24h = datetime.utcnow() - timedelta(hours=24)
+    # New jobs discovered today (since midnight UTC — matches Discovery page)
+    today_midnight = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     new_today = db.query(DiscoveredJob).filter(
         DiscoveredJob.is_active == True,
-        DiscoveredJob.scraped_at >= cutoff_24h,
+        DiscoveredJob.scraped_at >= today_midnight,
     ).count()
 
     # Total undiscovered (not yet added)
