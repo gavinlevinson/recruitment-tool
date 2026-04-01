@@ -1290,26 +1290,20 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
 
   // Step 1: search for the organization
   const searchOrgs = async () => {
-    setOrgLoading(true); setError(null)
+    setOrgLoading(true); setError(null); setSelectedOrg(null); setOrgOptions(null)
     try {
       const res = await contactsApi.searchApolloOrgs({ company: job.company })
       const data = res.data
       if (data.error === 'no_key') { setError('Apollo API key not configured.'); return }
-      if (data.error) {
-        // Org search failed — fall back to name-based search (skip org picker)
-        console.warn('Apollo org search failed, falling back to name search:', data.error)
-        setSelectedOrg({ id: '', name: job.company })
-        setOrgOptions([])
-        return
-      }
+      if (data.error) { setError(`Could not search organizations: ${data.error}`); setOrgOptions([]); return }
       const orgs = data.organizations || []
       setOrgOptions(orgs)
-      // Auto-select if there's exactly one result
-      if (orgs.length === 1) { setSelectedOrg(orgs[0]) }
+      // Only auto-select if exactly 1 org AND name matches closely
+      if (orgs.length === 1 && orgs[0].name.toLowerCase() === job.company.toLowerCase()) {
+        setSelectedOrg(orgs[0])
+      }
     } catch {
-      // Network/parsing error — fall back to name-based search
-      console.warn('Apollo org search exception, falling back to name search')
-      setSelectedOrg({ id: '', name: job.company })
+      setError('Organization search failed. You can still search by company name.')
       setOrgOptions([])
     } finally { setOrgLoading(false) }
   }
@@ -1470,7 +1464,13 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
               Select the correct company
             </p>
             {orgOptions.length === 0 ? (
-              <p className="text-xs text-navy-400">No organizations found for "{job.company}"</p>
+              <div className="space-y-2">
+                <p className="text-xs text-navy-400">No organizations found for "{job.company}"</p>
+                <button onClick={() => setSelectedOrg({ id: '', name: job.company })}
+                  className="text-xs text-violet-600 hover:text-violet-800 font-medium">
+                  Search by name anyway
+                </button>
+              </div>
             ) : (
               <div className="space-y-2">
                 {orgOptions.map(o => (
@@ -1491,6 +1491,10 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
                     </div>
                   </button>
                 ))}
+                <button onClick={() => setSelectedOrg({ id: '', name: job.company })}
+                  className="w-full text-center text-xs text-navy-400 hover:text-navy-600 py-2 font-medium">
+                  None of these — search by name only
+                </button>
               </div>
             )}
           </div>
@@ -1580,7 +1584,12 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-navy-400 truncate mt-0.5">{profile?.title || person.title}</p>
+                        <p className="text-xs text-navy-400 truncate mt-0.5">
+                          {profile?.title || person.title}
+                          {person.company && person.company !== (selectedOrg?.name || job.company) && (
+                            <span className="text-navy-300"> at {person.company}</span>
+                          )}
+                        </p>
                       </div>
 
                       {/* View Profile toggle */}
