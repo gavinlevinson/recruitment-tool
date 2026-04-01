@@ -1278,10 +1278,38 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
   const [totalPages, setTotalPages]       = useState(1)
   const [total, setTotal]                 = useState(0)
 
+  // Org picker state
+  const [orgOptions, setOrgOptions]       = useState(null)
+  const [selectedOrg, setSelectedOrg]     = useState(null)
+  const [orgLoading, setOrgLoading]       = useState(false)
+
   const existingSet = new Set(existingContacts.map(c => (c.name || '').toLowerCase().trim()))
 
   const toggleChip = (label) =>
     setSelectedChips(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label])
+
+  const companyFavicon = (name) => {
+    const domain = (name || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
+    return `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=64`
+  }
+
+  // Search for orgs on mount
+  useEffect(() => {
+    setOrgLoading(true); setError(null); setSelectedOrg(null); setOrgOptions(null)
+    contactsApi.searchApolloOrgs({ company: job.company })
+      .then(res => {
+        const data = res.data
+        if (data.error === 'no_key') { setError('Apollo API key not configured.'); return }
+        if (data.error) { setSelectedOrg({ id: '', name: job.company }); setOrgOptions([]); return }
+        const orgs = data.organizations || []
+        setOrgOptions(orgs)
+        if (orgs.length === 1 && orgs[0].name.toLowerCase() === job.company.toLowerCase()) {
+          setSelectedOrg(orgs[0])
+        }
+      })
+      .catch(() => { setSelectedOrg({ id: '', name: job.company }); setOrgOptions([]) })
+      .finally(() => setOrgLoading(false))
+  }, [job.company])
 
   const doSearch = async (pg = 1) => {
     setLoading(true); setError(null); setPage(pg); setExpanded({})
@@ -1290,7 +1318,7 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
         label => TITLE_CHIPS.find(c => c.label === label)?.keywords ?? []
       )
       const res  = await contactsApi.searchApollo({
-        company:        job.company,
+        company:        selectedOrg?.name || job.company,
         title_keywords: keywords,          // empty = all titles
         seniority:      SENIORITY_OPTS[seniority].values,
         page: pg, per_page: 20,
@@ -1415,7 +1443,7 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
               </button>
             ))}
           </div>
-          <button onClick={() => doSearch(1)} disabled={loading}
+          <button onClick={() => doSearch(1)} disabled={loading || !selectedOrg}
             className="ml-auto btn-primary text-xs py-1.5 px-4 disabled:opacity-40">
             {loading
               ? <><RefreshCw size={12} className="animate-spin" /> Searching…</>
@@ -1426,19 +1454,53 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        {/* Pre-search */}
-        {results === null && !loading && (
+        {/* Org picker */}
+        {orgLoading && (
+          <div className="flex items-center justify-center py-14 gap-2 text-navy-400">
+            <RefreshCw size={14} className="animate-spin" /> Finding companies...
+          </div>
+        )}
+        {orgOptions !== null && orgOptions.length > 1 && !selectedOrg && !orgLoading && (
+          <div className="px-6 pt-4 pb-2">
+            <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide mb-2">Select the correct company</p>
+            <div className="space-y-2">
+              {orgOptions.map((o, i) => (
+                <button key={i} onClick={() => setSelectedOrg(o)}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border border-navy-200 hover:border-violet-400 hover:bg-violet-50/50 transition-all text-left">
+                  <img src={companyFavicon(o.name)} alt="" className="w-8 h-8 rounded-md object-contain bg-white border border-navy-100"
+                    onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }} />
+                  <div className="w-8 h-8 rounded-md bg-violet-100 text-violet-700 font-bold items-center justify-center text-xs" style={{ display: 'none' }}>
+                    {(o.name?.[0] || '?').toUpperCase()}
+                  </div>
+                  <p className="text-sm font-semibold text-navy-800">{o.name}</p>
+                </button>
+              ))}
+              <button onClick={() => setSelectedOrg({ id: '', name: job.company })}
+                className="w-full text-center text-xs text-navy-400 hover:text-navy-600 py-2 font-medium">
+                None of these — search by name only
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Pre-search (after org is selected) */}
+        {results === null && !loading && selectedOrg && (
           <div className="flex flex-col items-center justify-center py-14 gap-3 text-center px-8">
             <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center">
               <Sparkles size={22} className="text-violet-400" />
             </div>
             <div>
-              <p className="font-semibold text-navy-700 text-sm">Find people at {job.company}</p>
+              <p className="font-semibold text-navy-700 text-sm">Find people at {selectedOrg.name}</p>
               <p className="text-xs text-navy-400 mt-1">
                 Pick a role type &amp; seniority, then Search.<br/>
-                Results are filtered to people at <strong>{job.company}</strong> only.<br/>
                 Click <strong>▼ Profile</strong> to verify company details before adding.
               </p>
+              {orgOptions && orgOptions.length > 1 && (
+                <button onClick={() => { setSelectedOrg(null); setResults(null) }}
+                  className="text-xs text-violet-600 hover:text-violet-800 font-medium mt-2">
+                  Change company
+                </button>
+              )}
             </div>
           </div>
         )}
