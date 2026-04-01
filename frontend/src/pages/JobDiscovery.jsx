@@ -1716,7 +1716,9 @@ export default function JobDiscovery() {
               {running ? `Scanning… ${runElapsed}s` : 'Run Discovery Agent'}
             </button>
             {running ? (
-              <p className="text-xs text-navy-400">Searching all sources — will stop automatically when done</p>
+              <p className="text-xs text-navy-400">
+                Scanning 16+ sources in parallel — typically takes <span className="font-medium text-navy-600">2–4 min</span>
+              </p>
             ) : runResult ? (
               <p className={`text-xs font-medium ${runResult.startsWith('Up to date') ? 'text-navy-400' : 'text-emerald-600'}`}>
                 {runResult.startsWith('Up to date') ? '✓' : '✦'} {runResult}
