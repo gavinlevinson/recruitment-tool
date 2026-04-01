@@ -506,7 +506,11 @@ function ContactCard({ contact, onEdit, onDelete, deleteConfirm, setDeleteConfir
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <h3 className="font-semibold text-navy-900 truncate">{contact.name}</h3>
-              {contact.title && <p className="text-xs text-navy-500 truncate">{contact.title}</p>}
+              {(contact.title || contact.company) && (
+                <p className="text-xs text-navy-500 truncate">
+                  {contact.title}{contact.title && contact.company ? ' at ' : ''}{contact.company}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
               <button onClick={() => onEdit(contact)} className="p-1.5 rounded-lg text-navy-300 hover:text-navy-700 hover:bg-navy-50 transition-colors"><Pencil size={13} /></button>
