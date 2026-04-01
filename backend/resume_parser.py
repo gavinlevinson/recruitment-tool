@@ -404,6 +404,22 @@ def compute_personal_score(
         if user_years == 0:
             score += 5
 
+    # ── Title seniority penalty ────────────────────────────────────────────────────
+    # If the user is entry-level (0 yrs) and the job title contains senior
+    # keywords, penalize the score regardless of stated experience requirements.
+    if user_years == 0:
+        senior_title_patterns = [
+            r'\bsenior\b', r'\bsr\.?\b', r'\blead\b', r'\bmanager\b',
+            r'\bdirector\b', r'\bhead\b', r'\bprincipal\b', r'\bvp\b',
+            r'\bvice\s+president\b', r'\bstaff\b',
+        ]
+        for _sp in senior_title_patterns:
+            if re.search(_sp, job_role_lower):
+                penalty = 15
+                score = max(0, score - penalty)
+                reasons.append(f"Senior-level title for entry-level candidate (-{penalty})")
+                break
+
     # ── Custom context boost (0-10 pts) ──────────────────────────────────────────
     custom_context = user_profile.get("custom_context", "")
     if custom_context:
