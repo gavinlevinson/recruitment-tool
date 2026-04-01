@@ -2065,8 +2065,8 @@ async def run_scraper(db: Session = None):
         finally:
             _db.close()
     finally:
-        _scrape_running = False
         _scrape_completed_at = datetime.utcnow().isoformat()
+        _scrape_running = False
 
 
 # ─────────────────────────────────────────────

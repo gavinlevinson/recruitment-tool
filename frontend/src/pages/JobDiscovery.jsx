@@ -1501,8 +1501,10 @@ export default function JobDiscovery() {
         const statusRes = await discoveredApi.getStatus().catch(() => null)
         const status = statusRes?.data
         if (status && !status.is_running) {
-          // Scrape finished — update status immediately then refresh jobs
-          setStatus(status)
+          // Short delay to ensure backend has fully written completed_at before re-fetching
+          await new Promise(r => setTimeout(r, 1500))
+          const freshStatus = await discoveredApi.getStatus().catch(() => null)
+          if (freshStatus?.data) setStatus(freshStatus.data)
           fetchJobs()
           const saved = status.last_saved ?? 0
           setRunResult(saved > 0
