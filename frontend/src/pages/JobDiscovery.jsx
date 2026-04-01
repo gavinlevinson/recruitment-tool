@@ -1452,7 +1452,7 @@ export default function JobDiscovery() {
 
   // New Today banner
   const [newTodayJobs, setNewTodayJobs]       = useState([])
-  const [newTodayExpanded, setNewTodayExpanded] = useState(true)
+  const [newTodayExpanded, setNewTodayExpanded] = useState(false)
 
   const debounceRef = useRef(null)
   const runTimerRef = useRef(null)
