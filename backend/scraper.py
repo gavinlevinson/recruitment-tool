@@ -484,7 +484,84 @@ def extract_company_metadata(description: str) -> dict:
             except (ValueError, IndexError):
                 pass
 
-    return {"funding_stage": funding_stage, "employee_count": employee_count}
+    # ── Salary extraction ──
+    salary_range = None
+    salary_min = None
+    sal_patterns = [
+        # "$120k - $180k", "$120K–$180K"
+        r'\$\s*(\d{2,4})\s*[kK]\s*[-–—to]+\s*\$?\s*(\d{2,4})\s*[kK]',
+        # "$120,000 - $180,000"
+        r'\$\s*(\d{2,3}),(\d{3})\s*[-–—to]+\s*\$?\s*(\d{2,3}),(\d{3})',
+        # "$120k" (single figure)
+        r'\$\s*(\d{2,4})\s*[kK]',
+        # "$120,000" (single figure)
+        r'\$\s*(\d{2,3}),(\d{3})',
+    ]
+    for pat in sal_patterns:
+        m = re.search(pat, description if description else "")
+        if m:
+            groups = m.groups()
+            if len(groups) == 2 and not any(c == ',' for c in m.group()):
+                # "$120k - $180k"
+                lo, hi = int(groups[0]), int(groups[1])
+                if lo > 500: lo = lo // 1000  # handle "$120000" written without comma
+                if hi > 500: hi = hi // 1000
+                salary_range = f"${lo}k–${hi}k"
+                salary_min = lo
+            elif len(groups) == 4:
+                # "$120,000 - $180,000"
+                lo = int(groups[0]) * 1000 + int(groups[1])
+                hi = int(groups[2]) * 1000 + int(groups[3])
+                salary_range = f"${lo // 1000}k–${hi // 1000}k"
+                salary_min = lo // 1000
+            elif len(groups) == 1:
+                # "$120k"
+                val = int(groups[0])
+                if val > 500: val = val // 1000
+                salary_range = f"${val}k"
+                salary_min = val
+            elif len(groups) == 2:
+                # "$120,000"
+                val = int(groups[0]) * 1000 + int(groups[1])
+                salary_range = f"${val // 1000}k"
+                salary_min = val // 1000
+            break
+
+    # ── Industry classification ──
+    industry = "Other"
+    industry_keywords = {
+        "Technology": ["software", "saas", "cloud", "ai ", "artificial intelligence", "machine learning",
+                       "data platform", "devops", "cybersecurity", "developer tool", "api ", "tech company",
+                       "information technology", "computer science"],
+        "Finance": ["fintech", "banking", "financial", "insurance", "payments", "lending", "investment",
+                    "trading", "hedge fund", "asset management", "wealth management", "accounting",
+                    "blockchain", "crypto", "defi"],
+        "Healthcare": ["health", "medical", "biotech", "pharmaceutical", "clinical", "patient",
+                       "telemedicine", "drug discovery", "genomic", "therapeutic", "hospital"],
+        "Education": ["education", "edtech", "learning platform", "university", "academic", "student",
+                      "tutoring", "curriculum", "e-learning", "school"],
+        "Retail & E-Commerce": ["retail", "e-commerce", "ecommerce", "shopping", "marketplace",
+                                "consumer goods", "cpg", "direct-to-consumer", "d2c", "dtc"],
+        "Media & Entertainment": ["media", "entertainment", "gaming", "streaming", "content",
+                                  "publishing", "music", "video", "social media", "advertising", "adtech"],
+        "Manufacturing": ["manufacturing", "industrial", "hardware", "robotics", "automotive",
+                         "aerospace", "supply chain", "logistics", "construction", "energy",
+                         "cleantech", "climate"],
+        "Government & Nonprofit": ["government", "civic", "nonprofit", "non-profit", "public sector",
+                                   "defense", "military", "ngo"],
+    }
+    for ind, keywords in industry_keywords.items():
+        if any(kw in text for kw in keywords):
+            industry = ind
+            break
+
+    return {
+        "funding_stage": funding_stage,
+        "employee_count": employee_count,
+        "salary_range": salary_range,
+        "salary_min": salary_min,
+        "industry": industry,
+    }
 
 
 def _clean_description(text: str) -> str:
@@ -611,6 +688,9 @@ def make_job(company, role, location, url, source, description="", posted=""):
         "added_to_tracker": False,
         "funding_stage": meta.get("funding_stage"),
         "employee_count": meta.get("employee_count"),
+        "salary_range": meta.get("salary_range"),
+        "salary_min": meta.get("salary_min"),
+        "industry": meta.get("industry"),
         "min_years_required": extract_min_years(clean_desc),
         "deadline": extract_deadline(clean_desc),
     }

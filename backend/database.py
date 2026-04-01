@@ -167,6 +167,8 @@ class DiscoveredJob(Base):
     added_to_tracker = Column(Boolean, default=False)
     funding_stage = Column(String, nullable=True)
     employee_count = Column(String, nullable=True)
+    salary_min = Column(Integer, nullable=True)            # lower salary bound in thousands (e.g. 80 = $80k)
+    industry = Column(String, nullable=True)              # primary industry tag
     min_years_required = Column(Integer, nullable=True)   # parsed from description at scrape time
     deadline = Column(String, nullable=True)              # auto-extracted application deadline (YYYY-MM-DD)
     scraped_at = Column(DateTime, default=datetime.utcnow)
@@ -204,6 +206,8 @@ class UserPreferences(Base):
     preferred_roles = Column(String, nullable=True)       # JSON list of role categories; NULL = all
     preferred_work_types = Column(String, nullable=True)  # JSON list of "Remote"/"Hybrid"/"In-Office"; NULL = all
     years_experience = Column(String, nullable=True)      # "0+", "1-2", "3-5", "5-10", "10+"; NULL = no filter
+    min_salary = Column(Integer, nullable=True)           # minimum salary in thousands (e.g. 80 = $80k); NULL = no filter
+    preferred_industries = Column(String, nullable=True)  # JSON list of industry tags; NULL = all
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

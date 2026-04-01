@@ -84,9 +84,39 @@ app.add_middleware(
 
 _scheduler = AsyncIOScheduler()
 
+def _backfill_industry_and_salary():
+    """One-time backfill: classify industry and extract salary for existing jobs missing these fields."""
+    from database import SessionLocal
+    from scraper import extract_company_metadata
+    db = SessionLocal()
+    try:
+        jobs = db.query(DiscoveredJob).filter(
+            or_(DiscoveredJob.industry == None, DiscoveredJob.salary_min == None)
+        ).all()
+        if not jobs:
+            return
+        updated = 0
+        for j in jobs:
+            meta = extract_company_metadata(j.description or "")
+            if j.industry is None:
+                j.industry = meta.get("industry")
+            if j.salary_min is None and meta.get("salary_min"):
+                j.salary_min = meta["salary_min"]
+                if not j.salary_range and meta.get("salary_range"):
+                    j.salary_range = meta["salary_range"]
+            updated += 1
+        db.commit()
+        print(f"[Backfill] Updated industry/salary for {updated} jobs")
+    except Exception as e:
+        print(f"[Backfill] Error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 @app.on_event("startup")
 def startup_event():
     init_db()
+    _backfill_industry_and_salary()
     asyncio.ensure_future(_daily_job_check_loop())
 
     # ── Daily 9am ET auto-scrape ──────────────────────────────────────────────
@@ -1541,6 +1571,26 @@ def get_discovered_jobs(
             DiscoveredJob.min_years_required <= user_max,
         ))
 
+    # Salary filter — hide jobs below user's minimum, always show jobs with no salary data
+    if current_user:
+        user_prefs_sal = db.query(UserPreferences).filter(UserPreferences.user_id == current_user.id).first()
+        if user_prefs_sal and user_prefs_sal.min_salary:
+            q = q.filter(or_(
+                DiscoveredJob.salary_min == None,
+                DiscoveredJob.salary_min >= user_prefs_sal.min_salary,
+            ))
+
+    # Industry filter — only show selected industries; always show all if preference is empty/null
+    if current_user:
+        user_prefs_ind = db.query(UserPreferences).filter(UserPreferences.user_id == current_user.id).first()
+        if user_prefs_ind and user_prefs_ind.preferred_industries:
+            industries = json.loads(user_prefs_ind.preferred_industries)
+            if industries:
+                q = q.filter(or_(
+                    DiscoveredJob.industry == None,
+                    DiscoveredJob.industry.in_(industries),
+                ))
+
     # Source filtering — based on user's enabled_sources preference
     SOURCE_ID_PATTERNS = {
         'hackernews': ['hn', 'who is hiring', 'hacker news'],
@@ -2024,6 +2074,8 @@ def discovered_to_dict(j):
         "employee_count": j.employee_count if hasattr(j, "employee_count") else None,
         "min_years_required": j.min_years_required if hasattr(j, "min_years_required") else None,
         "deadline": j.deadline if hasattr(j, "deadline") else None,
+        "salary_min": j.salary_min if hasattr(j, "salary_min") else None,
+        "industry": j.industry if hasattr(j, "industry") else None,
         "scraped_at": j.scraped_at.isoformat() if j.scraped_at else None,
     }
 
@@ -2101,6 +2153,8 @@ def get_preferences(
         "preferred_roles": json.loads(prefs.preferred_roles) if prefs.preferred_roles else None,
         "preferred_work_types": json.loads(prefs.preferred_work_types) if prefs.preferred_work_types else None,
         "years_experience": prefs.years_experience,
+        "min_salary": prefs.min_salary,
+        "preferred_industries": json.loads(prefs.preferred_industries) if prefs.preferred_industries else None,
     }
 
 @app.put("/api/preferences")
@@ -2135,6 +2189,10 @@ def update_preferences(
         prefs.preferred_work_types = json.dumps(payload["preferred_work_types"]) if payload["preferred_work_types"] else None
     if "years_experience" in payload:
         prefs.years_experience = payload["years_experience"] if payload["years_experience"] else None
+    if "min_salary" in payload:
+        prefs.min_salary = payload["min_salary"]
+    if "preferred_industries" in payload:
+        prefs.preferred_industries = json.dumps(payload["preferred_industries"]) if payload["preferred_industries"] else None
     db.commit()
     return {"ok": True}
 

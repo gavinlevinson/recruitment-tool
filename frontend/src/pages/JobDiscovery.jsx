@@ -800,6 +800,8 @@ function PreferencesPanel({ open, onClose, preferences, onSave }) {
         preferred_roles: preferences.preferred_roles !== undefined ? preferences.preferred_roles : null,
         preferred_work_types: preferences.preferred_work_types !== undefined ? preferences.preferred_work_types : null,
         years_experience: preferences.years_experience || null,
+        min_salary: preferences.min_salary || null,
+        preferred_industries: preferences.preferred_industries !== undefined ? preferences.preferred_industries : null,
       })
       setSaved(false)
       setCustomLocInput('')
@@ -1014,6 +1016,83 @@ function PreferencesPanel({ open, onClose, preferences, onSave }) {
                 Showing jobs requiring ≤ {local.years_experience === '10+' ? 'any' : local.years_experience} yrs exp
               </p>
             )}
+          </div>
+
+          {/* Minimum Salary */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide">Minimum Salary</p>
+              {local.min_salary && (
+                <button
+                  type="button"
+                  onClick={() => setLocal(prev => ({ ...prev, min_salary: null }))}
+                  className="text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-navy-400 mb-3">Jobs without salary info are always shown</p>
+            <input
+              type="range"
+              min={0} max={200} step={10}
+              value={local.min_salary || 0}
+              onChange={e => {
+                const v = parseInt(e.target.value)
+                setLocal(prev => ({ ...prev, min_salary: v === 0 ? null : v }))
+              }}
+              className="w-full accent-violet-600"
+            />
+            <p className="text-sm font-semibold text-navy-700 mt-1">
+              {local.min_salary ? `$${local.min_salary}k+` : 'No minimum'}
+            </p>
+          </div>
+
+          {/* Industry */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide">Industry</p>
+              {(() => {
+                const ALL_INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Education', 'Retail & E-Commerce', 'Media & Entertainment', 'Manufacturing', 'Government & Nonprofit', 'Other']
+                const indArr = local.preferred_industries === null
+                  ? ALL_INDUSTRIES
+                  : (local.preferred_industries || [])
+                const allOn = indArr.length === ALL_INDUSTRIES.length
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setLocal(prev => ({
+                      ...prev,
+                      preferred_industries: allOn ? [] : null,
+                    }))}
+                    className="text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors"
+                  >
+                    {allOn ? 'Deselect All' : 'Select All'}
+                  </button>
+                )
+              })()}
+            </div>
+            <p className="text-xs text-navy-400 mb-3">Filter by industry (deselect all = show all)</p>
+            <div className="space-y-2">
+              {['Technology', 'Finance', 'Healthcare', 'Education', 'Retail & E-Commerce', 'Media & Entertainment', 'Manufacturing', 'Government & Nonprofit', 'Other'].map(ind => {
+                const ALL_INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Education', 'Retail & E-Commerce', 'Media & Entertainment', 'Manufacturing', 'Government & Nonprofit', 'Other']
+                const indArr = local.preferred_industries === null
+                  ? ALL_INDUSTRIES
+                  : (local.preferred_industries || [])
+                const toggleInd = () => {
+                  const next = indArr.includes(ind) ? indArr.filter(i => i !== ind) : [...indArr, ind]
+                  setLocal(prev => ({ ...prev, preferred_industries: next.length === ALL_INDUSTRIES.length ? null : next }))
+                }
+                return (
+                  <CheckOption
+                    key={ind}
+                    label={ind}
+                    checked={indArr.includes(ind)}
+                    onChange={toggleInd}
+                  />
+                )
+              })}
+            </div>
           </div>
 
           {/* Role Type */}
