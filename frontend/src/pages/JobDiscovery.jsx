@@ -1351,9 +1351,6 @@ export default function JobDiscovery() {
   // New Today banner
   const [newTodayJobs, setNewTodayJobs]       = useState([])
   const [newTodayExpanded, setNewTodayExpanded] = useState(true)
-  const [newTodayDismissed, setNewTodayDismissed] = useState(
-    () => sessionStorage.getItem('riq_new_today_dismissed') === new Date().toDateString()
-  )
 
   const debounceRef = useRef(null)
   const runTimerRef = useRef(null)
@@ -1483,7 +1480,6 @@ export default function JobDiscovery() {
 
   // Fetch new-today jobs once on mount
   useEffect(() => {
-    if (newTodayDismissed) return
     discoveredApi.getNewToday()
       .then(res => setNewTodayJobs(res.data?.jobs || []))
       .catch(() => {})
@@ -1505,7 +1501,8 @@ export default function JobDiscovery() {
         const statusRes = await discoveredApi.getStatus().catch(() => null)
         const status = statusRes?.data
         if (status && !status.is_running) {
-          // Scrape finished — silently refresh without resetting the user's current page/filters
+          // Scrape finished — update status immediately then refresh jobs
+          setStatus(status)
           fetchJobs()
           const saved = status.last_saved ?? 0
           setRunResult(saved > 0
@@ -1731,10 +1728,10 @@ export default function JobDiscovery() {
       </div>
 
       {/* ── New Today Banner ─────────────────────────────────────────────── */}
-      {!newTodayDismissed && newTodayJobs.length > 0 && (
+      {newTodayJobs.length > 0 && (
         <div className="rounded-xl border border-sky-200 bg-sky-50 overflow-hidden">
           {/* Header row */}
-          <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center px-4 py-3">
             <button
               onClick={() => setNewTodayExpanded(v => !v)}
               className="flex items-center gap-2 text-left"
@@ -1748,16 +1745,6 @@ export default function JobDiscovery() {
               {newTodayExpanded
                 ? <ChevronUp size={15} className="text-sky-500" />
                 : <ChevronDown size={15} className="text-sky-500" />}
-            </button>
-            <button
-              onClick={() => {
-                setNewTodayDismissed(true)
-                sessionStorage.setItem('riq_new_today_dismissed', new Date().toDateString())
-              }}
-              className="p-1 rounded-lg text-sky-400 hover:text-sky-700 transition-colors"
-              title="Dismiss for today"
-            >
-              <X size={15} />
             </button>
           </div>
 
