@@ -1338,15 +1338,12 @@ async def search_apollo(payload: dict):
         return {"error": "no_key", "people": []}
 
     company        = payload.get("company", "")
-    domain         = payload.get("domain", "")
     title_keywords = payload.get("title_keywords", [])
     seniority      = payload.get("seniority", [])
     page           = payload.get("page", 1)
     per_page       = min(payload.get("per_page", 25), 50)
 
     body: dict = {"q_organization_name": company, "page": page, "per_page": per_page}
-    if domain:
-        body["q_organization_domains"] = [domain]
     if title_keywords:
         body["person_titles"] = title_keywords
     if seniority:
@@ -1595,25 +1592,26 @@ def get_discovered_jobs(
             DiscoveredJob.min_years_required <= user_max,
         ))
 
-    # Salary filter — hide jobs below user's minimum, always show jobs with no salary data
+    # Fetch user preferences once for all filters below
+    _user_prefs = None
     if current_user:
-        user_prefs_sal = db.query(UserPreferences).filter(UserPreferences.user_id == current_user.id).first()
-        if user_prefs_sal and user_prefs_sal.min_salary:
-            q = q.filter(or_(
-                DiscoveredJob.salary_min == None,
-                DiscoveredJob.salary_min >= user_prefs_sal.min_salary,
-            ))
+        _user_prefs = db.query(UserPreferences).filter(UserPreferences.user_id == current_user.id).first()
+
+    # Salary filter — hide jobs below user's minimum, always show jobs with no salary data
+    if _user_prefs and _user_prefs.min_salary:
+        q = q.filter(or_(
+            DiscoveredJob.salary_min == None,
+            DiscoveredJob.salary_min >= _user_prefs.min_salary,
+        ))
 
     # Industry filter — only show selected industries; always show all if preference is empty/null
-    if current_user:
-        user_prefs_ind = db.query(UserPreferences).filter(UserPreferences.user_id == current_user.id).first()
-        if user_prefs_ind and user_prefs_ind.preferred_industries:
-            industries = json.loads(user_prefs_ind.preferred_industries)
-            if industries:
-                q = q.filter(or_(
-                    DiscoveredJob.industry == None,
-                    DiscoveredJob.industry.in_(industries),
-                ))
+    if _user_prefs and _user_prefs.preferred_industries:
+        industries = json.loads(_user_prefs.preferred_industries)
+        if industries:
+            q = q.filter(or_(
+                DiscoveredJob.industry == None,
+                DiscoveredJob.industry.in_(industries),
+            ))
 
     # Source filtering — based on user's enabled_sources preference
     SOURCE_ID_PATTERNS = {
@@ -1633,17 +1631,15 @@ def get_discovered_jobs(
         'wwr':        ['we work remotely', 'weworkremotely'],
         'vc_boards':  ['vc portfolio'],
     }
-    if current_user:
-        user_prefs = db.query(UserPreferences).filter(UserPreferences.user_id == current_user.id).first()
-        if user_prefs and user_prefs.enabled_sources:
-            enabled = json.loads(user_prefs.enabled_sources)
-            if enabled:
-                source_conditions = []
-                for sid in enabled:
-                    for pattern in SOURCE_ID_PATTERNS.get(sid, [sid]):
-                        source_conditions.append(DiscoveredJob.source.ilike(f"%{pattern}%"))
-                if source_conditions:
-                    q = q.filter(or_(*source_conditions))
+    if _user_prefs and _user_prefs.enabled_sources:
+        enabled = json.loads(_user_prefs.enabled_sources)
+        if enabled:
+            source_conditions = []
+            for sid in enabled:
+                for pattern in SOURCE_ID_PATTERNS.get(sid, [sid]):
+                    source_conditions.append(DiscoveredJob.source.ilike(f"%{pattern}%"))
+            if source_conditions:
+                q = q.filter(or_(*source_conditions))
 
     # Personalized scoring — only when user is authenticated and has a profile with parsed_roles
     user_profile_dict = None

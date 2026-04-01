@@ -422,7 +422,7 @@ export default function Dashboard() {
       const [jr, cr, dr, sr] = await Promise.allSettled([
         jobsApi.getAll(),
         contactsApi.getAll(),
-        discoveredApi.getAll({ per_page: 200 }),
+        discoveredApi.getAll({ limit: 30 }),
         statsApi.getAll(),
       ])
       if (jr.status === 'fulfilled') setJobs(jr.value.data || [])

@@ -1291,7 +1291,6 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
       )
       const res  = await contactsApi.searchApollo({
         company:        job.company,
-        domain:         extractDomain(job.job_url, job.company),
         title_keywords: keywords,          // empty = all titles
         seniority:      SENIORITY_OPTS[seniority].values,
         page: pg, per_page: 20,
