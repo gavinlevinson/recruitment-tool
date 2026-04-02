@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Component } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   RefreshCw, Search, ExternalLink, Check, ChevronDown, ChevronUp,
   Info, X, ChevronLeft, ChevronRight, SlidersHorizontal,
   Settings, Save, MapPin, AlertCircle, Loader2, Sparkles,
+  User, Briefcase, Calendar, Mic, ArrowRight, Upload, Mail, FileText,
+  Globe, TrendingUp,
 } from 'lucide-react'
 import { discoveredApi, preferencesApi, profileApi } from '../api'
 import { formatDate, formatDateTime } from '../utils/dates'
@@ -1460,7 +1463,182 @@ function NewTodayRow({ job, onAdd }) {
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+// ── Onboarding Error Boundary ────────────────────────────────────────────────
+class OnboardingErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(err) { console.error('[Onboarding] Render error:', err) }
+  render() { return this.state.hasError ? null : this.props.children }
+}
+
+// ── Onboarding Slideshow ─────────────────────────────────────────────────────
+function OnboardingSlide({ icon: Icon, iconColor, badge, title, points, children }) {
+  return (
+    <div className="min-h-screen snap-start flex items-center justify-center p-8">
+      <div className="max-w-lg w-full text-center space-y-6">
+        <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center" style={{ background: iconColor + '22' }}>
+          <Icon size={30} style={{ color: iconColor }} />
+        </div>
+        {badge && (
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest" style={{ background: iconColor + '22', color: iconColor }}>
+            {badge}
+          </div>
+        )}
+        <h2 className="text-2xl font-bold text-white">{title}</h2>
+        {points && (
+          <ul className="text-left space-y-3 mx-auto max-w-md">
+            {points.map((p, i) => (
+              <li key={i} className="flex items-start gap-3 text-sm text-white/80">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5" style={{ background: iconColor + '33' }}>
+                  <Check size={11} style={{ color: iconColor }} />
+                </div>
+                {p}
+              </li>
+            ))}
+          </ul>
+        )}
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function OnboardingSlideshow({ onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-navy-900/95 backdrop-blur-md">
+      <button onClick={onClose} className="fixed top-6 right-6 z-[60] p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
+        <X size={20} />
+      </button>
+      <div className="h-full overflow-y-auto snap-y snap-mandatory">
+
+        {/* Slide 1 — Welcome */}
+        <div className="min-h-screen snap-start flex items-center justify-center p-8">
+          <div className="max-w-md w-full text-center space-y-8">
+            <div className="w-20 h-20 rounded-2xl bg-violet-500/20 mx-auto flex items-center justify-center">
+              <OrionMark className="w-10 h-10" light />
+            </div>
+            <div>
+              <h1 className="text-4xl font-black text-white">Welcome to Orion</h1>
+              <p className="text-lg text-violet-300 mt-3">Your AI-powered recruitment platform.</p>
+              <p className="text-sm text-white/50 mt-1">Let's show you around.</p>
+            </div>
+            <div className="pt-4">
+              <p className="text-violet-400 text-sm mb-2">Scroll down</p>
+              <ChevronRight size={20} className="text-violet-400 mx-auto rotate-90 animate-bounce" />
+            </div>
+          </div>
+        </div>
+
+        {/* Slide 2 — Profile Setup */}
+        <OnboardingSlide
+          icon={User}
+          iconColor="#8b5cf6"
+          badge="Step 1"
+          title="Get the most out of Orion"
+          points={[
+            "Upload your resume so Orion can score and match jobs to your background",
+            "Add career context — target roles, preferred locations, and what you're looking for",
+            "Connect your Gmail to send outreach emails directly from the platform",
+            "Sync Google Drive to organize notes and documents for each contact",
+            "Link Google Calendar so interviews, deadlines, and networking calls stay in sync",
+          ]}
+        >
+          <p className="text-violet-400 text-sm pt-2">Head to your Profile page to get started</p>
+        </OnboardingSlide>
+
+        {/* Slide 3 — Job Discovery */}
+        <OnboardingSlide
+          icon={Search}
+          iconColor="#06b6d4"
+          badge="Discover"
+          title="Discover jobs tailored to you"
+          points={[
+            "Orion scrapes VC portfolios, job boards, ATS systems, and curated newsletters to surface roles matched to your background",
+            "New jobs are discovered every day — the Discovery Agent runs automatically at 9am ET",
+            "Set your preferences (location, industry, salary, experience) to filter what matters to you",
+            "See all open roles at a company with 'See X other jobs at [Company]'",
+            "Click 'Add to Tracker' to move a job into your pipeline",
+          ]}
+        />
+
+        {/* Slide 4 — Job Tracker & Networking */}
+        <OnboardingSlide
+          icon={Briefcase}
+          iconColor="#f59e0b"
+          badge="Track & Network"
+          title="Track your pipeline and build your network"
+          points={[
+            "Drag jobs between columns: Not Applied → Under Review → Interviewing → Accepted",
+            "Click any job to see details, add contacts, and manage your network",
+            "Search for people at any company with Apollo — find the right person to reach out to",
+            "Write and send personalized emails directly from the platform using your saved templates",
+            "Schedule networking calls and sync them to your calendar",
+            "Create Google Docs linked to each contact for meeting notes and follow-up tracking",
+          ]}
+        />
+
+        {/* Slide 5 — Coach */}
+        <OnboardingSlide
+          icon={Sparkles}
+          iconColor="#ec4899"
+          badge="Coach"
+          title="Get AI-powered feedback"
+          points={[
+            "Scan your resume against specific job descriptions for targeted improvements",
+            "Polish cover letters with line-by-line feedback",
+            "Review application question answers before submitting",
+            "Practice behavioral interviews with voice — scored on structure, specificity, and relevance",
+          ]}
+        />
+
+        {/* Slide 6 — Calendar */}
+        <OnboardingSlide
+          icon={Calendar}
+          iconColor="#10b981"
+          badge="Organize"
+          title="Stay organized"
+          points={[
+            "Deadlines, interviews, networking calls, and career events — all in one place",
+            "Syncs with your Google Calendar so nothing falls through the cracks",
+            "Get overlap warnings when scheduling conflicts arise",
+          ]}
+        />
+
+        {/* Slide 7 — Get Started */}
+        <div className="min-h-screen snap-start flex items-center justify-center p-8">
+          <div className="max-w-md w-full text-center space-y-8">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 mx-auto flex items-center justify-center">
+              <TrendingUp size={30} className="text-emerald-400" />
+            </div>
+            <div>
+              <h2 className="text-3xl font-black text-white">You're all set.</h2>
+              <p className="text-lg text-emerald-300 mt-3">Start by running the Discovery Agent to find jobs matched to your profile.</p>
+            </div>
+            <button onClick={onClose}
+              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-lg transition-colors">
+              Start Discovering <ArrowRight size={20} />
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 export default function JobDiscovery() {
+  const location = useLocation()
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    // Show on first registration OR when ?tour=1 query param is present
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('tour') === '1') return true
+    return location.state?.firstTime && !localStorage.getItem('orion_onboarding_done')
+  })
+  const closeOnboarding = () => {
+    setShowOnboarding(false)
+    localStorage.setItem('orion_onboarding_done', '1')
+  }
+
   const [jobs, setJobs]       = useState([])
   const [total, setTotal]     = useState(0)
   const [status, setStatus]   = useState(null)
@@ -1839,6 +2017,11 @@ export default function JobDiscovery() {
 
   return (
     <div className="p-6 space-y-5 max-w-screen-xl mx-auto">
+      {/* Onboarding slideshow — first time only */}
+      <OnboardingErrorBoundary>
+        {showOnboarding && <OnboardingSlideshow onClose={closeOnboarding} />}
+      </OnboardingErrorBoundary>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>

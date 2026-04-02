@@ -130,7 +130,7 @@ export default function Register() {
         }
       }
 
-      navigate('/discovery', { replace: true })
+      navigate('/discovery', { replace: true, state: { firstTime: true } })
     } catch (err) {
       setError(err.response?.data?.detail || 'Registration failed. Please try again.')
     } finally {
