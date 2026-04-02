@@ -37,7 +37,7 @@ const STATUS_CLASS = {
 }
 
 const EMPTY_FORM = {
-  company: '', role: '', status: 'Under Review', date_applied: '',
+  company: '', role: '', status: 'Not Applied', date_applied: '',
   salary_range: '', location: '', notes: '', job_url: '',
   referral: false, referral_name: '', source: 'LinkedIn', folder: '', starred: false,
   deadline: '', interview_date: '', reminder_date: '',

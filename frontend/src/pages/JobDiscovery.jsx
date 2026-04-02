@@ -35,6 +35,7 @@ const SOURCE_META = [
   { match: 'techstars',       label: 'Techstars',       classes: 'bg-cyan-100 text-cyan-800 border border-cyan-200' },
   { match: 'simplify',        label: 'Simplify',        classes: 'bg-sky-100 text-sky-700 border border-sky-200' },
   { match: 'recently funded', label: 'Recently Funded', classes: 'bg-green-100 text-green-700 border border-green-200' },
+  { match: 'ai operators',    label: 'AI Operators',    classes: 'bg-violet-100 text-violet-700 border border-violet-200' },
 ]
 
 const ALL_SOURCES = [

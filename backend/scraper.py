@@ -3113,6 +3113,94 @@ async def scrape_linkedin_top_startups() -> List[Dict]:
 
 
 # ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# AI OPERATORS (Substack newsletter — BizOps/CoS jobs at AI companies)
+# ─────────────────────────────────────────────
+
+async def scrape_ai_operators() -> List[Dict]:
+    """
+    Scrapes AI Operators Substack newsletter for Chief of Staff, BizOps,
+    and Strategy roles at AI companies. Extracts direct ATS job links
+    from the newsletter content (~30 jobs per issue, 20 issues in feed).
+    """
+    jobs = []
+    seen_urls: set = set()
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, headers=HEADERS) as client:
+            resp = await client.get("https://aioperators.substack.com/feed", timeout=15.0)
+            if resp.status_code != 200:
+                print(f"[AI Operators] HTTP {resp.status_code}")
+                return []
+            xml = resp.text
+
+            items = re.findall(r'<item>(.*?)</item>', xml, re.DOTALL)
+            print(f"[AI Operators] {len(items)} newsletter issues in feed")
+
+            for item in items[:5]:  # Recent 5 issues
+                # Extract content
+                content = re.search(r'<content:encoded><!\[CDATA\[(.*?)\]\]>', item, re.DOTALL)
+                if not content:
+                    content = re.search(r'<description><!\[CDATA\[(.*?)\]\]>', item, re.DOTALL)
+                if not content:
+                    continue
+                html = content.group(1)
+
+                # Find all links to ATS job postings
+                links = re.findall(r'<a\s+href="([^"]+)"[^>]*>([^<]+)</a>', html)
+                for url, text in links:
+                    url = url.split('?')[0]  # strip tracking params
+                    if url in seen_urls:
+                        continue
+
+                    # Only process ATS URLs
+                    is_ats = any(ats in url for ats in [
+                        'greenhouse.io', 'lever.co', 'ashbyhq.com', 'ashby.io',
+                        'workable.com', 'jobs.lever.co',
+                    ])
+                    if not is_ats:
+                        continue
+
+                    seen_urls.add(url)
+                    role = re.sub(r'&amp;', '&', text.strip())
+                    if not role or len(role) < 3:
+                        continue
+
+                    # Extract company from ATS URL
+                    company = ""
+                    try:
+                        parsed = __import__('urllib.parse', fromlist=['urlparse']).urlparse(url)
+                        host = parsed.hostname or ""
+                        parts = parsed.path.split('/')
+                        parts = [p for p in parts if p]
+                        if 'ashbyhq.com' in host or 'ashby.io' in host:
+                            company = parts[0] if parts else ""
+                        elif 'greenhouse.io' in host:
+                            company = parts[0] if parts else ""
+                        elif 'lever.co' in host:
+                            company = parts[0] if parts else ""
+                        elif 'workable.com' in host:
+                            company = parts[0] if parts else ""
+                    except Exception:
+                        pass
+
+                    if not company:
+                        continue
+
+                    # Clean up company name
+                    company = company.replace('-', ' ').title()
+
+                    jb = _make_vc_job(company, role, "", url, "AI Operators")
+                    if jb:
+                        jobs.append(jb)
+
+    except Exception as e:
+        print(f"[AI Operators] Error: {e}")
+
+    print(f"[AI Operators] {len(jobs)} jobs extracted from newsletter")
+    return jobs
+
+
 # FUNDING NEWS (TechCrunch + Crunchbase RSS)
 # ─────────────────────────────────────────────
 
@@ -3131,7 +3219,10 @@ async def scrape_funding_news() -> dict:
 
     RSS_FEEDS = [
         "https://techcrunch.com/category/venture/feed/",
+        "https://techcrunch.com/category/startups/feed/",
         "https://news.crunchbase.com/feed/",
+        "https://www.forbes.com/innovation/feed/",
+        "https://www.saastr.com/feed/",
     ]
 
     async with httpx.AsyncClient(timeout=15.0, headers=HEADERS) as client:
@@ -3520,7 +3611,8 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_forbes_startup_lists(), # Forbes Best Startup Employers → ATS discovery
         scrape_linkedin_top_startups(), # LinkedIn Top 50 Startups 2024 → ATS discovery
         scrape_simplify_new_grad(),   # SimplifyJobs curated new-grad positions (GitHub JSON)
-        scrape_recently_funded_jobs(), # TechCrunch + Crunchbase RSS → ATS discovery
+        scrape_ai_operators(),        # AI Operators Substack — BizOps/CoS at AI companies
+        scrape_recently_funded_jobs(), # TechCrunch + Crunchbase + Forbes RSS → ATS discovery
         scrape_bessemer(),            # Bessemer Venture Partners portfolio → ATS discovery
         scrape_index_ventures(),      # Index Ventures portfolio → ATS discovery
         scrape_gc_techstars_getro(),  # General Catalyst + Techstars (Getro boards + ATS)
