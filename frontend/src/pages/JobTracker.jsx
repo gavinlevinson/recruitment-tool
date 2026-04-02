@@ -2190,6 +2190,7 @@ function NetworkModal({ job, onClose }) {
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [copied, setCopied]         = useState(null)
   const [emailContact, setEmailContact] = useState(null)  // contact to email
+  const [meetingContactId, setMeetingContactId] = useState(null) // contact being scheduled
   const [googleConnected, setGoogleConnected] = useState(false)
   const [docCreating, setDocCreating] = useState(null)   // contactId currently creating
   const [docLinking, setDocLinking]   = useState(null)   // contactId showing link input
@@ -2461,12 +2462,40 @@ function NetworkModal({ job, onClose }) {
                               <select
                                 className="text-xs border border-navy-200 rounded-lg px-2 py-1 pr-6 text-navy-600 bg-white appearance-none cursor-pointer hover:border-navy-400 transition-colors"
                                 value={contact.outreach_status || 'Not Contacted'}
-                                onChange={e => handleUpdate(contact.id, { outreach_status: e.target.value })}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  handleUpdate(contact.id, { outreach_status: val })
+                                  if (val === 'Meeting Scheduled') {
+                                    setMeetingContactId(contact.id)
+                                  } else {
+                                    if (meetingContactId === contact.id) setMeetingContactId(null)
+                                  }
+                                }}
                               >
                                 {OUTREACH_STATUSES.map(s => <option key={s}>{s}</option>)}
                               </select>
                               <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-navy-400 pointer-events-none" />
                             </div>
+                            {(meetingContactId === contact.id || contact.outreach_status === 'Meeting Scheduled') && meetingContactId === contact.id && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <input type="date" className="text-xs border border-navy-200 rounded-lg px-2 py-1 text-navy-600 bg-white"
+                                  onChange={async (e) => {
+                                    if (!e.target.value) return
+                                    try {
+                                      await calendarApi.createEvent({
+                                        title: `Networking: ${contact.name} at ${contact.company || displayJob?.company || 'Unknown'}`,
+                                        date: e.target.value,
+                                        time: '12:00',
+                                        event_type: 'networking',
+                                        notes: [contact.title, contact.company || displayJob?.company].filter(Boolean).join(' at '),
+                                      })
+                                      setMeetingContactId(null)
+                                    } catch (err) { console.error('Failed to create calendar event:', err) }
+                                  }}
+                                />
+                                <span className="text-[10px] text-violet-500">Pick a date for your Calendar</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
