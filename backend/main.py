@@ -2074,12 +2074,19 @@ def get_scrape_status(db: Session = Depends(get_db)):
 
 @app.get("/api/discovered-jobs/new-today")
 def get_new_today_jobs(db: Session = Depends(get_db)):
-    """Return jobs scraped since midnight UTC today — used for the 'New Today' banner."""
-    today_midnight = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    """Return jobs from the most recent 9am ET daily scrape. Stays visible until the next 9am scrape."""
+    # 9am ET = 14:00 UTC (EST) or 13:00 UTC (EDT). Use 13:00 UTC to cover both.
+    now = datetime.utcnow()
+    today_9am_utc = now.replace(hour=13, minute=0, second=0, microsecond=0)
+    # If it's before 9am ET today (13:00 UTC), use yesterday's 9am
+    if now < today_9am_utc:
+        cutoff = today_9am_utc - timedelta(days=1)
+    else:
+        cutoff = today_9am_utc
     jobs = (
         db.query(DiscoveredJob)
         .filter(
-            DiscoveredJob.scraped_at >= today_midnight,
+            DiscoveredJob.scraped_at >= cutoff,
             DiscoveredJob.is_active == True,
             or_(DiscoveredJob.match_score == None, DiscoveredJob.match_score >= 0),
         )
@@ -3097,11 +3104,13 @@ def get_all_stats(
     accepted     = status_counts.get("Accepted", 0)
     rejected     = status_counts.get("Rejected", 0)
 
-    # New jobs discovered today (since midnight UTC — matches Discovery page)
-    today_midnight = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    # New jobs from the most recent 9am ET scrape (matches Discovery page)
+    now_utc = datetime.utcnow()
+    today_9am_utc = now_utc.replace(hour=13, minute=0, second=0, microsecond=0)
+    scrape_cutoff = today_9am_utc - timedelta(days=1) if now_utc < today_9am_utc else today_9am_utc
     new_today = db.query(DiscoveredJob).filter(
         DiscoveredJob.is_active == True,
-        DiscoveredJob.scraped_at >= today_midnight,
+        DiscoveredJob.scraped_at >= scrape_cutoff,
     ).count()
 
     # Total undiscovered (not yet added)
