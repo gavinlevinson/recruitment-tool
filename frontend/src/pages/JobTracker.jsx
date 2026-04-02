@@ -402,7 +402,7 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
   const [saving, setSaving]     = useState(false)
   const formRef = useRef(null)
   const [form, setForm] = useState({
-    round_number: 1, interview_type: 'Screening', scheduled_date: '',
+    round_number: 1, interview_type: 'Screening', scheduled_date: '', scheduled_time: '',
     interviewer_name: '', interviewer_linkedin: '', notes: '', status: 'Scheduled',
   })
 
@@ -419,7 +419,7 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
   useEffect(() => { loadRounds() }, [loadRounds])
 
   const openAdd = () => {
-    setForm({ round_number: rounds.length + 1, interview_type: 'Screening', scheduled_date: '',
+    setForm({ round_number: rounds.length + 1, interview_type: 'Screening', scheduled_date: '', scheduled_time: '',
       interviewer_name: '', interviewer_linkedin: '', notes: '', status: 'Scheduled' })
     setEditId(null)
     setShowForm(true)
@@ -429,7 +429,8 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
   const openEdit = (r) => {
     setForm({
       round_number: r.round_number, interview_type: r.interview_type || 'Screening',
-      scheduled_date: r.scheduled_date || '', interviewer_name: r.interviewer_name || '',
+      scheduled_date: r.scheduled_date || '', scheduled_time: r.scheduled_time || '',
+      interviewer_name: r.interviewer_name || '',
       interviewer_linkedin: r.interviewer_linkedin || '', notes: r.notes || '',
       status: r.status || 'Scheduled',
     })
@@ -518,6 +519,7 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
             <div className="flex items-center gap-1.5">
               <Calendar size={11} className="text-navy-400" />
               <p className="text-xs text-navy-500">
+                {r.scheduled_time ? `${(() => { const [h,mn] = r.scheduled_time.split(':'); return `${h % 12 || 12}:${mn} ${h >= 12 ? 'PM' : 'AM'}` })()} · ` : ''}
                 {(() => {
                   const [y,m,d] = r.scheduled_date.split('-').map(Number)
                   return new Date(y,m-1,d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
@@ -591,6 +593,11 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
               <label className="block text-[10px] font-semibold text-navy-500 mb-1 uppercase tracking-wide">Date</label>
               <input type="date" className="input text-xs" value={form.scheduled_date}
                 onChange={e => setF('scheduled_date', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-navy-500 mb-1 uppercase tracking-wide">Time</label>
+              <input type="time" className="input text-xs" value={form.scheduled_time}
+                onChange={e => setF('scheduled_time', e.target.value)} />
             </div>
             <div>
               <label className="block text-[10px] font-semibold text-navy-500 mb-1 uppercase tracking-wide">Status</label>
@@ -2518,7 +2525,7 @@ function NetworkModal({ job, onClose }) {
                           </div>
 
                           {/* Meetings section */}
-                          {(contact.outreach_status === 'Meeting Scheduled' || (contactMeetings[contact.id] && contactMeetings[contact.id].length > 0)) && (
+                          {(contact.outreach_status === 'Meeting Scheduled' || addingMeeting === contact.id || (contactMeetings[contact.id] && contactMeetings[contact.id].length > 0)) && (
                             <div className="mt-3">
                               <div className="flex items-center justify-between mb-1.5">
                                 <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide flex items-center gap-1">
