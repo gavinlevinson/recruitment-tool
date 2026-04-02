@@ -2282,50 +2282,50 @@ def get_scrape_status(db: Session = Depends(get_db)):
 @app.get("/api/discovered-jobs/new-today")
 def get_new_today_jobs(db: Session = Depends(get_db)):
     """Return jobs from the most recent scrape batch. Stays visible until the next scrape runs."""
-    # Find the latest scraped_at timestamp and show all jobs from that batch
-    # (within 2 hours of the most recent job's scraped_at)
-    latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
-    if not latest or not latest.scraped_at:
-        return {"jobs": [], "count": 0}
-    cutoff = latest.scraped_at - timedelta(hours=2)
-    jobs = (
-        db.query(DiscoveredJob)
-        .filter(
-            DiscoveredJob.scraped_at >= cutoff,
-            DiscoveredJob.is_active == True,
-            or_(DiscoveredJob.match_score == None, DiscoveredJob.match_score >= 0),
+    try:
+        # Find the latest scraped_at timestamp
+        latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
+        if not latest or not latest.scraped_at:
+            return {"jobs": [], "count": 0}
+        # Get all jobs from the same scrape batch (within 2 hours)
+        cutoff = latest.scraped_at - timedelta(hours=2)
+        jobs = (
+            db.query(DiscoveredJob)
+            .filter(
+                DiscoveredJob.scraped_at >= cutoff,
+                DiscoveredJob.is_active == True,
+            )
+            .order_by(DiscoveredJob.scraped_at.desc())
+            .limit(500)
+            .all()
         )
-        .order_by(DiscoveredJob.scraped_at.desc())
-        .limit(2000)
-        .all()
-    )
-    # Cap at 20 jobs per source for diversity (no company dedup — show all roles)
-    seen_job_keys = set()
-    source_counts: dict = {}
-    result = []
-    for j in jobs:
-        job_key = f"{(j.company or '').lower().strip()}|{(j.role or '').lower().strip()}"
-        if not job_key or job_key in seen_job_keys:
-            continue
-        # Normalize source to broad category for capping
-        src = (j.source or "").lower()
-        if "sequoia" in src or "a16z" in src or "vc portfolio" in src or "founders fund" in src \
-                or "greylock" in src or "lightspeed" in src or "gv" in src or "true ventures" in src:
-            src_key = "vc_portfolio"
-        elif "yc" in src or "y combinator" in src:
-            src_key = "yc"
-        elif "linkedin" in src:
-            src_key = "linkedin"
-        elif "forbes" in src:
-            src_key = "forbes"
-        else:
-            src_key = src[:30]
-        if source_counts.get(src_key, 0) >= 20:
-            continue
-        seen_job_keys.add(job_key)
-        source_counts[src_key] = source_counts.get(src_key, 0) + 1
-        result.append(discovered_to_dict(j))
-    return {"jobs": result, "count": len(result)}
+        # Deduplicate by company+role, cap per source
+        seen = set()
+        source_counts: dict = {}
+        result = []
+        for j in jobs:
+            key = f"{(j.company or '').lower()}|{(j.role or '').lower()}"
+            if key in seen:
+                continue
+            src = (j.source or "").lower()[:30]
+            if source_counts.get(src, 0) >= 20:
+                continue
+            seen.add(key)
+            source_counts[src] = source_counts.get(src, 0) + 1
+            # Minimal dict — avoid touching columns that might not exist
+            result.append({
+                "id": j.id,
+                "company": j.company,
+                "role": j.role,
+                "location": j.location or "",
+                "source": j.source or "",
+                "job_url": j.job_url or "",
+                "match_score": j.match_score,
+            })
+        return {"jobs": result, "count": len(result)}
+    except Exception as e:
+        print(f"[NewToday] Error: {e}")
+        return {"jobs": [], "count": 0}
 
 
 @app.get("/api/company-summary")
