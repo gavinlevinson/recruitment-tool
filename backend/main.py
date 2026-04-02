@@ -2495,6 +2495,53 @@ async def run_scraper(db: Session = None):
                         print(f"[Scraper] Enriched {enriched} jobs with funding data")
             except Exception as e:
                 print(f"[Scraper] Funding enrichment error: {e}")
+
+            # Normalize company metadata: ensure all jobs at the same company
+            # share employee_count, funding_stage, and industry
+            try:
+                from sqlalchemy import func as _func
+                companies = _db.query(DiscoveredJob.company).filter(
+                    DiscoveredJob.is_active == True,
+                ).group_by(DiscoveredJob.company).having(
+                    _func.count(DiscoveredJob.id) > 1
+                ).all()
+                normalized = 0
+                for (company_name,) in companies:
+                    jobs_at_co = _db.query(DiscoveredJob).filter(
+                        DiscoveredJob.company == company_name,
+                        DiscoveredJob.is_active == True,
+                    ).all()
+                    # Find the "best" metadata from any job at this company
+                    best_employee = None
+                    best_funding = None
+                    best_industry = None
+                    for j in jobs_at_co:
+                        if j.employee_count and not best_employee:
+                            best_employee = j.employee_count
+                        if j.funding_stage and not best_funding:
+                            best_funding = j.funding_stage
+                        if j.industry and j.industry != 'Other' and not best_industry:
+                            best_industry = j.industry
+                    # Apply to all jobs at this company
+                    if best_employee or best_funding or best_industry:
+                        for j in jobs_at_co:
+                            changed = False
+                            if best_employee and not j.employee_count:
+                                j.employee_count = best_employee
+                                changed = True
+                            if best_funding and not j.funding_stage:
+                                j.funding_stage = best_funding
+                                changed = True
+                            if best_industry and (not j.industry or j.industry == 'Other'):
+                                j.industry = best_industry
+                                changed = True
+                            if changed:
+                                normalized += 1
+                if normalized:
+                    _db.commit()
+                    print(f"[Scraper] Normalized metadata for {normalized} jobs across companies")
+            except Exception as e:
+                print(f"[Scraper] Normalization error: {e}")
         except Exception as e:
             print(f"[Scraper] DB error: {e}")
             _db.rollback()
