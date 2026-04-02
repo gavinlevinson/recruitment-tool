@@ -29,6 +29,10 @@ const SOURCE_META = [
   { match: 'we work remotely', label: 'We Work Remotely',classes: 'bg-green-100 text-green-700 border border-green-200' },
   { match: 'vc portfolio',     label: 'VC Portfolio',    classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
   { match: 'topstartups',     label: 'TopStartups',     classes: 'bg-purple-100 text-purple-700 border border-purple-200' },
+  { match: 'bessemer',        label: 'Bessemer',        classes: 'bg-blue-100 text-blue-700 border border-blue-200' },
+  { match: 'index ventures',  label: 'Index Ventures',  classes: 'bg-amber-100 text-amber-700 border border-amber-200' },
+  { match: 'general catalyst',label: 'General Catalyst',classes: 'bg-red-100 text-red-700 border border-red-200' },
+  { match: 'techstars',       label: 'Techstars',       classes: 'bg-cyan-100 text-cyan-800 border border-cyan-200' },
 ]
 
 const ALL_SOURCES = [

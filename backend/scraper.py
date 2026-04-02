@@ -3113,6 +3113,187 @@ async def scrape_linkedin_top_startups() -> List[Dict]:
 
 
 # ─────────────────────────────────────────────
+# NEW VC PORTFOLIO SOURCES
+# ─────────────────────────────────────────────
+
+async def scrape_bessemer() -> List[Dict]:
+    """
+    Scrapes Bessemer Venture Partners portfolio page (static HTML with 420+ company
+    names and website URLs), then runs ATS discovery on each.
+    """
+    jobs = []
+    companies: list[tuple[str, str]] = []
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            resp = await client.get("https://www.bvp.com/portfolio", timeout=15.0)
+            if resp.status_code != 200:
+                print(f"[Bessemer] HTTP {resp.status_code}")
+                return []
+            html = resp.text
+
+            # Extract company name + website pairs from HTML
+            # Pattern: <h3>CompanyName</h3> ... href="https://company.com"
+            blocks = re.findall(
+                r'<h[234][^>]*>([^<]+)</h[234]>.*?href="(https?://[^"]+)"',
+                html, re.DOTALL,
+            )
+            seen_domains: set = set()
+            for name, website in blocks:
+                name = name.strip()
+                if not name or 'bvp.com' in website or 'linkedin' in website or 'twitter' in website:
+                    continue
+                domain = re.sub(r'^https?://(www\.)?', '', website.rstrip('/')).split('/')[0].lower()
+                if domain and domain not in seen_domains and len(name) < 60:
+                    seen_domains.add(domain)
+                    companies.append((name, website))
+
+            print(f"[Bessemer] {len(companies)} portfolio companies found")
+            if not companies:
+                return []
+
+            sem = asyncio.Semaphore(40)
+            tasks = [_ats_discover_jobs(name, website, "Bessemer", client, sem) for name, website in companies]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, list):
+                    jobs.extend(r)
+    except Exception as e:
+        print(f"[Bessemer] Error: {e}")
+
+    print(f"[Bessemer] {len(jobs)} jobs found via ATS discovery")
+    return jobs
+
+
+async def scrape_index_ventures() -> List[Dict]:
+    """
+    Scrapes Index Ventures portfolio page for company slugs, constructs
+    domain guesses, and runs ATS discovery on each.
+    """
+    jobs = []
+    companies: list[tuple[str, str]] = []
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            resp = await client.get("https://www.indexventures.com/companies/", timeout=15.0)
+            if resp.status_code != 200:
+                print(f"[Index Ventures] HTTP {resp.status_code}")
+                return []
+            html = resp.text
+
+            # Extract company slugs from /companies/slug/ links
+            slugs = set(re.findall(r'/companies/([a-z0-9-]+)/', html))
+            seen: set = set()
+            for slug in slugs:
+                if slug in seen or slug in ('index', 'all', 'seed'):
+                    continue
+                seen.add(slug)
+                # Construct domain guess from slug
+                name = slug.replace('-', ' ').title()
+                domain_guess = slug.replace('-', '') + '.com'
+                website = f"https://{domain_guess}"
+                companies.append((name, website))
+
+            print(f"[Index Ventures] {len(companies)} portfolio companies found")
+            if not companies:
+                return []
+
+            sem = asyncio.Semaphore(40)
+            tasks = [_ats_discover_jobs(name, website, "Index Ventures", client, sem) for name, website in companies]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, list):
+                    jobs.extend(r)
+    except Exception as e:
+        print(f"[Index Ventures] Error: {e}")
+
+    print(f"[Index Ventures] {len(jobs)} jobs found via ATS discovery")
+    return jobs
+
+
+async def scrape_gc_techstars_getro() -> List[Dict]:
+    """
+    Scrapes General Catalyst and Techstars job boards (both powered by Getro).
+    Extracts the initial 20 jobs embedded in each page's Next.js payload,
+    plus company names for ATS discovery.
+    """
+    jobs = []
+
+    GETRO_BOARDS = [
+        ("https://jobs.generalcatalyst.com/jobs", "General Catalyst"),
+        ("https://jobs.techstars.com/jobs", "Techstars"),
+    ]
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            for board_url, source_label in GETRO_BOARDS:
+                try:
+                    resp = await client.get(board_url, timeout=15.0)
+                    if resp.status_code != 200:
+                        print(f"[{source_label}] HTTP {resp.status_code}")
+                        continue
+                    html = resp.text
+
+                    # Extract Next.js __NEXT_DATA__ JSON
+                    match = re.search(
+                        r'<script\s+id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+                        html, re.DOTALL,
+                    )
+                    if not match:
+                        print(f"[{source_label}] No __NEXT_DATA__ found")
+                        continue
+
+                    import json as _json
+                    data = _json.loads(match.group(1))
+                    state = data.get("props", {}).get("pageProps", {}).get("initialState", {})
+                    found_jobs = state.get("jobs", {}).get("found", [])
+
+                    company_names: set = set()
+                    for j in found_jobs:
+                        org = j.get("organization") or {}
+                        company = org.get("name", "")
+                        title = j.get("title", "")
+                        url = j.get("url", "")
+                        locations = j.get("searchableLocations", [])
+                        location = locations[0] if locations else ""
+
+                        if company and title and url:
+                            jb = _make_vc_job(company, title, location, url, source_label)
+                            if jb:
+                                jobs.append(jb)
+
+                        if company:
+                            company_names.add(company)
+
+                    print(f"[{source_label}] {len(found_jobs)} jobs from page, {len(company_names)} unique companies")
+
+                    # ATS discovery on companies found (those not already covered by direct URLs)
+                    sem = asyncio.Semaphore(40)
+                    tasks = []
+                    for name in company_names:
+                        slug_guess = re.sub(r'[^a-z0-9]', '', name.lower())
+                        website = f"https://{slug_guess}.com"
+                        tasks.append(_ats_discover_jobs(name, website, source_label, client, sem, max_per_co=10))
+
+                    if tasks:
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
+                        ats_count = 0
+                        for r in results:
+                            if isinstance(r, list):
+                                jobs.extend(r)
+                                ats_count += len(r)
+                        print(f"[{source_label}] +{ats_count} jobs via ATS discovery on {len(tasks)} companies")
+
+                except Exception as e:
+                    print(f"[{source_label}] Error: {e}")
+    except Exception as e:
+        print(f"[Getro Boards] Error: {e}")
+
+    print(f"[Getro Boards] {len(jobs)} total jobs from GC + Techstars")
+    return jobs
+
+
+# ─────────────────────────────────────────────
 # AGGREGATE + DEDUPLICATE
 # ─────────────────────────────────────────────
 async def scrape_all_sources() -> List[Dict]:
@@ -3136,6 +3317,9 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_topstartups(),         # topstartups.io AI list
         scrape_forbes_startup_lists(), # Forbes Best Startup Employers → ATS discovery
         scrape_linkedin_top_startups(), # LinkedIn Top 50 Startups 2024 → ATS discovery
+        scrape_bessemer(),            # Bessemer Venture Partners portfolio → ATS discovery
+        scrape_index_ventures(),      # Index Ventures portfolio → ATS discovery
+        scrape_gc_techstars_getro(),  # General Catalyst + Techstars (Getro boards + ATS)
         return_exceptions=True,
     )
 
