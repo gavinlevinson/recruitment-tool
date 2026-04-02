@@ -115,10 +115,61 @@ def _backfill_industry_and_salary():
     finally:
         db.close()
 
+def _cleanup_orphaned_data():
+    """One-time cleanup: assign orphaned contacts/jobs to the first admin user,
+    and delete test accounts."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        from sqlalchemy import text as _text
+
+        # Delete specific test accounts and their data
+        test_emails = ['jared@test.com', 'max@test.com', 'alex@test.com', 'bteich@test.com']
+        # Find test users by checking recently created accounts that aren't Gavin
+        test_users = db.execute(_text(
+            "SELECT id, email FROM users WHERE email NOT LIKE '%gavinlev%' AND email NOT LIKE '%gavin.levinson%'"
+        )).fetchall()
+        for uid, email in test_users:
+            print(f"[Cleanup] Removing test user {uid} ({email}) and their data")
+            db.execute(_text(f"DELETE FROM contacts WHERE user_id = {uid}"))
+            db.execute(_text(f"DELETE FROM jobs WHERE user_id = {uid}"))
+            db.execute(_text(f"DELETE FROM user_preferences WHERE user_id = {uid}"))
+            db.execute(_text(f"DELETE FROM user_profiles WHERE user_id = {uid}"))
+            db.execute(_text(f"DELETE FROM manual_calendar_events WHERE user_id = {uid}"))
+            db.execute(_text(f"DELETE FROM interview_rounds WHERE user_id = {uid}"))
+            db.execute(_text(f"DELETE FROM users WHERE id = {uid}"))
+
+        # Find Gavin's user ID (the primary/admin user)
+        gavin = db.execute(_text(
+            "SELECT id FROM users WHERE email LIKE '%gavinlev%' OR email LIKE '%gavin.levinson%' LIMIT 1"
+        )).fetchone()
+        if gavin:
+            gavin_id = gavin[0]
+            # Assign orphaned contacts (user_id=NULL) to Gavin
+            orphaned = db.execute(_text(
+                f"UPDATE contacts SET user_id = {gavin_id} WHERE user_id IS NULL"
+            ))
+            print(f"[Cleanup] Assigned orphaned contacts to user {gavin_id}")
+
+            # Assign orphaned jobs (user_id=NULL) to Gavin
+            db.execute(_text(
+                f"UPDATE jobs SET user_id = {gavin_id} WHERE user_id IS NULL"
+            ))
+
+        db.commit()
+        print("[Cleanup] Done")
+    except Exception as e:
+        print(f"[Cleanup] Error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def startup_event():
     global _scrape_completed_at
     init_db()
+    _cleanup_orphaned_data()
     _backfill_industry_and_salary()
 
     # Restore last scrape timestamp from DB so it survives restarts
@@ -1264,10 +1315,15 @@ def create_contact(contact: ContactCreate,
     return contact_to_dict(db_contact)
 
 @app.put("/api/contacts/{contact_id}")
-def update_contact(contact_id: int, contact: ContactUpdate, db: Session = Depends(get_db)):
+def update_contact(contact_id: int, contact: ContactUpdate,
+                   current_user: Optional[User] = Depends(get_optional_user),
+                   db: Session = Depends(get_db)):
     db_contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if not db_contact:
         raise HTTPException(status_code=404, detail="Contact not found")
+    # Verify ownership
+    if current_user and db_contact.user_id and db_contact.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your contact")
     for k, v in contact.dict(exclude_none=True).items():
         setattr(db_contact, k, v)
     db_contact.updated_at = datetime.utcnow()
@@ -1276,10 +1332,15 @@ def update_contact(contact_id: int, contact: ContactUpdate, db: Session = Depend
     return contact_to_dict(db_contact)
 
 @app.delete("/api/contacts/{contact_id}")
-def delete_contact(contact_id: int, db: Session = Depends(get_db)):
+def delete_contact(contact_id: int,
+                   current_user: Optional[User] = Depends(get_optional_user),
+                   db: Session = Depends(get_db)):
     db_contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if not db_contact:
         raise HTTPException(status_code=404, detail="Contact not found")
+    # Verify ownership
+    if current_user and db_contact.user_id and db_contact.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your contact")
     db.delete(db_contact)
     db.commit()
     return {"ok": True}
