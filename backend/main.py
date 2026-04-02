@@ -116,44 +116,26 @@ def _backfill_industry_and_salary():
         db.close()
 
 def _cleanup_orphaned_data():
-    """One-time cleanup: assign orphaned contacts/jobs to the first admin user,
-    and delete test accounts."""
+    """One-time cleanup: assign orphaned contacts/jobs (user_id=NULL) to the first user.
+    Does NOT delete any accounts — that was a bug that destroyed new user registrations."""
     from database import SessionLocal
     db = SessionLocal()
     try:
         from sqlalchemy import text as _text
 
-        # Delete specific test accounts and their data
-        test_emails = ['jared@test.com', 'max@test.com', 'alex@test.com', 'bteich@test.com']
-        # Find test users by checking recently created accounts that aren't Gavin
-        test_users = db.execute(_text(
-            "SELECT id, email FROM users WHERE email NOT LIKE '%gavinlev%' AND email NOT LIKE '%gavin.levinson%'"
-        )).fetchall()
-        for uid, email in test_users:
-            print(f"[Cleanup] Removing test user {uid} ({email}) and their data")
-            db.execute(_text(f"DELETE FROM contacts WHERE user_id = {uid}"))
-            db.execute(_text(f"DELETE FROM jobs WHERE user_id = {uid}"))
-            db.execute(_text(f"DELETE FROM user_preferences WHERE user_id = {uid}"))
-            db.execute(_text(f"DELETE FROM user_profiles WHERE user_id = {uid}"))
-            db.execute(_text(f"DELETE FROM manual_calendar_events WHERE user_id = {uid}"))
-            db.execute(_text(f"DELETE FROM interview_rounds WHERE user_id = {uid}"))
-            db.execute(_text(f"DELETE FROM users WHERE id = {uid}"))
-
-        # Find Gavin's user ID (the primary/admin user)
-        gavin = db.execute(_text(
-            "SELECT id FROM users WHERE email LIKE '%gavinlev%' OR email LIKE '%gavin.levinson%' LIMIT 1"
+        # Find the first registered user to assign orphaned data to
+        first_user = db.execute(_text(
+            "SELECT id FROM users ORDER BY id LIMIT 1"
         )).fetchone()
-        if gavin:
-            gavin_id = gavin[0]
-            # Assign orphaned contacts (user_id=NULL) to Gavin
-            orphaned = db.execute(_text(
-                f"UPDATE contacts SET user_id = {gavin_id} WHERE user_id IS NULL"
-            ))
-            print(f"[Cleanup] Assigned orphaned contacts to user {gavin_id}")
-
-            # Assign orphaned jobs (user_id=NULL) to Gavin
+        if first_user:
+            first_id = first_user[0]
+            # Assign orphaned contacts (user_id=NULL) to first user
             db.execute(_text(
-                f"UPDATE jobs SET user_id = {gavin_id} WHERE user_id IS NULL"
+                f"UPDATE contacts SET user_id = {first_id} WHERE user_id IS NULL"
+            ))
+            # Assign orphaned jobs (user_id=NULL) to first user
+            db.execute(_text(
+                f"UPDATE jobs SET user_id = {first_id} WHERE user_id IS NULL"
             ))
 
         db.commit()

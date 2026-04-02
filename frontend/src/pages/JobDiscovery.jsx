@@ -2080,7 +2080,7 @@ export default function JobDiscovery() {
                 {runResult.startsWith('Up to date') ? '✓' : '✦'} {runResult}
               </p>
             ) : (
-              <p className="text-xs text-navy-400">Scans your sources to find roles matched to your resume &amp; preferences</p>
+              <p className="text-xs text-navy-400">Scans your sources to find roles matched to your resume &amp; preferences. Runs automatically every day at 9am ET.</p>
             )}
           </div>
         </div>
