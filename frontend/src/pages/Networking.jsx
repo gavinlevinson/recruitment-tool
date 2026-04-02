@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Plus, Pencil, Trash2, ExternalLink, Search, X,
   ChevronDown, Mail, Check, RefreshCw, Users, Building2, Linkedin,
-  Copy, Sparkles, ArrowLeft, FileText, MapPin, PlusCircle, Link2,
+  Copy, Sparkles, ArrowLeft, FileText, MapPin, PlusCircle, Link2, Calendar,
 } from 'lucide-react'
-import { contactsApi, jobsApi, emailTemplatesApi, networkingApi, coachApi, nylasApi, googleDocsApi } from '../api'
+import { contactsApi, jobsApi, emailTemplatesApi, networkingApi, coachApi, nylasApi, googleDocsApi, calendarApi } from '../api'
 import { parseUTCDateTime } from '../utils/dates'
 import { useAuth } from '../context/AuthContext'
 
@@ -250,6 +250,7 @@ function DetailPanel({ contact, onClose, onUpdate, connectionTypes }) {
   const [followUp2, setFollowUp2] = useState(!!contact.follow_up_2)
   const [notes, setNotes] = useState(contact.meeting_notes || '')
   const [saving, setSaving] = useState(false)
+  const [meetingDate, setMeetingDate] = useState('')
   const [copied, setCopied] = useState(false)
 
   const [docLinks, setDocLinks]           = useState(contact.doc_links || [])
@@ -270,6 +271,18 @@ function DetailPanel({ contact, onClose, onUpdate, connectionTypes }) {
     setSaving(true)
     try {
       await onUpdate(contact.id, { outreach_status: status, follow_up_1: followUp1, follow_up_2: followUp2, meeting_notes: notes })
+      // Create calendar event when meeting is scheduled with a date
+      if (status === 'Meeting Scheduled' && meetingDate) {
+        try {
+          await calendarApi.createEvent({
+            title: `Networking: ${contact.name} at ${contact.company || 'Unknown'}`,
+            date: meetingDate,
+            time: '12:00',
+            event_type: 'networking',
+            notes: [contact.title, contact.company].filter(Boolean).join(' at '),
+          })
+        } catch (e) { console.error('Failed to create calendar event:', e) }
+      }
       onClose()
     } finally { setSaving(false) }
   }
@@ -367,6 +380,19 @@ function DetailPanel({ contact, onClose, onUpdate, connectionTypes }) {
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-navy-400 pointer-events-none" />
             </div>
+            {status === 'Meeting Scheduled' && (
+              <div className="mt-2">
+                <label className="flex items-center gap-2 text-xs text-navy-500">
+                  <Calendar size={13} className="text-violet-500" />
+                  Meeting date
+                </label>
+                <input type="date" className="input text-sm mt-1" value={meetingDate}
+                  onChange={e => setMeetingDate(e.target.value)} />
+                {meetingDate && (
+                  <p className="text-[10px] text-violet-500 mt-1">This will be added to your Calendar</p>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <p className="text-xs font-semibold text-navy-400 uppercase tracking-wide mb-2">Follow-ups</p>
