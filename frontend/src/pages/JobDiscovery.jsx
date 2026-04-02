@@ -1498,6 +1498,10 @@ function OnboardingSlide({ icon: Icon, iconColor, badge, title, points, children
           </ul>
         )}
         {children}
+        {/* Scroll hint arrow pointing down */}
+        <div className="pt-4">
+          <ChevronRight size={18} className="text-white/30 mx-auto rotate-90 animate-bounce" />
+        </div>
       </div>
     </div>
   )
@@ -1543,7 +1547,7 @@ function OnboardingSlideshow({ onClose }) {
             "Link Google Calendar so interviews, deadlines, and networking calls stay in sync",
           ]}
         >
-          <p className="text-violet-400 text-sm pt-2">Head to your Profile page to get started</p>
+          <p className="text-violet-400 text-sm pt-2">Head to your <span className="font-bold text-violet-300">Profile</span> page after this tour to connect your accounts</p>
         </OnboardingSlide>
 
         {/* Slide 3 — Job Discovery */}
@@ -2067,7 +2071,7 @@ export default function JobDiscovery() {
               {running ? `Scanning… ${runElapsed}s` : 'Run Discovery Agent'}
             </button>
             {running ? (
-              <p className="text-xs text-navy-400">Scanning your sources…</p>
+              <p className="text-xs text-navy-400">Scanning your sources… A full scan typically takes 2–4 minutes.</p>
             ) : runResult ? (
               <p className={`text-xs font-medium ${runResult.startsWith('Up to date') ? 'text-navy-400' : 'text-emerald-600'}`}>
                 {runResult.startsWith('Up to date') ? '✓' : '✦'} {runResult}

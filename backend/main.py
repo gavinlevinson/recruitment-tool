@@ -3500,7 +3500,7 @@ ABSOLUTE RULE — NO HALLUCINATION: Never invent, assume, or fabricate any fact,
 TONE RULE: Detect the writing register of the resume (e.g. "formal and passive", "active and punchy", "conversational first-person") and preserve it in every rewrite suggestion.
 {context_section}
 Resume:
-{resume_text[:3500]}
+{resume_text[:6000]}
 
 Return ONLY this JSON — no commentary outside it:
 {{
