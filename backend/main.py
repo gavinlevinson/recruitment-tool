@@ -256,13 +256,10 @@ def register(payload: dict, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    # Seed default preferences for this user
+    # Seed default preferences for this user — start with NO filters (show all jobs)
     prefs = UserPreferences(user_id=user.id)
     db.add(prefs)
     db.commit()
-    if "years_experience" in payload:
-        prefs.years_experience = payload.get("years_experience")
-        db.commit()
     token = create_access_token(user.id, user.email)
     return {"token": token, "user": _user_to_dict(user)}
 

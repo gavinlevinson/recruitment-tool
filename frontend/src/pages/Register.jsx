@@ -122,6 +122,7 @@ export default function Register() {
         try {
           const fd = new FormData()
           fd.append('file', resumeFile)
+          fd.append('file_type', 'resume')
           await profileApi.uploadFile(fd)
           setUploadStatus('done')
           // Rescore in background — don't block navigation
