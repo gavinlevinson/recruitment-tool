@@ -140,9 +140,12 @@ export default function Register() {
         sessionStorage.removeItem('discovery_hideAdded')
         sessionStorage.removeItem('discovery_sort')
         sessionStorage.removeItem('discovery_page')
+        // Mark as new user for onboarding slideshow
+        localStorage.setItem('orion_show_onboarding', '1')
+        localStorage.removeItem('orion_onboarding_done')
       } catch {}
 
-      navigate('/discovery', { replace: true, state: { firstTime: true } })
+      navigate('/discovery', { replace: true })
     } catch (err) {
       setError(err.response?.data?.detail || 'Registration failed. Please try again.')
     } finally {

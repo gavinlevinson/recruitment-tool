@@ -28,6 +28,7 @@ export const authApi = {
   login:    (data)  => api.post('/auth/login', data),
   me:       ()      => api.get('/auth/me'),
   updateMe: (data)  => api.put('/auth/me', data),
+  deleteAccount: () => api.delete('/auth/account'),
 }
 
 export const profileApi = {

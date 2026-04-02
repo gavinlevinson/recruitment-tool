@@ -1636,11 +1636,14 @@ export default function JobDiscovery() {
     // Show on first registration OR when ?tour=1 query param is present
     const params = new URLSearchParams(window.location.search)
     if (params.get('tour') === '1') return true
-    return location.state?.firstTime && !localStorage.getItem('orion_onboarding_done')
+    // Check localStorage flag set by Register.jsx
+    if (localStorage.getItem('orion_show_onboarding') === '1' && !localStorage.getItem('orion_onboarding_done')) return true
+    return false
   })
   const closeOnboarding = () => {
     setShowOnboarding(false)
     localStorage.setItem('orion_onboarding_done', '1')
+    localStorage.removeItem('orion_show_onboarding')
   }
 
   const [jobs, setJobs]       = useState([])

@@ -1427,6 +1427,29 @@ def check_calendar_overlap(
 
     return {"overlapping": overlapping}
 
+@app.delete("/api/auth/account")
+def delete_account(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Permanently delete the current user's account and ALL associated data."""
+    uid = current_user.id
+    # Delete all user data in order (foreign key safe)
+    db.execute(text(f"DELETE FROM manual_calendar_events WHERE user_id = {uid}"))
+    db.execute(text(f"DELETE FROM interview_rounds WHERE user_id = {uid}"))
+    db.execute(text(f"DELETE FROM contacts WHERE user_id = {uid}"))
+    db.execute(text(f"DELETE FROM jobs WHERE user_id = {uid}"))
+    db.execute(text(f"DELETE FROM user_preferences WHERE user_id = {uid}"))
+    db.execute(text(f"DELETE FROM user_profiles WHERE user_id = {uid}"))
+    db.execute(text(f"DELETE FROM email_templates WHERE user_id = {uid}"))
+    db.execute(text(f"DELETE FROM cover_letter_templates WHERE user_id = {uid}"))
+    db.execute(text(f"DELETE FROM event_rsvps WHERE user_id = {uid}"))
+    db.execute(text(f"DELETE FROM job_collections WHERE user_id = {uid}"))
+    db.execute(text(f"DELETE FROM users WHERE id = {uid}"))
+    db.commit()
+    return {"ok": True, "message": "Account and all data permanently deleted"}
+
+
 @app.post("/api/contacts/hunter-domain")
 async def hunter_domain_search(payload: dict):
     """
@@ -2367,7 +2390,24 @@ async def get_company_summary(company: str, description: str = ""):
 
 def discovered_to_dict(j, user_tracked_ids=None):
     # Per-user added_to_tracker: check if this user has a Job with this discovered_job_id
-    added = j.id in user_tracked_ids if user_tracked_ids is not None else j.added_to_tracker
+    try:
+        added = j.id in user_tracked_ids if user_tracked_ids is not None else j.added_to_tracker
+    except Exception:
+        added = False
+    try:
+        return _discovered_to_dict_inner(j, added)
+    except Exception as e:
+        # Fallback: return minimal dict if new columns don't exist yet
+        return {
+            "id": j.id, "company": j.company, "role": j.role, "location": j.location,
+            "job_url": j.job_url, "source": j.source, "description": j.description,
+            "salary_range": j.salary_range, "posted_date": j.posted_date,
+            "match_score": j.match_score, "match_reasons": j.match_reasons,
+            "is_active": j.is_active, "added_to_tracker": added,
+            "scraped_at": j.scraped_at.isoformat() if j.scraped_at else None,
+        }
+
+def _discovered_to_dict_inner(j, added):
     return {
         "id": j.id, "company": j.company, "role": j.role, "location": j.location,
         "job_url": j.job_url, "source": j.source, "description": j.description,
@@ -2380,8 +2420,8 @@ def discovered_to_dict(j, user_tracked_ids=None):
         "deadline": j.deadline if hasattr(j, "deadline") else None,
         "salary_min": j.salary_min if hasattr(j, "salary_min") else None,
         "industry": j.industry if hasattr(j, "industry") else None,
-        "funding_amount": j.funding_amount if hasattr(j, "funding_amount") else None,
-        "funding_date": j.funding_date if hasattr(j, "funding_date") else None,
+        "funding_amount": getattr(j, "funding_amount", None),
+        "funding_date": getattr(j, "funding_date", None),
         "recently_funded": _is_recently_funded(j),
         "scraped_at": j.scraped_at.isoformat() if j.scraped_at else None,
     }

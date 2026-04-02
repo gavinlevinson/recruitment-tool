@@ -178,6 +178,45 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
   )
 }
 
+function DeleteAccountSection() {
+  const { logout } = useAuth()
+  const [confirm, setConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await authApi.deleteAccount()
+      localStorage.clear()
+      sessionStorage.clear()
+      logout()
+    } catch (e) {
+      console.error('Delete account failed:', e)
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="card p-5 border border-red-200 bg-red-50/30 mt-6">
+      <h3 className="text-sm font-semibold text-red-700 mb-1">Delete Account</h3>
+      <p className="text-xs text-red-600 mb-3">Permanently delete your account and all associated data. This action cannot be undone.</p>
+      {!confirm ? (
+        <button onClick={() => setConfirm(true)} className="text-xs font-medium text-red-600 hover:text-red-800 px-3 py-1.5 rounded-lg border border-red-300 hover:bg-red-100 transition-colors">
+          Delete My Account
+        </button>
+      ) : (
+        <div className="flex items-center gap-2">
+          <button onClick={handleDelete} disabled={deleting}
+            className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+            {deleting ? 'Deleting...' : 'Yes, permanently delete everything'}
+          </button>
+          <button onClick={() => setConfirm(false)} className="text-xs text-navy-500 hover:text-navy-700">Cancel</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Profile() {
   const { user, refreshUser } = useAuth()
   const location = useLocation()
@@ -782,6 +821,9 @@ export default function Profile() {
           </p>
         </div>
       )}
+
+      {/* Delete Account */}
+      <DeleteAccountSection />
     </div>
   )
 }
