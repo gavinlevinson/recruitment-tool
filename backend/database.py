@@ -240,6 +240,7 @@ class InterviewRound(Base):
     round_number = Column(Integer, default=1)
     interview_type = Column(String, nullable=True)     # Screening, Technical, Behavioral, Case Study, Final Round
     scheduled_date = Column(String, nullable=True)     # YYYY-MM-DD
+    scheduled_time = Column(String, nullable=True)     # HH:MM (24h format)
     interviewer_name = Column(String, nullable=True)
     interviewer_linkedin = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
@@ -272,6 +273,7 @@ class ManualCalendarEvent(Base):
     user_id = Column(Integer, index=True, nullable=False)
     title = Column(String, nullable=False)
     date = Column(String, nullable=False)   # YYYY-MM-DD
+    time = Column(String, nullable=True)    # HH:MM (24h format), null = all-day
     type = Column(String, default="reminder")  # interview | deadline | reminder | networking
     notes = Column(Text, nullable=True)
     url = Column(String, nullable=True)
@@ -329,6 +331,9 @@ def run_migrations():
         "ALTER TABLE interview_rounds ADD COLUMN gcal_event_id TEXT",
         "ALTER TABLE manual_calendar_events ADD COLUMN gcal_event_id TEXT",
         "ALTER TABLE manual_calendar_events ADD COLUMN contact_id INTEGER",
+        # Time fields for calendar events
+        "ALTER TABLE manual_calendar_events ADD COLUMN time TEXT",
+        "ALTER TABLE interview_rounds ADD COLUMN scheduled_time TEXT",
         # Google Docs integration columns
         "ALTER TABLE users ADD COLUMN google_access_token TEXT",
         "ALTER TABLE users ADD COLUMN google_refresh_token TEXT",
@@ -395,6 +400,9 @@ def _run_pg_migrations():
         "ALTER TABLE interview_rounds ADD COLUMN IF NOT EXISTS gcal_event_id TEXT",
         "ALTER TABLE manual_calendar_events ADD COLUMN IF NOT EXISTS gcal_event_id TEXT",
         "ALTER TABLE manual_calendar_events ADD COLUMN IF NOT EXISTS contact_id INTEGER",
+        # Time fields for calendar events
+        "ALTER TABLE manual_calendar_events ADD COLUMN IF NOT EXISTS time TEXT",
+        "ALTER TABLE interview_rounds ADD COLUMN IF NOT EXISTS scheduled_time TEXT",
         # Google Docs integration columns
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_access_token TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_refresh_token TEXT",

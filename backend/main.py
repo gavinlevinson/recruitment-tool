@@ -820,6 +820,7 @@ def get_calendar_events(
                     "type": m.type or "reminder",
                     "title": m.title,
                     "date": m.date,
+                    "time": m.time if hasattr(m, 'time') else None,
                     "notes": m.notes or "",
                     "url": m.url or "",
                     "manual": True,
@@ -846,10 +847,12 @@ async def create_manual_calendar_event(
     event_type = payload.get("type", "reminder")
     if event_type not in ("interview", "deadline", "reminder", "networking"):
         event_type = "reminder"
+    event_time = (payload.get("time") or "").strip() or None  # HH:MM or None
     ev = ManualCalendarEvent(
         user_id=current_user.id,
         title=title,
         date=date,
+        time=event_time,
         type=event_type,
         notes=payload.get("notes") or None,
         url=payload.get("url") or None,
@@ -863,12 +866,27 @@ async def create_manual_calendar_event(
     if current_user.google_refresh_token:
         try:
             token = await _google_get_valid_token(current_user, db)
-            event_body = {
-                "summary": title,
-                "start": {"date": date},
-                "end":   {"date": date},
-                "description": ev.notes or "",
-            }
+            if event_time:
+                # Timed event
+                start_dt = f"{date}T{event_time}:00"
+                # End = +1 hour
+                h, m = map(int, event_time.split(':'))
+                end_h = h + 1
+                end_dt = f"{date}T{end_h:02d}:{m:02d}:00"
+                event_body = {
+                    "summary": title,
+                    "start": {"dateTime": start_dt, "timeZone": "America/New_York"},
+                    "end":   {"dateTime": end_dt,   "timeZone": "America/New_York"},
+                    "description": ev.notes or "",
+                }
+            else:
+                # All-day event
+                event_body = {
+                    "summary": title,
+                    "start": {"date": date},
+                    "end":   {"date": date},
+                    "description": ev.notes or "",
+                }
             gcal_id = await _gcal_upsert_event(token, None, event_body)
             ev.gcal_event_id = gcal_id
             db.commit()
@@ -880,6 +898,7 @@ async def create_manual_calendar_event(
         "type": ev.type,
         "title": ev.title,
         "date": ev.date,
+        "time": ev.time,
         "notes": ev.notes or "",
         "url": ev.url or "",
         "contact_id": ev.contact_id,
@@ -1025,6 +1044,7 @@ class InterviewRoundCreate(BaseModel):
     round_number: int = 1
     interview_type: Optional[str] = None
     scheduled_date: Optional[str] = None
+    scheduled_time: Optional[str] = None
     interviewer_name: Optional[str] = None
     interviewer_linkedin: Optional[str] = None
     notes: Optional[str] = None
@@ -1034,6 +1054,7 @@ class InterviewRoundUpdate(BaseModel):
     round_number: Optional[int] = None
     interview_type: Optional[str] = None
     scheduled_date: Optional[str] = None
+    scheduled_time: Optional[str] = None
     interviewer_name: Optional[str] = None
     interviewer_linkedin: Optional[str] = None
     notes: Optional[str] = None
@@ -1043,7 +1064,9 @@ def round_to_dict(r: InterviewRound) -> dict:
     return {
         "id": r.id, "job_id": r.job_id, "user_id": r.user_id,
         "round_number": r.round_number, "interview_type": r.interview_type,
-        "scheduled_date": r.scheduled_date, "interviewer_name": r.interviewer_name,
+        "scheduled_date": r.scheduled_date,
+        "scheduled_time": r.scheduled_time if hasattr(r, 'scheduled_time') else None,
+        "interviewer_name": r.interviewer_name,
         "interviewer_linkedin": r.interviewer_linkedin, "notes": r.notes,
         "status": r.status,
         "gcal_event_id": r.gcal_event_id if hasattr(r, 'gcal_event_id') else None,
@@ -1273,10 +1296,65 @@ def get_contact_meetings(
             "calendar_id": f"manual-{ev.id}",
             "title": ev.title,
             "date": ev.date,
+            "time": ev.time if hasattr(ev, 'time') else None,
             "notes": ev.notes or "",
         }
         for ev in events
     ]
+
+
+@app.get("/api/calendar/events/check-overlap")
+def check_calendar_overlap(
+    date: str,
+    time: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check if a proposed date+time conflicts with existing timed events."""
+    if not date or not time:
+        return {"overlapping": []}
+
+    try:
+        proposed_h, proposed_m = map(int, time.split(':'))
+    except Exception:
+        return {"overlapping": []}
+
+    overlapping = []
+
+    # Check manual calendar events on that date with a time set
+    manual = db.query(ManualCalendarEvent).filter(
+        ManualCalendarEvent.user_id == current_user.id,
+        ManualCalendarEvent.date == date,
+    ).all()
+    for m in manual:
+        m_time = getattr(m, 'time', None)
+        if not m_time:
+            continue
+        try:
+            m_h, m_m = map(int, m_time.split(':'))
+            # Overlap if within 1 hour
+            diff = abs((proposed_h * 60 + proposed_m) - (m_h * 60 + m_m))
+            if diff < 60:
+                overlapping.append({"title": m.title, "time": m_time, "type": m.type or "event"})
+        except Exception:
+            pass
+
+    # Check interview rounds on that date
+    rounds = db.query(InterviewRound).filter(
+        InterviewRound.user_id == current_user.id,
+        InterviewRound.scheduled_date == date,
+    ).all()
+    for r in rounds:
+        r_time = getattr(r, 'scheduled_time', None) or "10:00"
+        try:
+            r_h, r_m = map(int, r_time.split(':'))
+            diff = abs((proposed_h * 60 + proposed_m) - (r_h * 60 + r_m))
+            if diff < 60:
+                overlapping.append({"title": f"Interview Round {r.round_number}", "time": r_time, "type": "interview"})
+        except Exception:
+            pass
+
+    return {"overlapping": overlapping}
 
 @app.post("/api/contacts/hunter-domain")
 async def hunter_domain_search(payload: dict):
@@ -4653,9 +4731,11 @@ async def sync_interview_to_gcal(
     role    = job.role    if job else "Role"
     token = await _google_get_valid_token(current_user, db)
     round_type = round_.interview_type or f"Round {round_.round_number}"
-    # Default: 1-hour event at 10am on the scheduled date
-    start_dt = f"{round_.scheduled_date}T10:00:00"
-    end_dt   = f"{round_.scheduled_date}T11:00:00"
+    # Use scheduled_time if set, otherwise default to 10am
+    t = getattr(round_, 'scheduled_time', None) or "10:00"
+    h, m = map(int, t.split(':'))
+    start_dt = f"{round_.scheduled_date}T{h:02d}:{m:02d}:00"
+    end_dt   = f"{round_.scheduled_date}T{h+1:02d}:{m:02d}:00"
     description_parts = [f"{round_type} interview for {role} at {company}."]
     if round_.interviewer_name:
         description_parts.append(f"Interviewer: {round_.interviewer_name}")

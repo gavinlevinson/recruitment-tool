@@ -267,10 +267,20 @@ function EventPopover({ event, onClose, onDelete }) {
 function AddEventModal({ onClose, onSave, defaultDate }) {
   const [title, setTitle]       = useState('')
   const [date, setDate]         = useState(defaultDate || todayStr())
+  const [time, setTime]         = useState('')
   const [type, setType]         = useState('reminder')
   const [notes, setNotes]       = useState('')
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
+  const [overlap, setOverlap]   = useState([])
+
+  // Check overlap when date + time change
+  useEffect(() => {
+    if (!date || !time) { setOverlap([]); return }
+    calendarApi.checkOverlap(date, time)
+      .then(res => setOverlap(res.data?.overlapping || []))
+      .catch(() => setOverlap([]))
+  }, [date, time])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -279,7 +289,7 @@ function AddEventModal({ onClose, onSave, defaultDate }) {
     setSaving(true)
     setError('')
     try {
-      await onSave({ title: title.trim(), date, type, notes: notes.trim() || undefined })
+      await onSave({ title: title.trim(), date, time: time || undefined, type, notes: notes.trim() || undefined })
       onClose()
     } catch (err) {
       setError(err?.response?.data?.detail || 'Failed to save event')
@@ -320,6 +330,25 @@ function AddEventModal({ onClose, onSave, defaultDate }) {
                 className="w-full px-3 py-2 rounded-lg border border-navy-200 text-sm text-navy-800 focus:outline-none focus:ring-2 focus:ring-violet-300"
               />
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-navy-600 mb-1">Time <span className="font-normal text-navy-400">(optional)</span></label>
+              <input
+                type="time"
+                value={time}
+                onChange={e => setTime(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-navy-200 text-sm text-navy-800 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              />
+            </div>
+            {overlap.length > 0 && (
+              <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+                <p className="text-xs font-semibold text-amber-700">Scheduling conflict:</p>
+                {overlap.map((o, i) => (
+                  <p key={i} className="text-xs text-amber-600 mt-0.5">
+                    {o.title} at {(() => { const [h,m] = o.time.split(':'); return `${h % 12 || 12}:${m} ${h >= 12 ? 'PM' : 'AM'}` })()}
+                  </p>
+                ))}
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-navy-600 mb-1">Type</label>
               <select
@@ -376,7 +405,7 @@ function EventChip({ event, onClick }) {
       onClick={e => { e.stopPropagation(); onClick(event) }}
       className={`w-full text-left px-1.5 py-0.5 rounded text-[10px] font-medium truncate border ${cfg.bg} ${cfg.text} ${cfg.border} hover:opacity-80 transition-opacity`}
     >
-      {event.title}{event.round_info ? ` · ${event.round_info}` : ''}
+      {event.time ? `${(() => { const [h,m] = event.time.split(':'); return `${h % 12 || 12}:${m}${h >= 12 ? 'p' : 'a'}` })()} ` : ''}{event.title}{event.round_info ? ` · ${event.round_info}` : ''}
     </button>
   )
 }

@@ -132,6 +132,7 @@ export const calendarApi = {
   getGcalEvents:     ()          => api.get('/gcal/events'),
   createEvent:       (data)      => api.post('/calendar/events', data),
   deleteManualEvent: (eventId)   => api.delete(`/calendar/events/manual/${eventId}`),
+  checkOverlap:     (date, time) => api.get('/calendar/events/check-overlap', { params: { date, time } }),
   syncDeadline:      (jobId)     => api.post(`/jobs/${jobId}/gcal/deadline`),
   removeDeadline:    (jobId)     => api.delete(`/jobs/${jobId}/gcal/deadline`),
   syncInterview:     (roundId)   => api.post(`/interview-rounds/${roundId}/gcal`),

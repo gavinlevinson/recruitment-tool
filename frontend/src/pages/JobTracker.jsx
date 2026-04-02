@@ -2292,17 +2292,20 @@ function NetworkModal({ job, onClose }) {
     } catch { setContactMeetings(prev => ({ ...prev, [contactId]: [] })) }
   }
 
-  const addMeeting = async (contact, date) => {
+  const [meetingTime, setMeetingTime] = useState('')
+
+  const addMeeting = async (contact, date, time) => {
     try {
       await calendarApi.createEvent({
         title: `Networking: ${contact.name} at ${contact.company || displayJob?.company || 'Unknown'}`,
         date,
-        time: '12:00',
+        time: time || undefined,
         event_type: 'networking',
         notes: [contact.title, contact.company || displayJob?.company].filter(Boolean).join(' at '),
         contact_id: contact.id,
       })
       setAddingMeeting(null)
+      setMeetingTime('')
       await loadMeetings(contact.id)
     } catch (err) { console.error('Failed to create meeting:', err) }
   }
@@ -2532,6 +2535,7 @@ function NetworkModal({ job, onClose }) {
                                   <div className="flex items-center gap-2">
                                     <Calendar size={11} className="text-violet-500" />
                                     <span className="text-xs text-navy-700 font-medium">
+                                      {m.time ? `${(() => { const [h,mn] = m.time.split(':'); return `${h % 12 || 12}:${mn} ${h >= 12 ? 'PM' : 'AM'}` })()} · ` : ''}
                                       {new Date(m.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                     </span>
                                   </div>
@@ -2541,12 +2545,22 @@ function NetworkModal({ job, onClose }) {
                                   </button>
                                 </div>
                               ))}
-                              {/* Date picker for adding new meeting */}
+                              {/* Date + time picker for adding new meeting */}
                               {addingMeeting === contact.id && (
-                                <div className="flex items-center gap-2 mt-1">
-                                  <input type="date" className="text-xs border border-violet-300 rounded-lg px-2 py-1 text-navy-600 bg-white flex-1"
-                                    onChange={e => { if (e.target.value) addMeeting(contact, e.target.value) }} />
-                                  <button onClick={() => setAddingMeeting(null)} className="text-[10px] text-navy-400 hover:text-navy-600">Cancel</button>
+                                <div className="mt-1 space-y-1">
+                                  <div className="flex items-center gap-1">
+                                    <input type="date" id={`meeting-date-${contact.id}`}
+                                      className="text-xs border border-violet-300 rounded-lg px-2 py-1 text-navy-600 bg-white flex-1" />
+                                    <input type="time" value={meetingTime} onChange={e => setMeetingTime(e.target.value)}
+                                      className="text-xs border border-violet-300 rounded-lg px-2 py-1 text-navy-600 bg-white w-24" />
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <button onClick={() => {
+                                      const dateVal = document.getElementById(`meeting-date-${contact.id}`)?.value
+                                      if (dateVal) addMeeting(contact, dateVal, meetingTime)
+                                    }} className="text-[10px] font-medium text-violet-600 hover:text-violet-800 px-2 py-0.5 rounded bg-violet-50">Add</button>
+                                    <button onClick={() => { setAddingMeeting(null); setMeetingTime('') }} className="text-[10px] text-navy-400 hover:text-navy-600">Cancel</button>
+                                  </div>
                                 </div>
                               )}
                             </div>
