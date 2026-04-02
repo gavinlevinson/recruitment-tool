@@ -2214,12 +2214,10 @@ function NetworkModal({ job, onClose }) {
 
   useEffect(() => { loadContacts() }, [loadContacts])
 
-  // Load meetings for contacts that have "Meeting Scheduled" status
+  // Load meetings for ALL contacts (any contact could have past meetings)
   useEffect(() => {
     contacts.forEach(c => {
-      if (c.outreach_status === 'Meeting Scheduled' && !contactMeetings[c.id]) {
-        loadMeetings(c.id)
-      }
+      loadMeetings(c.id)
     })
   }, [contacts]) // eslint-disable-line
 
