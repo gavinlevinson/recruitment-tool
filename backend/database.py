@@ -273,6 +273,7 @@ class ManualCalendarEvent(Base):
     type = Column(String, default="reminder")  # interview | deadline | reminder | networking
     notes = Column(Text, nullable=True)
     url = Column(String, nullable=True)
+    contact_id = Column(Integer, nullable=True)      # link to Contact for networking meetings
     gcal_event_id = Column(String, nullable=True)   # Google Calendar event ID (if synced)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -325,6 +326,7 @@ def run_migrations():
         "ALTER TABLE jobs ADD COLUMN gcal_deadline_event_id TEXT",
         "ALTER TABLE interview_rounds ADD COLUMN gcal_event_id TEXT",
         "ALTER TABLE manual_calendar_events ADD COLUMN gcal_event_id TEXT",
+        "ALTER TABLE manual_calendar_events ADD COLUMN contact_id INTEGER",
         # Google Docs integration columns
         "ALTER TABLE users ADD COLUMN google_access_token TEXT",
         "ALTER TABLE users ADD COLUMN google_refresh_token TEXT",
@@ -387,6 +389,7 @@ def _run_pg_migrations():
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS gcal_deadline_event_id TEXT",
         "ALTER TABLE interview_rounds ADD COLUMN IF NOT EXISTS gcal_event_id TEXT",
         "ALTER TABLE manual_calendar_events ADD COLUMN IF NOT EXISTS gcal_event_id TEXT",
+        "ALTER TABLE manual_calendar_events ADD COLUMN IF NOT EXISTS contact_id INTEGER",
         # Google Docs integration columns
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_access_token TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_refresh_token TEXT",

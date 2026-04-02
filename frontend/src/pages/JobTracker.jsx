@@ -2190,7 +2190,8 @@ function NetworkModal({ job, onClose }) {
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [copied, setCopied]         = useState(null)
   const [emailContact, setEmailContact] = useState(null)  // contact to email
-  const [meetingContactId, setMeetingContactId] = useState(null) // contact being scheduled
+  const [contactMeetings, setContactMeetings] = useState({}) // { contactId: [{id, date, title}] }
+  const [addingMeeting, setAddingMeeting] = useState(null)   // contactId showing date picker
   const [googleConnected, setGoogleConnected] = useState(false)
   const [docCreating, setDocCreating] = useState(null)   // contactId currently creating
   const [docLinking, setDocLinking]   = useState(null)   // contactId showing link input
@@ -2212,6 +2213,15 @@ function NetworkModal({ job, onClose }) {
   }, [job.company])
 
   useEffect(() => { loadContacts() }, [loadContacts])
+
+  // Load meetings for contacts that have "Meeting Scheduled" status
+  useEffect(() => {
+    contacts.forEach(c => {
+      if (c.outreach_status === 'Meeting Scheduled' && !contactMeetings[c.id]) {
+        loadMeetings(c.id)
+      }
+    })
+  }, [contacts]) // eslint-disable-line
 
   useEffect(() => {
     googleDocsApi.getStatus()
@@ -2275,6 +2285,35 @@ function NetworkModal({ job, onClose }) {
   const handleUpdate = async (id, data) => {
     await contactsApi.update(id, data)
     await loadContacts()
+  }
+
+  const loadMeetings = async (contactId) => {
+    try {
+      const res = await contactsApi.getMeetings(contactId)
+      setContactMeetings(prev => ({ ...prev, [contactId]: res.data || [] }))
+    } catch { setContactMeetings(prev => ({ ...prev, [contactId]: [] })) }
+  }
+
+  const addMeeting = async (contact, date) => {
+    try {
+      await calendarApi.createEvent({
+        title: `Networking: ${contact.name} at ${contact.company || displayJob?.company || 'Unknown'}`,
+        date,
+        time: '12:00',
+        event_type: 'networking',
+        notes: [contact.title, contact.company || displayJob?.company].filter(Boolean).join(' at '),
+        contact_id: contact.id,
+      })
+      setAddingMeeting(null)
+      await loadMeetings(contact.id)
+    } catch (err) { console.error('Failed to create meeting:', err) }
+  }
+
+  const deleteMeeting = async (contactId, eventId) => {
+    try {
+      await calendarApi.deleteManualEvent(eventId)
+      await loadMeetings(contactId)
+    } catch (err) { console.error('Failed to delete meeting:', err) }
   }
 
   const copyEmail = (email) => {
@@ -2466,9 +2505,8 @@ function NetworkModal({ job, onClose }) {
                                   const val = e.target.value
                                   handleUpdate(contact.id, { outreach_status: val })
                                   if (val === 'Meeting Scheduled') {
-                                    setMeetingContactId(contact.id)
-                                  } else {
-                                    if (meetingContactId === contact.id) setMeetingContactId(null)
+                                    loadMeetings(contact.id)
+                                    setAddingMeeting(contact.id)
                                   }
                                 }}
                               >
@@ -2476,27 +2514,45 @@ function NetworkModal({ job, onClose }) {
                               </select>
                               <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-navy-400 pointer-events-none" />
                             </div>
-                            {(meetingContactId === contact.id || contact.outreach_status === 'Meeting Scheduled') && meetingContactId === contact.id && (
-                              <div className="mt-2 flex items-center gap-2">
-                                <input type="date" className="text-xs border border-navy-200 rounded-lg px-2 py-1 text-navy-600 bg-white"
-                                  onChange={async (e) => {
-                                    if (!e.target.value) return
-                                    try {
-                                      await calendarApi.createEvent({
-                                        title: `Networking: ${contact.name} at ${contact.company || displayJob?.company || 'Unknown'}`,
-                                        date: e.target.value,
-                                        time: '12:00',
-                                        event_type: 'networking',
-                                        notes: [contact.title, contact.company || displayJob?.company].filter(Boolean).join(' at '),
-                                      })
-                                      setMeetingContactId(null)
-                                    } catch (err) { console.error('Failed to create calendar event:', err) }
-                                  }}
-                                />
-                                <span className="text-[10px] text-violet-500">Pick a date for your Calendar</span>
-                              </div>
-                            )}
                           </div>
+
+                          {/* Meetings section */}
+                          {(contact.outreach_status === 'Meeting Scheduled' || (contactMeetings[contact.id] && contactMeetings[contact.id].length > 0)) && (
+                            <div className="mt-3">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide flex items-center gap-1">
+                                  <Calendar size={10} /> Meetings
+                                </p>
+                                <button onClick={() => { loadMeetings(contact.id); setAddingMeeting(contact.id) }}
+                                  className="text-[10px] text-violet-600 hover:text-violet-800 font-medium flex items-center gap-0.5">
+                                  <Plus size={10} /> Add
+                                </button>
+                              </div>
+                              {/* Existing meetings list */}
+                              {(contactMeetings[contact.id] || []).map(m => (
+                                <div key={m.id} className="flex items-center justify-between bg-violet-50 rounded-lg px-2.5 py-1.5 mb-1">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar size={11} className="text-violet-500" />
+                                    <span className="text-xs text-navy-700 font-medium">
+                                      {new Date(m.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </span>
+                                  </div>
+                                  <button onClick={() => deleteMeeting(contact.id, m.id)}
+                                    className="p-0.5 rounded text-navy-300 hover:text-red-500 transition-colors" title="Remove meeting">
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                              ))}
+                              {/* Date picker for adding new meeting */}
+                              {addingMeeting === contact.id && (
+                                <div className="flex items-center gap-2 mt-1">
+                                  <input type="date" className="text-xs border border-violet-300 rounded-lg px-2 py-1 text-navy-600 bg-white flex-1"
+                                    onChange={e => { if (e.target.value) addMeeting(contact, e.target.value) }} />
+                                  <button onClick={() => setAddingMeeting(null)} className="text-[10px] text-navy-400 hover:text-navy-600">Cancel</button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 

@@ -853,6 +853,7 @@ async def create_manual_calendar_event(
         type=event_type,
         notes=payload.get("notes") or None,
         url=payload.get("url") or None,
+        contact_id=payload.get("contact_id") or None,
     )
     db.add(ev)
     db.commit()
@@ -881,6 +882,7 @@ async def create_manual_calendar_event(
         "date": ev.date,
         "notes": ev.notes or "",
         "url": ev.url or "",
+        "contact_id": ev.contact_id,
         "manual": True,
     }
 
@@ -1248,6 +1250,33 @@ def delete_contact(contact_id: int, db: Session = Depends(get_db)):
     db.delete(db_contact)
     db.commit()
     return {"ok": True}
+
+@app.get("/api/contacts/{contact_id}/meetings")
+def get_contact_meetings(
+    contact_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return all networking calendar events linked to a contact."""
+    events = (
+        db.query(ManualCalendarEvent)
+        .filter(
+            ManualCalendarEvent.contact_id == contact_id,
+            ManualCalendarEvent.user_id == current_user.id,
+        )
+        .order_by(ManualCalendarEvent.date.asc())
+        .all()
+    )
+    return [
+        {
+            "id": ev.id,
+            "calendar_id": f"manual-{ev.id}",
+            "title": ev.title,
+            "date": ev.date,
+            "notes": ev.notes or "",
+        }
+        for ev in events
+    ]
 
 @app.post("/api/contacts/hunter-domain")
 async def hunter_domain_search(payload: dict):
