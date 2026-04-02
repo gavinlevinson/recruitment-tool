@@ -113,6 +113,11 @@ export default function Login() {
               Create one free
             </Link>
           </p>
+          <div className="flex justify-center gap-3 mt-4">
+            <Link to="/privacy" className="text-xs text-navy-300 hover:text-navy-500">Privacy Policy</Link>
+            <span className="text-xs text-navy-200">|</span>
+            <Link to="/terms" className="text-xs text-navy-300 hover:text-navy-500">Terms of Service</Link>
+          </div>
         </div>
       </div>
     </div>

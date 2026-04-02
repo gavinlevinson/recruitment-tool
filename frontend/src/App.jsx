@@ -14,6 +14,8 @@ import Events       from './pages/Events'
 import News         from './pages/News'
 import Login        from './pages/Login'
 import Register     from './pages/Register'
+import Privacy      from './pages/Privacy'
+import Terms        from './pages/Terms'
 import HelpAgent    from './pages/HelpAgent'
 import OrionMark from './components/OrionMark'
 
@@ -144,6 +146,8 @@ function AppRoutes() {
       {/* Public routes */}
       <Route path="/login"    element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
+      <Route path="/privacy"  element={<Privacy />} />
+      <Route path="/terms"    element={<Terms />} />
 
       {/* Protected routes */}
       <Route path="/*" element={
