@@ -1431,17 +1431,25 @@ def delete_account(
 ):
     """Permanently delete the current user's account and ALL associated data."""
     uid = current_user.id
-    # Delete all user data in order (foreign key safe)
-    db.execute(text(f"DELETE FROM manual_calendar_events WHERE user_id = {uid}"))
-    db.execute(text(f"DELETE FROM interview_rounds WHERE user_id = {uid}"))
-    db.execute(text(f"DELETE FROM contacts WHERE user_id = {uid}"))
-    db.execute(text(f"DELETE FROM jobs WHERE user_id = {uid}"))
-    db.execute(text(f"DELETE FROM user_preferences WHERE user_id = {uid}"))
-    db.execute(text(f"DELETE FROM user_profiles WHERE user_id = {uid}"))
-    db.execute(text(f"DELETE FROM email_templates WHERE user_id = {uid}"))
-    db.execute(text(f"DELETE FROM cover_letter_templates WHERE user_id = {uid}"))
-    db.execute(text(f"DELETE FROM event_rsvps WHERE user_id = {uid}"))
-    db.execute(text(f"DELETE FROM job_collections WHERE user_id = {uid}"))
+    # Delete all user data — each in try/except so missing tables don't block
+    tables_to_clean = [
+        f"DELETE FROM manual_calendar_events WHERE user_id = {uid}",
+        f"DELETE FROM interview_rounds WHERE user_id = {uid}",
+        f"DELETE FROM contacts WHERE user_id = {uid}",
+        f"DELETE FROM jobs WHERE user_id = {uid}",
+        f"DELETE FROM user_preferences WHERE user_id = {uid}",
+        f"DELETE FROM user_profiles WHERE user_id = {uid}",
+        f"DELETE FROM email_templates WHERE user_id = {uid}",
+        f"DELETE FROM cover_letter_templates WHERE user_id = {uid}",
+        f"DELETE FROM event_rsvps WHERE user_id = {uid}",
+        f"DELETE FROM job_collections WHERE user_id = {uid}",
+    ]
+    for sql in tables_to_clean:
+        try:
+            db.execute(text(sql))
+        except Exception:
+            db.rollback()
+    # Delete the user itself
     db.execute(text(f"DELETE FROM users WHERE id = {uid}"))
     db.commit()
     return {"ok": True, "message": "Account and all data permanently deleted"}
