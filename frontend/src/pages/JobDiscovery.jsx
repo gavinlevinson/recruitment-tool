@@ -302,16 +302,46 @@ function CompanyJobsModal({ company, filterParams, onClose, onAddToTracker, onDi
 }
 
 // ── Company logo helper ──────────────────────────────────────────────────────
-function companyDomain(companyName) {
+const ATS_HOSTS = ['lever.co', 'greenhouse.io', 'ashbyhq.com', 'ashby.io', 'workable.com', 'boards.greenhouse.io', 'job-boards.greenhouse.io', 'job-boards.eu.greenhouse.io']
+
+function companyDomainFromUrl(jobUrl, companyName) {
+  // Try to extract the real company domain from the job URL
+  if (jobUrl) {
+    try {
+      const url = new URL(jobUrl)
+      const host = url.hostname.toLowerCase().replace(/^www\./, '')
+      const parts = url.pathname.split('/').filter(Boolean)
+
+      // Lever API URLs: api.lever.co/v0/postings/{company}/...
+      if (host === 'api.lever.co' && parts.length >= 3 && parts[0] === 'v0' && parts[1] === 'postings') {
+        return parts[2] + '.com'
+      }
+      // Lever hosted URLs: jobs.lever.co/{company}/...
+      if (host.endsWith('lever.co')) {
+        if (parts[0] && parts[0].length > 1) return parts[0] + '.com'
+      }
+      // Other ATS URLs: extract company slug from first path segment
+      for (const ats of ATS_HOSTS) {
+        if (host.endsWith(ats) || host === ats) {
+          if (parts[0] && parts[0].length > 1) return parts[0] + '.com'
+          break
+        }
+      }
+      // Non-ATS, non-social: use the hostname directly
+      if (!host.includes('linkedin.com') && !host.includes('indeed.com') && !host.includes('simplify.jobs')) {
+        return host
+      }
+    } catch {}
+  }
+  // Fallback: guess from company name
   return (companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
 }
-function companyLogoUrl(companyName) {
-  // Clearbit Logo API — higher quality, more reliable than Google favicons
-  return `https://logo.clearbit.com/${companyDomain(companyName)}`
+
+function companyLogoUrl(jobUrl, companyName) {
+  return `https://logo.clearbit.com/${companyDomainFromUrl(jobUrl, companyName)}`
 }
-function companyFaviconUrl(companyName) {
-  // Google favicon as fallback
-  return `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${companyDomain(companyName)}&size=64`
+function companyFaviconUrl(jobUrl, companyName) {
+  return `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${companyDomainFromUrl(jobUrl, companyName)}&size=64`
 }
 
 // Extract a company blurb from job description
@@ -348,7 +378,7 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
 
   // Logo: Clearbit → Google favicon → colored initial
   const [logoLevel, setLogoLevel] = useState(0) // 0=clearbit, 1=google, 2=initial
-  const logoSrc = logoLevel === 0 ? companyLogoUrl(job.company) : companyFaviconUrl(job.company)
+  const logoSrc = logoLevel === 0 ? companyLogoUrl(job.job_url, job.company) : companyFaviconUrl(job.job_url, job.company)
   const logoFailed = logoLevel >= 2
 
   // Company description popup — AI-generated, lazily fetched, cached per company
@@ -1292,7 +1322,7 @@ function NewTodayRow({ job, onAdd }) {
   const sourceMeta = getSourceMeta(job.source)
   const blurb = extractCompanyBlurb(job.description)
   const genericUrl = isGenericCareerUrl(job.job_url)
-  const logoSrc2 = logoLevel2 === 0 ? companyLogoUrl(job.company) : companyFaviconUrl(job.company)
+  const logoSrc2 = logoLevel2 === 0 ? companyLogoUrl(job.job_url, job.company) : companyFaviconUrl(job.job_url, job.company)
   const logoFailed2 = logoLevel2 >= 2
 
   return (
