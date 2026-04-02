@@ -16,6 +16,7 @@ import Login        from './pages/Login'
 import Register     from './pages/Register'
 import Privacy      from './pages/Privacy'
 import Terms        from './pages/Terms'
+import Landing      from './pages/Landing'
 import HelpAgent    from './pages/HelpAgent'
 import OrionMark from './components/OrionMark'
 
@@ -144,16 +145,19 @@ function AppRoutes() {
   return (
     <Routes>
       {/* Public routes */}
-      <Route path="/login"    element={user ? <Navigate to="/" replace /> : <Login />} />
-      <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
+      <Route path="/login"    element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+      <Route path="/register" element={user ? <Navigate to="/dashboard" replace /> : <Register />} />
       <Route path="/privacy"  element={<Privacy />} />
       <Route path="/terms"    element={<Terms />} />
+
+      {/* Landing page for unauthenticated users */}
+      <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Landing />} />
 
       {/* Protected routes */}
       <Route path="/*" element={
         <ProtectedLayout>
           <Routes>
-            <Route path="/"            element={<Dashboard />} />
+            <Route path="/dashboard"   element={<Dashboard />} />
             <Route path="/tracker"     element={<JobTracker />} />
             <Route path="/discovery"   element={<JobDiscovery />} />
             <Route path="/calendar"    element={<Calendar />} />
