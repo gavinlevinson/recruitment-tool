@@ -2103,15 +2103,13 @@ def get_scrape_status(db: Session = Depends(get_db)):
 
 @app.get("/api/discovered-jobs/new-today")
 def get_new_today_jobs(db: Session = Depends(get_db)):
-    """Return jobs from the most recent 9am ET daily scrape. Stays visible until the next 9am scrape."""
-    # 9am ET = 14:00 UTC (EST) or 13:00 UTC (EDT). Use 13:00 UTC to cover both.
-    now = datetime.utcnow()
-    today_9am_utc = now.replace(hour=13, minute=0, second=0, microsecond=0)
-    # If it's before 9am ET today (13:00 UTC), use yesterday's 9am
-    if now < today_9am_utc:
-        cutoff = today_9am_utc - timedelta(days=1)
-    else:
-        cutoff = today_9am_utc
+    """Return jobs from the most recent scrape batch. Stays visible until the next scrape runs."""
+    # Find the latest scraped_at timestamp and show all jobs from that batch
+    # (within 2 hours of the most recent job's scraped_at)
+    latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
+    if not latest or not latest.scraped_at:
+        return {"jobs": [], "count": 0}
+    cutoff = latest.scraped_at - timedelta(hours=2)
     jobs = (
         db.query(DiscoveredJob)
         .filter(
@@ -3176,14 +3174,16 @@ def get_all_stats(
     accepted     = status_counts.get("Accepted", 0)
     rejected     = status_counts.get("Rejected", 0)
 
-    # New jobs from the most recent 9am ET scrape (matches Discovery page)
-    now_utc = datetime.utcnow()
-    today_9am_utc = now_utc.replace(hour=13, minute=0, second=0, microsecond=0)
-    scrape_cutoff = today_9am_utc - timedelta(days=1) if now_utc < today_9am_utc else today_9am_utc
-    new_today = db.query(DiscoveredJob).filter(
-        DiscoveredJob.is_active == True,
-        DiscoveredJob.scraped_at >= scrape_cutoff,
-    ).count()
+    # New jobs from the most recent scrape batch (matches Discovery page)
+    latest_job = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
+    if latest_job and latest_job.scraped_at:
+        scrape_cutoff = latest_job.scraped_at - timedelta(hours=2)
+        new_today = db.query(DiscoveredJob).filter(
+            DiscoveredJob.is_active == True,
+            DiscoveredJob.scraped_at >= scrape_cutoff,
+        ).count()
+    else:
+        new_today = 0
 
     # Total undiscovered (not yet added)
     total_undiscovered = db.query(DiscoveredJob).filter(
