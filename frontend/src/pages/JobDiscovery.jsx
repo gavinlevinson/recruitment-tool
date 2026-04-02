@@ -33,6 +33,7 @@ const SOURCE_META = [
   { match: 'index ventures',  label: 'Index Ventures',  classes: 'bg-amber-100 text-amber-700 border border-amber-200' },
   { match: 'general catalyst',label: 'General Catalyst',classes: 'bg-red-100 text-red-700 border border-red-200' },
   { match: 'techstars',       label: 'Techstars',       classes: 'bg-cyan-100 text-cyan-800 border border-cyan-200' },
+  { match: 'simplify',        label: 'Simplify',        classes: 'bg-sky-100 text-sky-700 border border-sky-200' },
 ]
 
 const ALL_SOURCES = [

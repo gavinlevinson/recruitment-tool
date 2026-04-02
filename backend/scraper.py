@@ -3113,6 +3113,56 @@ async def scrape_linkedin_top_startups() -> List[Dict]:
 
 
 # ─────────────────────────────────────────────
+# SIMPLIFY JOBS (New Grad)
+# ─────────────────────────────────────────────
+
+async def scrape_simplify_new_grad() -> List[Dict]:
+    """
+    Scrapes SimplifyJobs' curated new-grad positions from their public GitHub repo.
+    Free structured JSON with ~3000 active jobs from ~1000+ companies.
+    """
+    GITHUB_URL = "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json"
+    jobs = []
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0, headers=HEADERS) as client:
+            resp = await client.get(GITHUB_URL, timeout=25.0)
+            if resp.status_code != 200:
+                print(f"[Simplify] HTTP {resp.status_code}")
+                return []
+
+            listings = resp.json()
+            active = [j for j in listings if j.get("active")]
+            print(f"[Simplify] {len(listings)} total listings, {len(active)} active")
+
+            company_counts: dict = {}
+            for item in active:
+                company = (item.get("company_name") or "").strip()
+                title = (item.get("title") or "").strip()
+                url = (item.get("url") or "").strip()
+                locations = item.get("locations") or []
+                location = ", ".join(locations) if isinstance(locations, list) else str(locations)
+
+                if not company or not title or not url:
+                    continue
+
+                # Cap at 15 jobs per company to avoid one company dominating
+                company_counts[company] = company_counts.get(company, 0) + 1
+                if company_counts[company] > 15:
+                    continue
+
+                jb = _make_vc_job(company, title, location, url, "Simplify")
+                if jb:
+                    jobs.append(jb)
+
+    except Exception as e:
+        print(f"[Simplify] Error: {e}")
+
+    print(f"[Simplify] {len(jobs)} jobs after filtering")
+    return jobs
+
+
+# ─────────────────────────────────────────────
 # NEW VC PORTFOLIO SOURCES
 # ─────────────────────────────────────────────
 
@@ -3317,6 +3367,7 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_topstartups(),         # topstartups.io AI list
         scrape_forbes_startup_lists(), # Forbes Best Startup Employers → ATS discovery
         scrape_linkedin_top_startups(), # LinkedIn Top 50 Startups 2024 → ATS discovery
+        scrape_simplify_new_grad(),   # SimplifyJobs curated new-grad positions (GitHub JSON)
         scrape_bessemer(),            # Bessemer Venture Partners portfolio → ATS discovery
         scrape_index_ventures(),      # Index Ventures portfolio → ATS discovery
         scrape_gc_techstars_getro(),  # General Catalyst + Techstars (Getro boards + ATS)
