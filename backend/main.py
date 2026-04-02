@@ -2210,8 +2210,28 @@ def discovered_to_dict(j):
         "deadline": j.deadline if hasattr(j, "deadline") else None,
         "salary_min": j.salary_min if hasattr(j, "salary_min") else None,
         "industry": j.industry if hasattr(j, "industry") else None,
+        "funding_amount": j.funding_amount if hasattr(j, "funding_amount") else None,
+        "funding_date": j.funding_date if hasattr(j, "funding_date") else None,
+        "recently_funded": _is_recently_funded(j),
         "scraped_at": j.scraped_at.isoformat() if j.scraped_at else None,
     }
+
+def _is_recently_funded(j):
+    """Check if a job's company was funded in the last 6 months."""
+    fd = getattr(j, 'funding_date', None)
+    if not fd:
+        return False
+    try:
+        # funding_date is "YYYY-MM" format
+        parts = fd.split('-')
+        if len(parts) < 2:
+            return False
+        fund_year, fund_month = int(parts[0]), int(parts[1])
+        now = datetime.utcnow()
+        months_ago = (now.year - fund_year) * 12 + (now.month - fund_month)
+        return 0 <= months_ago <= 6
+    except Exception:
+        return False
 
 async def run_scraper(db: Session = None):
     """
@@ -2245,6 +2265,29 @@ async def run_scraper(db: Session = None):
             _db.commit()
             _scrape_last_saved = saved
             print(f"[Scraper] Saved {saved} new jobs to database")
+
+            # Enrich existing jobs with funding data from RSS cache
+            try:
+                from scraper import _funding_cache
+                if _funding_cache:
+                    enriched = 0
+                    all_jobs = _db.query(DiscoveredJob).filter(DiscoveredJob.is_active == True).all()
+                    for j in all_jobs:
+                        key = (j.company or "").lower().strip()
+                        if key in _funding_cache:
+                            info = _funding_cache[key]
+                            if not j.funding_amount and info.get("amount"):
+                                j.funding_amount = info["amount"]
+                            if not j.funding_date and info.get("date"):
+                                j.funding_date = info["date"]
+                            if not j.funding_stage and info.get("stage"):
+                                j.funding_stage = info["stage"]
+                            enriched += 1
+                    if enriched:
+                        _db.commit()
+                        print(f"[Scraper] Enriched {enriched} jobs with funding data")
+            except Exception as e:
+                print(f"[Scraper] Funding enrichment error: {e}")
         except Exception as e:
             print(f"[Scraper] DB error: {e}")
             _db.rollback()

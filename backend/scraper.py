@@ -3113,6 +3113,158 @@ async def scrape_linkedin_top_startups() -> List[Dict]:
 
 
 # ─────────────────────────────────────────────
+# FUNDING NEWS (TechCrunch + Crunchbase RSS)
+# ─────────────────────────────────────────────
+
+# Module-level cache for funding data (persists across scrape runs within same process)
+_funding_cache: dict = {}  # { "company_lower": { "amount": "$60M", "stage": "Series A", "date": "2026-03" } }
+
+
+async def scrape_funding_news() -> dict:
+    """
+    Parse TechCrunch and Crunchbase RSS feeds for recent funding announcements.
+    Returns a dict mapping company_name_lower → { amount, stage, date }.
+    Also stored in module-level _funding_cache for enrichment.
+    """
+    global _funding_cache
+    funded: dict = {}
+
+    RSS_FEEDS = [
+        "https://techcrunch.com/category/venture/feed/",
+        "https://news.crunchbase.com/feed/",
+    ]
+
+    async with httpx.AsyncClient(timeout=15.0, headers=HEADERS) as client:
+        for feed_url in RSS_FEEDS:
+            try:
+                resp = await client.get(feed_url, timeout=12.0)
+                if resp.status_code != 200:
+                    continue
+                xml = resp.text
+
+                items = re.findall(r'<item>(.*?)</item>', xml, re.DOTALL)
+                for item in items:
+                    # Extract title
+                    title_m = re.search(r'<title[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>', item)
+                    if not title_m:
+                        continue
+                    title = title_m.group(1).replace('&#8217;', "'").replace('&#8216;', "'").replace('&amp;', '&')
+
+                    # Extract date
+                    date_m = re.search(r'<pubDate>([^<]+)', item)
+                    pub_date = ""
+                    if date_m:
+                        # Parse "Mon, 31 Mar 2026 ..." → "2026-03"
+                        try:
+                            from email.utils import parsedate_to_datetime
+                            dt = parsedate_to_datetime(date_m.group(1))
+                            pub_date = dt.strftime("%Y-%m")
+                        except Exception:
+                            pass
+
+                    # Try to extract: "[Company] raises/secures/closes $X[M/B]"
+                    # Clean common prefixes first
+                    clean_title = re.sub(r'^(Exclusive:\s*|Report:\s*|Breaking:\s*)', '', title, flags=re.IGNORECASE).strip()
+                    patterns = [
+                        r'^(.+?)\s+(?:raises?|secures?|closes?|lands?|nabs?|bags?|gets?)\s+.*?\$(\d+\.?\d*)\s*(M|B|million|billion)',
+                        r'^(.+?)\s+(?:raises?|secures?|closes?)\s+.*?Series\s+([A-F])',
+                    ]
+                    for pat in patterns:
+                        m = re.search(pat, clean_title, re.IGNORECASE)
+                        if m:
+                            company = m.group(1).strip()
+                            # Clean up company name: remove leading context phrases
+                            company = re.sub(r"^.*?,\s*", "", company)  # "After pivoting, Company" → "Company"
+                            company = re.sub(r"^.*?grad\s+", "", company, flags=re.IGNORECASE)  # "YC grad Company" → "Company"
+                            company = re.sub(r"'s\s+.*$", "", company)  # "Whoop's Wearable..." → "Whoop"
+                            company = re.sub(r"\s*\(.*?\)\s*", " ", company).strip()  # remove parentheticals
+                            if len(company) > 50 or len(company) < 2:
+                                continue
+
+                            amount = ""
+                            stage = ""
+                            if len(m.groups()) >= 3:
+                                val = m.group(2)
+                                unit = m.group(3).upper()
+                                if unit in ('M', 'MILLION'):
+                                    amount = f"${val}M"
+                                elif unit in ('B', 'BILLION'):
+                                    amount = f"${val}B"
+                            elif len(m.groups()) == 2:
+                                stage = f"Series {m.group(2).upper()}"
+
+                            # Extract stage from title if not yet found
+                            if not stage:
+                                stage_m = re.search(r'Series\s+([A-F]\+?)', title, re.IGNORECASE)
+                                if stage_m:
+                                    letter = stage_m.group(1).upper()
+                                    if letter in ('A',):
+                                        stage = 'Series A'
+                                    elif letter in ('B',):
+                                        stage = 'Series B'
+                                    elif letter in ('C', 'C+', 'D', 'E', 'F'):
+                                        stage = 'Series C+'
+                                elif re.search(r'\bseed\b', title, re.IGNORECASE):
+                                    stage = 'Seed'
+
+                            key = company.lower().strip()
+                            funded[key] = {
+                                "company": company,
+                                "amount": amount,
+                                "stage": stage,
+                                "date": pub_date,
+                            }
+                            break
+
+            except Exception as e:
+                print(f"[Funding RSS] Error fetching {feed_url}: {e}")
+
+    _funding_cache.update(funded)
+    print(f"[Funding RSS] {len(funded)} recently funded companies found from RSS feeds")
+    return funded
+
+
+async def scrape_recently_funded_jobs() -> List[Dict]:
+    """
+    Discover jobs at recently funded companies by:
+    1. Getting funding news from RSS feeds
+    2. Running ATS discovery on funded companies
+    Returns jobs tagged with funding_amount and funding_date.
+    """
+    funded = await scrape_funding_news()
+    if not funded:
+        return []
+
+    jobs = []
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            sem = asyncio.Semaphore(40)
+            tasks = []
+            for key, info in funded.items():
+                company = info["company"]
+                slug_guess = re.sub(r'[^a-z0-9]', '', company.lower())
+                website = f"https://{slug_guess}.com"
+                tasks.append(_ats_discover_jobs(company, website, "Recently Funded", client, sem, max_per_co=15))
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, r in enumerate(results):
+                if isinstance(r, list):
+                    company_key = list(funded.keys())[i]
+                    info = funded[company_key]
+                    for j in r:
+                        j["funding_amount"] = info.get("amount", "")
+                        j["funding_date"] = info.get("date", "")
+                        if info.get("stage") and not j.get("funding_stage"):
+                            j["funding_stage"] = info["stage"]
+                    jobs.extend(r)
+    except Exception as e:
+        print(f"[Recently Funded] Error: {e}")
+
+    print(f"[Recently Funded] {len(jobs)} jobs found at {len(funded)} funded companies")
+    return jobs
+
+
+# ─────────────────────────────────────────────
 # SIMPLIFY JOBS (New Grad)
 # ─────────────────────────────────────────────
 
@@ -3368,6 +3520,7 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_forbes_startup_lists(), # Forbes Best Startup Employers → ATS discovery
         scrape_linkedin_top_startups(), # LinkedIn Top 50 Startups 2024 → ATS discovery
         scrape_simplify_new_grad(),   # SimplifyJobs curated new-grad positions (GitHub JSON)
+        scrape_recently_funded_jobs(), # TechCrunch + Crunchbase RSS → ATS discovery
         scrape_bessemer(),            # Bessemer Venture Partners portfolio → ATS discovery
         scrape_index_ventures(),      # Index Ventures portfolio → ATS discovery
         scrape_gc_techstars_getro(),  # General Catalyst + Techstars (Getro boards + ATS)

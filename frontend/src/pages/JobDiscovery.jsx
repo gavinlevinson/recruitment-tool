@@ -34,6 +34,7 @@ const SOURCE_META = [
   { match: 'general catalyst',label: 'General Catalyst',classes: 'bg-red-100 text-red-700 border border-red-200' },
   { match: 'techstars',       label: 'Techstars',       classes: 'bg-cyan-100 text-cyan-800 border border-cyan-200' },
   { match: 'simplify',        label: 'Simplify',        classes: 'bg-sky-100 text-sky-700 border border-sky-200' },
+  { match: 'recently funded', label: 'Recently Funded', classes: 'bg-green-100 text-green-700 border border-green-200' },
 ]
 
 const ALL_SOURCES = [
@@ -473,6 +474,11 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
         {job.funding_stage && (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
             {job.funding_stage}
+          </span>
+        )}
+        {job.recently_funded && (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+            {job.funding_amount ? `Raised ${job.funding_amount}` : 'Recently Funded'}
           </span>
         )}
         {job.employee_count && (
@@ -1361,7 +1367,7 @@ function NewTodayRow({ job, onAdd }) {
           )}
 
           {/* Funding / employees / salary if available */}
-          {(job.funding_stage || job.employee_count || job.salary_range) && (
+          {(job.funding_stage || job.employee_count || job.salary_range || job.recently_funded) && (
             <div className="flex flex-wrap gap-1.5">
               {job.salary_range && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1371,6 +1377,11 @@ function NewTodayRow({ job, onAdd }) {
               {job.funding_stage && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
                   {job.funding_stage}
+                </span>
+              )}
+              {job.recently_funded && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
+                  {job.funding_amount ? `Raised ${job.funding_amount}` : 'Recently Funded'}
                 </span>
               )}
               {job.employee_count && (

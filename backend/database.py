@@ -166,6 +166,8 @@ class DiscoveredJob(Base):
     is_active = Column(Boolean, default=True)
     added_to_tracker = Column(Boolean, default=False)
     funding_stage = Column(String, nullable=True)
+    funding_amount = Column(String, nullable=True)           # e.g. "$60M"
+    funding_date = Column(String, nullable=True)             # e.g. "2026-03" (YYYY-MM)
     employee_count = Column(String, nullable=True)
     salary_min = Column(Integer, nullable=True)            # lower salary bound in thousands (e.g. 80 = $80k)
     industry = Column(String, nullable=True)              # primary industry tag
@@ -338,6 +340,9 @@ def run_migrations():
         "ALTER TABLE discovered_jobs ADD COLUMN industry TEXT",
         "ALTER TABLE user_preferences ADD COLUMN min_salary INTEGER",
         "ALTER TABLE user_preferences ADD COLUMN preferred_industries TEXT",
+        # Funding enrichment columns
+        "ALTER TABLE discovered_jobs ADD COLUMN funding_amount TEXT",
+        "ALTER TABLE discovered_jobs ADD COLUMN funding_date TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -400,6 +405,9 @@ def _run_pg_migrations():
         "ALTER TABLE discovered_jobs ADD COLUMN IF NOT EXISTS industry TEXT",
         "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS min_salary INTEGER",
         "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS preferred_industries TEXT",
+        # Funding enrichment columns
+        "ALTER TABLE discovered_jobs ADD COLUMN IF NOT EXISTS funding_amount TEXT",
+        "ALTER TABLE discovered_jobs ADD COLUMN IF NOT EXISTS funding_date TEXT",
     ]
     with engine.connect() as conn:
         for sql in pg_migrations:
