@@ -1233,8 +1233,13 @@ def get_todays_interviews(
 
 @app.get("/api/contacts")
 def get_contacts(job_id: Optional[int] = None, company: Optional[str] = None,
-                 search: Optional[str] = None, db: Session = Depends(get_db)):
+                 search: Optional[str] = None,
+                 current_user: Optional[User] = Depends(get_optional_user),
+                 db: Session = Depends(get_db)):
     q = db.query(Contact)
+    # Filter to current user's contacts only
+    if current_user:
+        q = q.filter(or_(Contact.user_id == current_user.id, Contact.user_id == None))
     if job_id:
         q = q.filter(Contact.job_id == job_id)
     if company:
@@ -1246,8 +1251,13 @@ def get_contacts(job_id: Optional[int] = None, company: Optional[str] = None,
     return [contact_to_dict(c) for c in contacts]
 
 @app.post("/api/contacts")
-def create_contact(contact: ContactCreate, db: Session = Depends(get_db)):
-    db_contact = Contact(**contact.dict())
+def create_contact(contact: ContactCreate,
+                   current_user: Optional[User] = Depends(get_optional_user),
+                   db: Session = Depends(get_db)):
+    data = contact.dict()
+    if current_user:
+        data["user_id"] = current_user.id
+    db_contact = Contact(**data)
     db.add(db_contact)
     db.commit()
     db.refresh(db_contact)
@@ -1675,11 +1685,27 @@ def get_discovered_jobs(
     current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
+    # Build per-user set of discovered_job_ids already in their tracker
+    user_tracked_ids = set()
+    if current_user:
+        tracked = db.query(Job.discovered_job_id).filter(
+            Job.user_id == current_user.id,
+            Job.discovered_job_id != None,
+        ).all()
+        user_tracked_ids = {r[0] for r in tracked}
+
     q = db.query(DiscoveredJob)
     if is_active is not None:
         q = q.filter(DiscoveredJob.is_active == is_active)
     if added is not None:
-        q = q.filter(DiscoveredJob.added_to_tracker == added)
+        # Per-user filter: use the user's tracked IDs, not the global flag
+        if current_user and user_tracked_ids:
+            if added:
+                q = q.filter(DiscoveredJob.id.in_(user_tracked_ids))
+            else:
+                q = q.filter(~DiscoveredJob.id.in_(user_tracked_ids))
+        elif added:
+            q = q.filter(DiscoveredJob.added_to_tracker == True)
     if search:
         q = q.filter(or_(
             DiscoveredJob.company.ilike(f"%{search}%"),
@@ -1856,7 +1882,7 @@ def get_discovered_jobs(
         all_jobs = q.all()
         scored = []
         for j in all_jobs:
-            d = discovered_to_dict(j)
+            d = discovered_to_dict(j, user_tracked_ids)
             p_score, p_reasons = compute_personal_score(
                 j.role or "", j.location or "", j.description or "", user_profile_dict
             )
@@ -1896,7 +1922,7 @@ def get_discovered_jobs(
             all_raw = q.all()
             all_jobs = []
             for j in all_raw:
-                d = discovered_to_dict(j)
+                d = discovered_to_dict(j, user_tracked_ids)
                 base = d.get("match_score") or 0
                 d["match_score"] = max(0, base + _exp_adj(j.min_years_required)) if base else None
                 all_jobs.append(d)
@@ -1921,12 +1947,12 @@ def get_discovered_jobs(
                     DiscoveredJob.scraped_at.desc(),
                 )
             if deduplicate_by_company:
-                all_jobs = [discovered_to_dict(j) for j in q.all()]
+                all_jobs = [discovered_to_dict(j, user_tracked_ids) for j in q.all()]
                 page_jobs, total = _deduplicate_jobs(all_jobs, offset, limit)
             else:
                 total = q.count()
                 jobs = q.offset(offset).limit(limit).all()
-                page_jobs = [discovered_to_dict(j) for j in jobs]
+                page_jobs = [discovered_to_dict(j, user_tracked_ids) for j in jobs]
         return {"total": total, "jobs": page_jobs}
 
 @app.post("/api/discovered-jobs/dismiss-company")
@@ -2102,7 +2128,12 @@ def get_dismissed_jobs(
         DiscoveredJob.is_active == False,
         DiscoveredJob.scraped_at >= cutoff,
     ).order_by(DiscoveredJob.scraped_at.desc()).limit(200).all()
-    return {"jobs": [discovered_to_dict(j) for j in jobs]}
+    # Build per-user tracked IDs for this user
+    _tracked = set()
+    if current_user:
+        _t = db.query(Job.discovered_job_id).filter(Job.user_id == current_user.id, Job.discovered_job_id != None).all()
+        _tracked = {r[0] for r in _t}
+    return {"jobs": [discovered_to_dict(j, _tracked) for j in jobs]}
 
 
 async def _check_active_jobs_background():
@@ -2273,13 +2304,15 @@ async def get_company_summary(company: str, description: str = ""):
     _company_summary_cache[cache_key] = summary
     return {"summary": summary, "cached": False}
 
-def discovered_to_dict(j):
+def discovered_to_dict(j, user_tracked_ids=None):
+    # Per-user added_to_tracker: check if this user has a Job with this discovered_job_id
+    added = j.id in user_tracked_ids if user_tracked_ids is not None else j.added_to_tracker
     return {
         "id": j.id, "company": j.company, "role": j.role, "location": j.location,
         "job_url": j.job_url, "source": j.source, "description": j.description,
         "salary_range": j.salary_range, "posted_date": j.posted_date,
         "match_score": j.match_score, "match_reasons": j.match_reasons,
-        "is_active": j.is_active, "added_to_tracker": j.added_to_tracker,
+        "is_active": j.is_active, "added_to_tracker": added,
         "funding_stage": j.funding_stage if hasattr(j, "funding_stage") else None,
         "employee_count": j.employee_count if hasattr(j, "employee_count") else None,
         "min_years_required": j.min_years_required if hasattr(j, "min_years_required") else None,

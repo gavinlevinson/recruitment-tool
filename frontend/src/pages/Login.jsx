@@ -21,6 +21,14 @@ export default function Login() {
     setLoading(true)
     try {
       await login(form.email.trim(), form.password)
+      // Clear any persisted filters from a previous user's session
+      try {
+        sessionStorage.removeItem('discovery_search')
+        sessionStorage.removeItem('discovery_roles')
+        sessionStorage.removeItem('discovery_hideAdded')
+        sessionStorage.removeItem('discovery_sort')
+        sessionStorage.removeItem('discovery_page')
+      } catch {}
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.response?.data?.detail || 'Login failed. Check your credentials.')

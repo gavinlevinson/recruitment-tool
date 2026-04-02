@@ -123,12 +123,24 @@ export default function Register() {
           const fd = new FormData()
           fd.append('file', resumeFile)
           await profileApi.uploadFile(fd)
-          await preferencesApi.rescore()
           setUploadStatus('done')
-        } catch {
+          // Rescore in background — don't block navigation
+          preferencesApi.rescore().catch(() => {})
+        } catch (uploadErr) {
+          console.error('Resume upload failed:', uploadErr)
           setUploadStatus('error')
+          // Still navigate — they can re-upload from Profile page
         }
       }
+
+      // Clear any persisted filters from a previous user's session
+      try {
+        sessionStorage.removeItem('discovery_search')
+        sessionStorage.removeItem('discovery_roles')
+        sessionStorage.removeItem('discovery_hideAdded')
+        sessionStorage.removeItem('discovery_sort')
+        sessionStorage.removeItem('discovery_page')
+      } catch {}
 
       navigate('/discovery', { replace: true, state: { firstTime: true } })
     } catch (err) {
