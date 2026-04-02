@@ -3,9 +3,9 @@ import {
   FileText, Sparkles, ChevronDown, ChevronUp, Copy, Check,
   Loader2, AlertTriangle, BookOpen, Lightbulb, RotateCcw,
   Star, Target, Building2, MessageSquare, Mic, MicOff,
-  Square, Play, Clock, Volume2,
+  Square, Play, Clock, Volume2, X,
 } from 'lucide-react'
-import { coachApi, jobsApi, profileApi } from '../api'
+import { coachApi, jobsApi, profileApi, coverLetterApi } from '../api'
 import INTERVIEW_QUESTIONS, { ROLE_QUESTION_WEIGHTS, CATEGORY_LABELS } from '../data/interviewQuestions'
 
 // ── Analysis progress bar ─────────────────────────────────────────────────────
@@ -735,6 +735,54 @@ function CoverLetterCoach({ trackerJobs }) {
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
 
+  // Cover letter templates
+  const [templates, setTemplates] = useState([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [showCreateTpl, setShowCreateTpl] = useState(false)
+  const [newTplName, setNewTplName] = useState('')
+  const [savingTpl, setSavingTpl] = useState(false)
+  const [savedTpl, setSavedTpl] = useState(false)
+
+  useEffect(() => {
+    coverLetterApi.getTemplates()
+      .then(res => setTemplates(res.data || []))
+      .catch(() => {})
+  }, [])
+
+  const handleSelectTemplate = (id) => {
+    setSelectedTemplateId(id)
+    if (id) {
+      const tpl = templates.find(t => String(t.id) === String(id))
+      if (tpl) setCoverLetter(tpl.content)
+    }
+    setResult(null)
+  }
+
+  const saveAsTemplate = async () => {
+    if (!newTplName.trim() || !coverLetter.trim()) return
+    setSavingTpl(true)
+    try {
+      await coverLetterApi.createTemplate({ name: newTplName.trim(), content: coverLetter.trim() })
+      const res = await coverLetterApi.getTemplates()
+      setTemplates(res.data || [])
+      setShowCreateTpl(false)
+      setNewTplName('')
+      setSavedTpl(true)
+      setTimeout(() => setSavedTpl(false), 2500)
+    } catch (e) { console.error('Save template failed:', e) }
+    finally { setSavingTpl(false) }
+  }
+
+  const deleteTemplate = async (id) => {
+    try {
+      await coverLetterApi.deleteTemplate(id)
+      setTemplates(prev => prev.filter(t => t.id !== id))
+      if (String(selectedTemplateId) === String(id)) {
+        setSelectedTemplateId('')
+      }
+    } catch (e) { console.error('Delete template failed:', e) }
+  }
+
   const company = selectedJob?.company || ''
   const jobUrl  = selectedJob?.job_url || ''
 
@@ -770,13 +818,53 @@ function CoverLetterCoach({ trackerJobs }) {
 
         {/* Right: cover letter */}
         <div className="bg-white rounded-2xl border border-navy-100 shadow-sm p-5 flex flex-col gap-3">
-          <div>
-            <h3 className="text-sm font-semibold text-navy-900">Your Cover Letter</h3>
-            <p className="text-xs text-navy-400 mt-0.5">Paste or edit your current draft</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-navy-900">Your Cover Letter</h3>
+              <p className="text-xs text-navy-400 mt-0.5">Paste, edit, or load from a saved template</p>
+            </div>
+            <button onClick={() => setShowCreateTpl(p => !p)}
+              className="text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors">
+              {showCreateTpl ? 'Cancel' : savedTpl ? '✓ Saved' : '+ Save as Template'}
+            </button>
           </div>
+
+          {/* Template selector */}
+          <div className="flex items-center gap-2">
+            <select
+              className="input text-xs flex-1 appearance-none"
+              value={selectedTemplateId}
+              onChange={e => handleSelectTemplate(e.target.value)}
+            >
+              <option value="">Write from scratch</option>
+              {templates.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            {selectedTemplateId && (
+              <button onClick={() => deleteTemplate(Number(selectedTemplateId))}
+                className="text-xs text-red-400 hover:text-red-600 px-1" title="Delete template">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Save as template form */}
+          {showCreateTpl && (
+            <div className="flex items-center gap-2 p-2 bg-navy-50 rounded-lg border border-navy-100">
+              <input className="input text-xs flex-1 py-1.5" placeholder="Template name (e.g. Consulting, Product, Banking)"
+                value={newTplName} onChange={e => setNewTplName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveAsTemplate()} />
+              <button onClick={saveAsTemplate} disabled={savingTpl || !newTplName.trim() || !coverLetter.trim()}
+                className="btn-primary text-xs py-1.5 disabled:opacity-40">
+                {savingTpl ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          )}
+
           <textarea
             className="input resize-none text-sm flex-1 leading-relaxed"
-            rows={14}
+            rows={12}
             placeholder="Paste your cover letter here…"
             value={coverLetter}
             onChange={e => { setCoverLetter(e.target.value); setResult(null) }}
