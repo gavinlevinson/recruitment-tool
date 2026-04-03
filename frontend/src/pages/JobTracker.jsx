@@ -2955,7 +2955,7 @@ export default function JobTracker() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden max-w-full">
 
       {/* Header + filters */}
       <div className="px-6 pt-5 pb-3 space-y-3 shrink-0 border-b border-navy-100 bg-white">
@@ -3061,7 +3061,7 @@ export default function JobTracker() {
           ))}
 
           {/* Right side panel — Accepted + Rejected */}
-          <div className="w-44 shrink-0 flex flex-col gap-3 overflow-y-auto min-h-0">
+          <div className="w-36 shrink-0 flex flex-col gap-3 overflow-y-auto min-h-0">
             {['Accepted', 'Rejected'].map(status => (
               <AccordionDropZone
                 key={status}
