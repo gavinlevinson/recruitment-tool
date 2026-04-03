@@ -131,12 +131,12 @@ def _cleanup_orphaned_data():
             first_id = first_user[0]
             # Assign orphaned contacts (user_id=NULL) to first user
             db.execute(_text(
-                f"UPDATE contacts SET user_id = {first_id} WHERE user_id IS NULL"
-            ))
+                "UPDATE contacts SET user_id = :uid WHERE user_id IS NULL"
+            ), {"uid": first_id})
             # Assign orphaned jobs (user_id=NULL) to first user
             db.execute(_text(
-                f"UPDATE jobs SET user_id = {first_id} WHERE user_id IS NULL"
-            ))
+                "UPDATE jobs SET user_id = :uid WHERE user_id IS NULL"
+            ), {"uid": first_id})
 
         db.commit()
         print("[Cleanup] Done")
@@ -1301,7 +1301,7 @@ def update_contact(contact_id: int, contact: ContactUpdate,
     if not db_contact:
         raise HTTPException(status_code=404, detail="Contact not found")
     # Verify ownership
-    if current_user and db_contact.user_id and db_contact.user_id != current_user.id:
+    if current_user and db_contact.user_id is not None and db_contact.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your contact")
     for k, v in contact.dict(exclude_none=True).items():
         setattr(db_contact, k, v)
@@ -1318,7 +1318,7 @@ def delete_contact(contact_id: int,
     if not db_contact:
         raise HTTPException(status_code=404, detail="Contact not found")
     # Verify ownership
-    if current_user and db_contact.user_id and db_contact.user_id != current_user.id:
+    if current_user and db_contact.user_id is not None and db_contact.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your contact")
     db.delete(db_contact)
     db.commit()
@@ -1431,7 +1431,7 @@ def delete_account(
     except Exception as e:
         db.rollback()
         print(f"[DeleteAccount] Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete account: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete account. Please try again or contact support.")
     return {"ok": True, "message": "Account and all data permanently deleted"}
 
 
@@ -2025,7 +2025,7 @@ def get_discovered_jobs(
         return {"total": total, "jobs": page_jobs}
 
 @app.post("/api/discovered-jobs/dismiss-company")
-def dismiss_company_jobs(payload: dict = Body(...), db: Session = Depends(get_db)):
+def dismiss_company_jobs(payload: dict = Body(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Dismiss all active discovered jobs at a given company."""
     company = payload.get("company", "")
     if not company:
@@ -2617,8 +2617,8 @@ def update_preferences(
 # ─────────────────────────────────────────────
 
 @app.get("/api/collections")
-def get_collections(db: Session = Depends(get_db)):
-    colls = db.query(JobCollection).order_by(JobCollection.created_at.asc()).all()
+def get_collections(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    colls = db.query(JobCollection).filter(JobCollection.user_id == current_user.id).order_by(JobCollection.created_at.asc()).all()
     result = []
     for c in colls:
         count = db.query(JobCollectionItem).filter(JobCollectionItem.collection_id == c.id).count()
@@ -2630,8 +2630,9 @@ def get_collections(db: Session = Depends(get_db)):
     return result
 
 @app.post("/api/collections")
-def create_collection(payload: dict, db: Session = Depends(get_db)):
+def create_collection(payload: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     coll = JobCollection(
+        user_id=current_user.id,
         name=payload.get("name", "New Folder"),
         description=payload.get("description"),
         color=payload.get("color", "#8b6bbf"),
@@ -2642,8 +2643,8 @@ def create_collection(payload: dict, db: Session = Depends(get_db)):
     return {"id": coll.id, "name": coll.name, "description": coll.description, "color": coll.color, "count": 0}
 
 @app.put("/api/collections/{coll_id}")
-def update_collection(coll_id: int, payload: dict, db: Session = Depends(get_db)):
-    coll = db.query(JobCollection).filter(JobCollection.id == coll_id).first()
+def update_collection(coll_id: int, payload: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    coll = db.query(JobCollection).filter(JobCollection.id == coll_id, JobCollection.user_id == current_user.id).first()
     if not coll:
         raise HTTPException(status_code=404, detail="Not found")
     if "name" in payload:
@@ -2656,8 +2657,8 @@ def update_collection(coll_id: int, payload: dict, db: Session = Depends(get_db)
     return {"ok": True}
 
 @app.delete("/api/collections/{coll_id}")
-def delete_collection(coll_id: int, db: Session = Depends(get_db)):
-    coll = db.query(JobCollection).filter(JobCollection.id == coll_id).first()
+def delete_collection(coll_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    coll = db.query(JobCollection).filter(JobCollection.id == coll_id, JobCollection.user_id == current_user.id).first()
     if not coll:
         raise HTTPException(status_code=404, detail="Not found")
     db.query(JobCollectionItem).filter(JobCollectionItem.collection_id == coll_id).delete()
@@ -2666,7 +2667,10 @@ def delete_collection(coll_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 @app.get("/api/collections/{coll_id}/items")
-def get_collection_items(coll_id: int, db: Session = Depends(get_db)):
+def get_collection_items(coll_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    coll = db.query(JobCollection).filter(JobCollection.id == coll_id, JobCollection.user_id == current_user.id).first()
+    if not coll:
+        raise HTTPException(status_code=404, detail="Not found")
     items = db.query(JobCollectionItem).filter(JobCollectionItem.collection_id == coll_id).all()
     job_ids = [i.discovered_job_id for i in items]
     if not job_ids:
@@ -2675,7 +2679,10 @@ def get_collection_items(coll_id: int, db: Session = Depends(get_db)):
     return {"total": len(jobs), "jobs": [discovered_to_dict(j) for j in jobs]}
 
 @app.post("/api/collections/{coll_id}/items")
-def add_to_collection(coll_id: int, payload: dict, db: Session = Depends(get_db)):
+def add_to_collection(coll_id: int, payload: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    coll = db.query(JobCollection).filter(JobCollection.id == coll_id, JobCollection.user_id == current_user.id).first()
+    if not coll:
+        raise HTTPException(status_code=404, detail="Not found")
     discovered_job_id = payload.get("discovered_job_id")
     existing = db.query(JobCollectionItem).filter(
         JobCollectionItem.collection_id == coll_id,
@@ -2687,7 +2694,10 @@ def add_to_collection(coll_id: int, payload: dict, db: Session = Depends(get_db)
     return {"ok": True}
 
 @app.delete("/api/collections/{coll_id}/items/{job_id}")
-def remove_from_collection(coll_id: int, job_id: int, db: Session = Depends(get_db)):
+def remove_from_collection(coll_id: int, job_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    coll = db.query(JobCollection).filter(JobCollection.id == coll_id, JobCollection.user_id == current_user.id).first()
+    if not coll:
+        raise HTTPException(status_code=404, detail="Not found")
     db.query(JobCollectionItem).filter(
         JobCollectionItem.collection_id == coll_id,
         JobCollectionItem.discovered_job_id == job_id,
@@ -2738,26 +2748,30 @@ async def _rescore_all_jobs():
 # ─────────────────────────────────────────────
 
 @app.get("/api/recruiters")
-def get_recruiters(search: Optional[str] = None, db: Session = Depends(get_db)):
-    q = db.query(Recruiter)
+def get_recruiters(search: Optional[str] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(Recruiter).filter(or_(Recruiter.user_id == current_user.id, Recruiter.user_id == None))
     if search:
         q = q.filter(or_(Recruiter.name.ilike(f"%{search}%"), Recruiter.agency.ilike(f"%{search}%"),
                          Recruiter.specialty.ilike(f"%{search}%")))
     return [recruiter_to_dict(r) for r in q.order_by(Recruiter.created_at.desc()).all()]
 
 @app.post("/api/recruiters")
-def create_recruiter(rec: RecruiterCreate, db: Session = Depends(get_db)):
-    db_rec = Recruiter(**rec.dict())
+def create_recruiter(rec: RecruiterCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    data = rec.dict()
+    data["user_id"] = current_user.id
+    db_rec = Recruiter(**data)
     db.add(db_rec)
     db.commit()
     db.refresh(db_rec)
     return recruiter_to_dict(db_rec)
 
 @app.put("/api/recruiters/{rec_id}")
-def update_recruiter(rec_id: int, rec: RecruiterUpdate, db: Session = Depends(get_db)):
+def update_recruiter(rec_id: int, rec: RecruiterUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     db_rec = db.query(Recruiter).filter(Recruiter.id == rec_id).first()
     if not db_rec:
         raise HTTPException(status_code=404, detail="Not found")
+    if db_rec.user_id and db_rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your recruiter")
     for k, v in rec.dict(exclude_none=True).items():
         setattr(db_rec, k, v)
     db_rec.updated_at = datetime.utcnow()
@@ -2766,10 +2780,12 @@ def update_recruiter(rec_id: int, rec: RecruiterUpdate, db: Session = Depends(ge
     return recruiter_to_dict(db_rec)
 
 @app.delete("/api/recruiters/{rec_id}")
-def delete_recruiter(rec_id: int, db: Session = Depends(get_db)):
+def delete_recruiter(rec_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     db_rec = db.query(Recruiter).filter(Recruiter.id == rec_id).first()
     if not db_rec:
         raise HTTPException(status_code=404, detail="Not found")
+    if db_rec.user_id and db_rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your recruiter")
     db.delete(db_rec)
     db.commit()
     return {"ok": True}
