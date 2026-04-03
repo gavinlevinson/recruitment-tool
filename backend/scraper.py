@@ -3114,6 +3114,102 @@ async def scrape_linkedin_top_startups() -> List[Dict]:
 
 # ─────────────────────────────────────────────
 # ─────────────────────────────────────────────
+# HARMONIC HOT 25 (Quarterly top startups by VC interest)
+# ─────────────────────────────────────────────
+
+async def scrape_harmonic_hot25() -> List[Dict]:
+    """
+    Scrapes Harmonic.ai's quarterly Hot 25 lists — the top early-stage
+    companies ranked by aggregated VC interest. Extracts company names,
+    websites, and funding data, then runs ATS discovery.
+    """
+    QUARTERS = [
+        "q1-2025", "q2-2025", "q3-2025", "q4-2025",
+        "q1-2026", "q2-2026",
+    ]
+    companies: list[tuple[str, str, str, str]] = []  # (name, website, amount, stage)
+    seen_domains: set = set()
+    jobs = []
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            for quarter in QUARTERS:
+                try:
+                    resp = await client.get(
+                        f"https://www.harmonic.ai/hot-25-companies/{quarter}",
+                        timeout=12.0,
+                    )
+                    if resp.status_code != 200:
+                        continue
+                    html = resp.text
+
+                    # Extract company domains from links
+                    # Harmonic pages link to company websites
+                    links = re.findall(
+                        r'href="(https?://(?:www\.)?([a-z0-9-]+\.[a-z]{2,6})/?)"',
+                        html, re.IGNORECASE,
+                    )
+                    for full_url, domain in links:
+                        domain = domain.lower()
+                        if domain in seen_domains:
+                            continue
+                        # Skip non-company domains
+                        if any(skip in domain for skip in [
+                            'harmonic.ai', 'google', 'twitter', 'linkedin',
+                            'facebook', 'youtube', 'github', 'medium',
+                            'substack', 'webflow', 'amazonaws', 'cloudfront',
+                        ]):
+                            continue
+                        seen_domains.add(domain)
+                        # Derive company name from domain
+                        name = domain.split('.')[0].replace('-', ' ').title()
+                        companies.append((name, f"https://{domain}", "", ""))
+
+                    # Try to extract funding info from text near each company
+                    # Pattern: "$XXM Series A" or "$XXM Seed"
+                    funding_matches = re.findall(
+                        r'([A-Z][a-zA-Z\s]+?)\s*[-–|]\s*.*?\$(\d+\.?\d*)\s*(M|B)\s*(Series\s+[A-F]|Seed)',
+                        html,
+                    )
+                    for co_name, amount, unit, stage in funding_matches:
+                        co_name = co_name.strip()
+                        amt = f"${amount}{unit}"
+                        # Update funding info in the _funding_cache
+                        key = co_name.lower()
+                        _funding_cache[key] = {
+                            "company": co_name,
+                            "amount": amt,
+                            "stage": stage if 'Series' in stage else 'Seed',
+                            "date": quarter.replace('q', '').replace('-', '-0')[:7] if '-' in quarter else "",
+                        }
+
+                except Exception as e:
+                    print(f"[Harmonic] Error on {quarter}: {e}")
+
+            print(f"[Harmonic] {len(companies)} companies from {len(QUARTERS)} quarters")
+
+            if not companies:
+                return []
+
+            # ATS discovery on all companies
+            sem = asyncio.Semaphore(40)
+            tasks = []
+            for name, website, _, _ in companies:
+                tasks.append(_ats_discover_jobs(name, website, "Harmonic", client, sem, max_per_co=15))
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, list):
+                    jobs.extend(r)
+
+    except Exception as e:
+        print(f"[Harmonic] Error: {e}")
+
+    print(f"[Harmonic] {len(jobs)} jobs found via ATS discovery")
+    return jobs
+
+
+# ─────────────────────────────────────────────
 # AI OPERATORS (Substack newsletter — BizOps/CoS jobs at AI companies)
 # ─────────────────────────────────────────────
 
@@ -3612,6 +3708,7 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_linkedin_top_startups(), # LinkedIn Top 50 Startups 2024 → ATS discovery
         scrape_simplify_new_grad(),   # SimplifyJobs curated new-grad positions (GitHub JSON)
         scrape_ai_operators(),        # AI Operators Substack — BizOps/CoS at AI companies
+        scrape_harmonic_hot25(),      # Harmonic Hot 25 — top startups by VC interest
         scrape_recently_funded_jobs(), # TechCrunch + Crunchbase + Forbes RSS → ATS discovery
         scrape_bessemer(),            # Bessemer Venture Partners portfolio → ATS discovery
         scrape_index_ventures(),      # Index Ventures portfolio → ATS discovery
