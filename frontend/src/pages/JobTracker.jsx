@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Component } from 'react'
 import confetti from 'canvas-confetti'
 import {
   Plus, Pencil, Trash2, ExternalLink, Search, X,
@@ -645,6 +645,44 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
 }
 
 // ── Detail Panel ──────────────────────────────────────────────────────────────
+function CompanyIntelSection({ company, description }) {
+  const [summary, setSummary] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!company) return
+    setLoading(true)
+    setSummary(null)
+    const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000')
+    const token = localStorage.getItem('orion_token') || ''
+    fetch(`${baseUrl}/api/company-summary?company=${encodeURIComponent(company)}&description=${encodeURIComponent((description || '').substring(0, 500))}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(data => setSummary(data.summary || null))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [company])
+
+  return (
+    <div className="border-t border-navy-100 pt-5">
+      <div className="flex items-center gap-2 mb-3">
+        <Building2 size={14} className="text-violet-500" />
+        <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide">Company Intel</p>
+      </div>
+      {loading ? (
+        <p className="text-xs text-navy-400 italic">Generating company summary...</p>
+      ) : summary ? (
+        <div className="bg-violet-50 border border-violet-200 rounded-xl p-3">
+          <p className="text-sm text-navy-700 leading-relaxed">{summary}</p>
+        </div>
+      ) : (
+        <p className="text-xs text-navy-300 italic">No company info available</p>
+      )}
+    </div>
+  )
+}
+
 function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToInterviewing, googleConnected }) {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [roundDates, setRoundDates] = useState([])
@@ -856,6 +894,8 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToIn
               {job.notes || <span className="text-navy-300 italic">No notes added.</span>}
             </p>
           </div>
+
+          <CompanyIntelSection company={job.company} description={job.description || job.notes || ''} />
         </div>
 
         <div className="p-6 border-t border-navy-100 space-y-2">
@@ -2748,6 +2788,25 @@ function NetworkModal({ job, onClose }) {
   )
 }
 
+// ── Error Boundary ───────────────────────────────────────────────────────────
+class JobTrackerErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(err) { console.error('[JobTracker] Render error:', err) }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-12 text-center">
+          <p className="text-lg font-semibold text-navy-800">Something went wrong</p>
+          <p className="text-sm text-navy-400 mt-2">Try refreshing the page</p>
+          <button onClick={() => window.location.reload()} className="btn-primary mt-4">Refresh</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function JobTracker() {
   const [jobs, setJobs]       = useState([])
@@ -2967,6 +3026,7 @@ export default function JobTracker() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
+    <JobTrackerErrorBoundary>
     <div className="flex flex-col h-screen overflow-hidden max-w-full">
 
       {/* Header + filters */}
@@ -3145,5 +3205,6 @@ export default function JobTracker() {
       />
       <CongratsModal job={congratsJob} onClose={() => setCongratsJob(null)} />
     </div>
+    </JobTrackerErrorBoundary>
   )
 }

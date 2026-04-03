@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Component } from 'react'
 import {
   ChevronLeft, ChevronRight, CalendarDays, Briefcase,
   Clock, Bell, X, ExternalLink, Download, RefreshCw, Users, Plus, Trash2,
@@ -643,6 +643,25 @@ function WeekView({ anchor, events, onEventClick }) {
   )
 }
 
+// ── Error Boundary ───────────────────────────────────────────────────────────
+class CalendarErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(err) { console.error('[Calendar] Render error:', err) }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-12 text-center">
+          <p className="text-lg font-semibold text-navy-800">Something went wrong</p>
+          <p className="text-sm text-navy-400 mt-2">Try refreshing the page</p>
+          <button onClick={() => window.location.reload()} className="btn-primary mt-4">Refresh</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // ── Main Calendar Page ────────────────────────────────────────────────────────
 
 export default function Calendar() {
@@ -756,6 +775,7 @@ export default function Calendar() {
       })()
 
   return (
+    <CalendarErrorBoundary>
     <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
       {/* Top bar */}
       <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-navy-100 shrink-0">
@@ -872,5 +892,6 @@ export default function Calendar() {
         />
       )}
     </div>
+    </CalendarErrorBoundary>
   )
 }

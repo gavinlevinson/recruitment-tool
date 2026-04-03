@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Component } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Upload, FileText, Check, RefreshCw, User, GraduationCap, BookOpen,
@@ -217,6 +217,24 @@ function DeleteAccountSection() {
   )
 }
 
+class ProfileErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(err) { console.error('[Profile] Render error:', err) }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-12 text-center">
+          <p className="text-lg font-semibold text-navy-800">Something went wrong</p>
+          <p className="text-sm text-navy-400 mt-2">Try refreshing the page</p>
+          <button onClick={() => window.location.reload()} className="btn-primary mt-4">Refresh</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function Profile() {
   const { user, refreshUser } = useAuth()
   const location = useLocation()
@@ -412,6 +430,7 @@ export default function Profile() {
   const gradYears   = Array.from({ length: 8 }, (_, i) => String(currentYear + i))
 
   return (
+    <ProfileErrorBoundary>
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
@@ -825,5 +844,6 @@ export default function Profile() {
       {/* Delete Account */}
       <DeleteAccountSection />
     </div>
+    </ProfileErrorBoundary>
   )
 }

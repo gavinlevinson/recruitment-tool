@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Component } from 'react'
 import {
   FileText, Sparkles, ChevronDown, ChevronUp, Copy, Check,
   Loader2, AlertTriangle, BookOpen, Lightbulb, RotateCcw,
@@ -1121,6 +1121,24 @@ const TABS = [
   { id: 'interview', label: 'Interview Practice',     icon: Mic },
 ]
 
+class CoachErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(err) { console.error('[Coach] Render error:', err) }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-12 text-center">
+          <p className="text-lg font-semibold text-navy-800">Something went wrong</p>
+          <p className="text-sm text-navy-400 mt-2">Try refreshing the page</p>
+          <button onClick={() => window.location.reload()} className="btn-primary mt-4">Refresh</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function Coach() {
   const [activeTab, setActiveTab] = useState('resume')
   const [profile, setProfile] = useState(null)
@@ -1142,6 +1160,7 @@ export default function Coach() {
   const hasResume = !!(profile?.resume_filename)
 
   return (
+    <CoachErrorBoundary>
     <div className="p-6 lg:p-8 max-w-4xl mx-auto">
       {/* Header */}
       <div className="mb-8">
@@ -1188,6 +1207,7 @@ export default function Coach() {
         <InterviewPractice trackerJobs={trackerJobs} />
       )}
     </div>
+    </CoachErrorBoundary>
   )
 }
 

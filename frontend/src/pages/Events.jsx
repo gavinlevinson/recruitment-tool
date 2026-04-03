@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Component } from 'react'
 import {
   MapPin, Clock, Calendar, ExternalLink, Plus, Users, Tag, Wifi, X, Search, Check,
 } from 'lucide-react'
@@ -340,6 +340,25 @@ function AddEventModal({ onClose, onSave }) {
   )
 }
 
+// ── Error Boundary ───────────────────────────────────────────────────────────
+class EventsErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(err) { console.error('[Events] Render error:', err) }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-12 text-center">
+          <p className="text-lg font-semibold text-navy-800">Something went wrong</p>
+          <p className="text-sm text-navy-400 mt-2">Try refreshing the page</p>
+          <button onClick={() => window.location.reload()} className="btn-primary mt-4">Refresh</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function Events() {
   const [locationInput, setLocationInput] = useState('')
@@ -454,6 +473,7 @@ export default function Events() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
+    <EventsErrorBoundary>
     <div className="min-h-screen bg-navy-50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
@@ -587,5 +607,6 @@ export default function Events() {
         <AddEventModal onClose={() => setShowModal(false)} onSave={saveManual} />
       )}
     </div>
+    </EventsErrorBoundary>
   )
 }

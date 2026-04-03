@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Component } from 'react'
 import {
   Newspaper, RefreshCw, ExternalLink, Clock, Tag,
   TrendingUp, Sparkles, AlertCircle,
@@ -200,6 +200,25 @@ function EmptyState({ topic, onClear }) {
   )
 }
 
+// ── Error Boundary ───────────────────────────────────────────────────────────
+class NewsErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(err) { console.error('[News] Render error:', err) }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-12 text-center">
+          <p className="text-lg font-semibold text-navy-800">Something went wrong</p>
+          <p className="text-sm text-navy-400 mt-2">Try refreshing the page</p>
+          <button onClick={() => window.location.reload()} className="btn-primary mt-4">Refresh</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // ── Main News page ────────────────────────────────────────────────────────────
 export default function News() {
   const [articles, setArticles]       = useState([])
@@ -261,6 +280,7 @@ export default function News() {
   const skeletonCount = 9
 
   return (
+    <NewsErrorBoundary>
     <div className="p-6 max-w-[1400px] mx-auto">
 
       {/* ── Page header ── */}
@@ -337,5 +357,6 @@ export default function News() {
         )}
       </div>
     </div>
+    </NewsErrorBoundary>
   )
 }
