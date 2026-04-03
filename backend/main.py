@@ -2287,8 +2287,8 @@ def get_new_today_jobs(db: Session = Depends(get_db)):
         latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
         if not latest or not latest.scraped_at:
             return {"jobs": [], "count": 0}
-        # Get all jobs from the same scrape batch (within 2 hours)
-        cutoff = latest.scraped_at - timedelta(hours=2)
+        # Get all jobs from the last 24 hours of scraping
+        cutoff = latest.scraped_at - timedelta(hours=24)
         jobs = (
             db.query(DiscoveredJob)
             .filter(
@@ -3421,7 +3421,7 @@ def get_all_stats(
     # New jobs from the most recent scrape batch (matches Discovery page)
     latest_job = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
     if latest_job and latest_job.scraped_at:
-        scrape_cutoff = latest_job.scraped_at - timedelta(hours=2)
+        scrape_cutoff = latest_job.scraped_at - timedelta(hours=24)
         new_today = db.query(DiscoveredJob).filter(
             DiscoveredJob.is_active == True,
             DiscoveredJob.scraped_at >= scrape_cutoff,
