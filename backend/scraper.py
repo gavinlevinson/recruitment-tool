@@ -56,6 +56,23 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
+
+async def _fetch_with_retry(client, url, max_retries=2, timeout=7.0, **kwargs):
+    """HTTP GET with simple retry for transient failures (429, 500, 502, 503, timeout)."""
+    for attempt in range(max_retries + 1):
+        try:
+            resp = await client.get(url, timeout=timeout, **kwargs)
+            if resp.status_code in (429, 500, 502, 503) and attempt < max_retries:
+                await asyncio.sleep(1 + attempt)
+                continue
+            return resp
+        except (httpx.TimeoutException, httpx.ConnectError) as e:
+            if attempt < max_retries:
+                await asyncio.sleep(1 + attempt)
+                continue
+            raise
+    return None
+
 # AI startups known to use Greenhouse
 GREENHOUSE_COMPANIES = [
     ("openai", "OpenAI"), ("anthropic", "Anthropic"), ("cohere", "Cohere"),
@@ -2711,9 +2728,9 @@ async def _ats_discover_jobs(name: str, website: str, source_label: str,
                 break
             # Greenhouse
             try:
-                r = await client.get(
+                r = await _fetch_with_retry(
+                    client,
                     f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
-                    timeout=7.0,
                 )
                 if r.status_code == 200:
                     for j in r.json().get("jobs", []):
@@ -2730,9 +2747,9 @@ async def _ats_discover_jobs(name: str, website: str, source_label: str,
                 pass
             # Lever
             try:
-                r = await client.get(
+                r = await _fetch_with_retry(
+                    client,
                     f"https://api.lever.co/v0/postings/{slug}?mode=json",
-                    timeout=7.0,
                 )
                 if r.status_code == 200 and isinstance(r.json(), list) and r.json():
                     for p in r.json():
@@ -2749,9 +2766,9 @@ async def _ats_discover_jobs(name: str, website: str, source_label: str,
                 pass
             # Ashby
             try:
-                r = await client.get(
+                r = await _fetch_with_retry(
+                    client,
                     f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
-                    timeout=7.0,
                 )
                 if r.status_code == 200:
                     for j in r.json().get("jobPostings", []):
