@@ -8,7 +8,7 @@ import JobTracker   from './pages/JobTracker'
 import JobDiscovery from './pages/JobDiscovery'
 import Calendar     from './pages/Calendar'
 import Coach        from './pages/Coach'
-import Networking   from './pages/Networking'
+// Networking page removed — features migrated to Job Tracker
 import Profile      from './pages/Profile'
 import Events       from './pages/Events'
 import News         from './pages/News'
@@ -162,7 +162,6 @@ function AppRoutes() {
             <Route path="/discovery"   element={<JobDiscovery />} />
             <Route path="/calendar"    element={<Calendar />} />
             <Route path="/events"      element={<Events />} />
-            <Route path="/networking"  element={<Networking />} />
             <Route path="/coach"       element={<Coach />} />
             <Route path="/news"        element={<News />} />
             <Route path="/profile"     element={<Profile />} />

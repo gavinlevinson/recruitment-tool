@@ -8,7 +8,7 @@ import {
   Linkedin, Copy, Sparkles, GraduationCap, Loader2, Send, Paperclip,
   ClipboardList, Save, PlusCircle,
 } from 'lucide-react'
-import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi, interviewRoundsApi, googleDocsApi, calendarApi } from '../api'
+import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi, interviewRoundsApi, googleDocsApi, calendarApi, coachApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1976,6 +1976,18 @@ function EmailComposer({ contact, job, onClose, userUniversity }) {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Resume download */}
+              <div className="flex items-center justify-between px-3 py-2 bg-violet-50 border border-violet-200 rounded-xl">
+                <div>
+                  <p className="text-xs font-semibold text-violet-700">Attach your resume</p>
+                  <p className="text-[10px] text-violet-500">Download your PDF to attach when sending</p>
+                </div>
+                <a href={coachApi.resumeDownloadUrl()} target="_blank" rel="noopener noreferrer"
+                  className="text-xs font-semibold text-violet-700 hover:text-violet-900 border border-violet-300 bg-white px-3 py-1.5 rounded-lg transition-colors hover:bg-violet-50">
+                  Download PDF
+                </a>
               </div>
 
               {/* Send via Gmail */}
