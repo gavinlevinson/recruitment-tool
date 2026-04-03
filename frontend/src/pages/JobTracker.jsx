@@ -3040,7 +3040,7 @@ export default function JobTracker() {
           <button onClick={fetchJobs} className="btn-secondary"><RefreshCw size={14} /> Retry</button>
         </div>
       ) : (
-        <div className="flex flex-1 gap-3 p-4 overflow-hidden min-h-0">
+        <div className="flex flex-1 gap-3 p-4 overflow-hidden min-h-0 min-w-0">
           {/* 3 Kanban columns */}
           {KANBAN_COLS.map(status => (
             <KanbanColumn
@@ -3061,7 +3061,7 @@ export default function JobTracker() {
           ))}
 
           {/* Right side panel — Accepted + Rejected */}
-          <div className="w-52 shrink-0 flex flex-col gap-3 overflow-y-auto min-h-0">
+          <div className="w-44 shrink-0 flex flex-col gap-3 overflow-y-auto min-h-0">
             {['Accepted', 'Rejected'].map(status => (
               <AccordionDropZone
                 key={status}

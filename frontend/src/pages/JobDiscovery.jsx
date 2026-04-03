@@ -40,6 +40,10 @@ const SOURCE_META = [
   { match: 'recently funded', label: 'Recently Funded', classes: 'bg-green-100 text-green-700 border border-green-200' },
   { match: 'ai operators',    label: 'AI Operators',    classes: 'bg-violet-100 text-violet-700 border border-violet-200' },
   { match: 'harmonic',        label: 'Harmonic',        classes: 'bg-teal-100 text-teal-700 border border-teal-200' },
+  { match: 'menlo ventures',  label: 'Menlo Ventures',  classes: 'bg-orange-100 text-orange-700 border border-orange-200' },
+  { match: 'ivp',             label: 'IVP',             classes: 'bg-indigo-100 text-indigo-700 border border-indigo-200' },
+  { match: 'khosla',          label: 'Khosla Ventures', classes: 'bg-rose-100 text-rose-700 border border-rose-200' },
+  { match: 'craft ventures',  label: 'Craft Ventures',  classes: 'bg-lime-100 text-lime-700 border border-lime-200' },
 ]
 
 const ALL_SOURCES = [

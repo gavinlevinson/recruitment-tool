@@ -3502,6 +3502,143 @@ async def scrape_simplify_new_grad() -> List[Dict]:
 
 
 # ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# ADDITIONAL VC PORTFOLIOS (Menlo, IVP, Khosla, Craft)
+# ─────────────────────────────────────────────
+
+async def scrape_menlo_ventures() -> List[Dict]:
+    """Scrape Menlo Ventures portfolio (207 companies with website domains)."""
+    jobs = []
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            resp = await client.get("https://www.menlovc.com/portfolio", timeout=15.0)
+            if resp.status_code != 200:
+                print(f"[Menlo] HTTP {resp.status_code}")
+                return []
+            html = resp.text
+            # Extract company website domains from portfolio links
+            links = re.findall(r'href="(https?://(?:www\.)?([a-z0-9-]+\.[a-z]{2,6})/?)"', html, re.IGNORECASE)
+            seen: set = set()
+            companies = []
+            for full_url, domain in links:
+                domain = domain.lower()
+                if domain in seen or any(skip in domain for skip in ['menlovc', 'linkedin', 'twitter', 'google', 'facebook', 'youtube']):
+                    continue
+                seen.add(domain)
+                name = domain.split('.')[0].replace('-', ' ').title()
+                companies.append((name, f"https://{domain}"))
+            print(f"[Menlo] {len(companies)} companies found")
+            if not companies:
+                return []
+            sem = asyncio.Semaphore(40)
+            tasks = [_ats_discover_jobs(n, w, "Menlo Ventures", client, sem) for n, w in companies]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, list):
+                    jobs.extend(r)
+    except Exception as e:
+        print(f"[Menlo] Error: {e}")
+    print(f"[Menlo] {len(jobs)} jobs found")
+    return jobs
+
+
+async def scrape_ivp() -> List[Dict]:
+    """Scrape IVP portfolio (151 companies via slugs)."""
+    jobs = []
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            resp = await client.get("https://www.ivp.com/portfolio/", timeout=15.0)
+            if resp.status_code != 200:
+                print(f"[IVP] HTTP {resp.status_code}")
+                return []
+            html = resp.text
+            slugs = sorted(set(re.findall(r'/portfolio/([a-z0-9-]+)', html)))
+            companies = []
+            for slug in slugs:
+                name = slug.replace('-', ' ').title()
+                domain_guess = slug.replace('-', '') + '.com'
+                companies.append((name, f"https://{domain_guess}"))
+            print(f"[IVP] {len(companies)} companies found")
+            if not companies:
+                return []
+            sem = asyncio.Semaphore(40)
+            tasks = [_ats_discover_jobs(n, w, "IVP", client, sem) for n, w in companies]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, list):
+                    jobs.extend(r)
+    except Exception as e:
+        print(f"[IVP] Error: {e}")
+    print(f"[IVP] {len(jobs)} jobs found")
+    return jobs
+
+
+async def scrape_khosla_ventures() -> List[Dict]:
+    """Scrape Khosla Ventures portfolio (135 domains)."""
+    jobs = []
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            resp = await client.get("https://www.khoslaventures.com/portfolio", timeout=15.0)
+            if resp.status_code != 200:
+                print(f"[Khosla] HTTP {resp.status_code}")
+                return []
+            html = resp.text
+            links = re.findall(r'href="(https?://(?:www\.)?([a-z0-9-]+\.[a-z]{2,6})/?)"', html, re.IGNORECASE)
+            seen: set = set()
+            companies = []
+            for full_url, domain in links:
+                domain = domain.lower()
+                if domain in seen or any(skip in domain for skip in ['khosla', 'linkedin', 'twitter', 'google', 'facebook', 'youtube', 'medium']):
+                    continue
+                seen.add(domain)
+                name = domain.split('.')[0].replace('-', ' ').title()
+                companies.append((name, f"https://{domain}"))
+            print(f"[Khosla] {len(companies)} companies found")
+            if not companies:
+                return []
+            sem = asyncio.Semaphore(40)
+            tasks = [_ats_discover_jobs(n, w, "Khosla Ventures", client, sem) for n, w in companies]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, list):
+                    jobs.extend(r)
+    except Exception as e:
+        print(f"[Khosla] Error: {e}")
+    print(f"[Khosla] {len(jobs)} jobs found")
+    return jobs
+
+
+async def scrape_craft_ventures() -> List[Dict]:
+    """Scrape Craft Ventures portfolio (104 companies via slugs)."""
+    jobs = []
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            resp = await client.get("https://www.craftventures.com/portfolio", timeout=15.0)
+            if resp.status_code != 200:
+                print(f"[Craft] HTTP {resp.status_code}")
+                return []
+            html = resp.text
+            slugs = sorted(set(re.findall(r'/portfolio/([a-z0-9-]+)', html)))
+            companies = []
+            for slug in slugs:
+                name = slug.replace('-', ' ').title()
+                domain_guess = slug.replace('-', '') + '.com'
+                companies.append((name, f"https://{domain_guess}"))
+            print(f"[Craft] {len(companies)} companies found")
+            if not companies:
+                return []
+            sem = asyncio.Semaphore(40)
+            tasks = [_ats_discover_jobs(n, w, "Craft Ventures", client, sem) for n, w in companies]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, list):
+                    jobs.extend(r)
+    except Exception as e:
+        print(f"[Craft] Error: {e}")
+    print(f"[Craft] {len(jobs)} jobs found")
+    return jobs
+
+
 # NEW VC PORTFOLIO SOURCES
 # ─────────────────────────────────────────────
 
@@ -3709,6 +3846,10 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_simplify_new_grad(),   # SimplifyJobs curated new-grad positions (GitHub JSON)
         scrape_ai_operators(),        # AI Operators Substack — BizOps/CoS at AI companies
         scrape_harmonic_hot25(),      # Harmonic Hot 25 — top startups by VC interest
+        scrape_menlo_ventures(),      # Menlo Ventures portfolio (207 companies)
+        scrape_ivp(),                 # IVP portfolio (151 companies)
+        scrape_khosla_ventures(),     # Khosla Ventures portfolio (135 companies)
+        scrape_craft_ventures(),      # Craft Ventures portfolio (104 companies)
         scrape_recently_funded_jobs(), # TechCrunch + Crunchbase + Forbes RSS → ATS discovery
         scrape_bessemer(),            # Bessemer Venture Partners portfolio → ATS discovery
         scrape_index_ventures(),      # Index Ventures portfolio → ATS discovery
