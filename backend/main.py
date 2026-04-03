@@ -2282,6 +2282,7 @@ def get_scrape_status(db: Session = Depends(get_db)):
 @app.get("/api/discovered-jobs/new-today")
 def get_new_today_jobs(db: Session = Depends(get_db)):
     """Return jobs from the most recent scrape batch. Stays visible until the next scrape runs."""
+    from datetime import timedelta
     # Find the latest scraped_at timestamp
     latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
     if not latest or not latest.scraped_at:
