@@ -3027,7 +3027,7 @@ export default function JobTracker() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <JobTrackerErrorBoundary>
-    <div className="flex flex-col h-screen overflow-hidden max-w-full">
+    <div className="flex flex-col h-screen overflow-hidden" style={{ maxWidth: 'calc(100vw - 14rem)' }}>
 
       {/* Header + filters */}
       <div className="px-6 pt-5 pb-3 space-y-3 shrink-0 border-b border-navy-100 bg-white">
@@ -3112,7 +3112,7 @@ export default function JobTracker() {
           <button onClick={fetchJobs} className="btn-secondary"><RefreshCw size={14} /> Retry</button>
         </div>
       ) : (
-        <div className="flex flex-1 gap-3 p-4 overflow-hidden min-h-0 min-w-0">
+        <div className="flex flex-1 gap-3 p-4 overflow-x-auto overflow-y-hidden min-h-0 min-w-0">
           {/* 3 Kanban columns */}
           {KANBAN_COLS.map(status => (
             <KanbanColumn
