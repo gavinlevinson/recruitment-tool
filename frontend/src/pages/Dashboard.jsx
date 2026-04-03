@@ -5,7 +5,7 @@ import {
   Users, Plus, Check, Mail, AlertCircle, X, Sparkles,
   ArrowRight, Clock, AlertTriangle, TrendingUp,
 } from 'lucide-react'
-import { jobsApi, contactsApi, discoveredApi, statsApi, nylasApi, interviewRoundsApi } from '../api'
+import { jobsApi, contactsApi, discoveredApi, statsApi, nylasApi, interviewRoundsApi, profileApi } from '../api'
 import OrionMark from '../components/OrionMark'
 import { useAuth } from '../context/AuthContext'
 import { daysSince as _daysSince } from '../utils/dates'
@@ -412,6 +412,22 @@ export default function Dashboard() {
   const [replyCount,    setReplyCount]    = useState(0)  // Gmail reply alerts
   const [todayRounds,   setTodayRounds]   = useState([]) // Interview rounds happening today
   const [wrappedOpen,   setWrappedOpen]   = useState(false)
+  const [setupDismissed, setSetupDismissed] = useState(() => localStorage.getItem('orion_setup_done') === '1')
+  const [setupStatus, setSetupStatus] = useState({ resume: false, gmail: false, google: false })
+
+  // Check setup status
+  useEffect(() => {
+    if (setupDismissed) return
+    profileApi.get()
+      .then(res => {
+        const p = res.data?.profile
+        setSetupStatus(prev => ({ ...prev, resume: !!(p?.resume_filename) }))
+      })
+      .catch(() => {})
+    nylasApi.getStatus()
+      .then(res => setSetupStatus(prev => ({ ...prev, gmail: !!(res.data?.connected) })))
+      .catch(() => {})
+  }, [setupDismissed])
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -818,6 +834,43 @@ export default function Dashboard() {
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>
+
+      {/* Getting Started checklist — shown until dismissed */}
+      {!setupDismissed && !loading && (
+        <div className="card p-5 border-l-4 border-violet-400" style={{ background: 'linear-gradient(135deg, #f5f0ff 0%, #e8f4ff 100%)' }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-navy-900 flex items-center gap-2">
+                <Sparkles size={16} className="text-violet-600" />
+                Getting Started
+              </h3>
+              <p className="text-xs text-navy-500 mt-1">Complete these steps to get the most out of Orion</p>
+              <div className="mt-3 space-y-2">
+                <Link to="/profile" className="flex items-center gap-2.5 group">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${setupStatus.resume ? 'bg-emerald-500 border-emerald-500' : 'border-navy-300'}`}>
+                    {setupStatus.resume && <Check size={11} className="text-white" />}
+                  </div>
+                  <span className={`text-sm ${setupStatus.resume ? 'text-navy-400 line-through' : 'text-navy-700 group-hover:text-violet-700'}`}>Upload your resume</span>
+                </Link>
+                <Link to="/profile" className="flex items-center gap-2.5 group">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${setupStatus.gmail ? 'bg-emerald-500 border-emerald-500' : 'border-navy-300'}`}>
+                    {setupStatus.gmail && <Check size={11} className="text-white" />}
+                  </div>
+                  <span className={`text-sm ${setupStatus.gmail ? 'text-navy-400 line-through' : 'text-navy-700 group-hover:text-violet-700'}`}>Connect Gmail & Google Calendar</span>
+                </Link>
+                <Link to="/discovery" className="flex items-center gap-2.5 group">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${jobs.length > 0 ? 'bg-emerald-500 border-emerald-500' : 'border-navy-300'}`}>
+                    {jobs.length > 0 && <Check size={11} className="text-white" />}
+                  </div>
+                  <span className={`text-sm ${jobs.length > 0 ? 'text-navy-400 line-through' : 'text-navy-700 group-hover:text-violet-700'}`}>Add your first job to the tracker</span>
+                </Link>
+              </div>
+            </div>
+            <button onClick={() => { setSetupDismissed(true); localStorage.setItem('orion_setup_done', '1') }}
+              className="text-xs text-navy-400 hover:text-navy-600 shrink-0">Dismiss</button>
+          </div>
+        </div>
+      )}
 
       {/* Weekly Wrapped — visible Sunday 5pm through Monday 5pm */}
       <WrappedErrorBoundary>
