@@ -2282,50 +2282,45 @@ def get_scrape_status(db: Session = Depends(get_db)):
 @app.get("/api/discovered-jobs/new-today")
 def get_new_today_jobs(db: Session = Depends(get_db)):
     """Return jobs from the most recent scrape batch. Stays visible until the next scrape runs."""
-    try:
-        # Find the latest scraped_at timestamp
-        latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
-        if not latest or not latest.scraped_at:
-            return {"jobs": [], "count": 0}
-        # Get all jobs from the last 24 hours of scraping
-        cutoff = latest.scraped_at - timedelta(hours=24)
-        jobs = (
-            db.query(DiscoveredJob)
-            .filter(
-                DiscoveredJob.scraped_at >= cutoff,
-                DiscoveredJob.is_active == True,
-            )
-            .order_by(DiscoveredJob.scraped_at.desc())
-            .limit(500)
-            .all()
-        )
-        # Deduplicate by company+role, cap per source
-        seen = set()
-        source_counts: dict = {}
-        result = []
-        for j in jobs:
-            key = f"{(j.company or '').lower()}|{(j.role or '').lower()}"
-            if key in seen:
-                continue
-            src = (j.source or "").lower()[:30]
-            if source_counts.get(src, 0) >= 20:
-                continue
-            seen.add(key)
-            source_counts[src] = source_counts.get(src, 0) + 1
-            # Minimal dict — avoid touching columns that might not exist
-            result.append({
-                "id": j.id,
-                "company": j.company,
-                "role": j.role,
-                "location": j.location or "",
-                "source": j.source or "",
-                "job_url": j.job_url or "",
-                "match_score": j.match_score,
-            })
-        return {"jobs": result, "count": len(result)}
-    except Exception as e:
-        print(f"[NewToday] Error: {e}")
+    # Find the latest scraped_at timestamp
+    latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
+    if not latest or not latest.scraped_at:
         return {"jobs": [], "count": 0}
+    # Get all jobs from the last 24 hours of scraping
+    cutoff = latest.scraped_at - timedelta(hours=24)
+    jobs = (
+        db.query(DiscoveredJob)
+        .filter(
+            DiscoveredJob.scraped_at >= cutoff,
+            DiscoveredJob.is_active == True,
+        )
+        .order_by(DiscoveredJob.scraped_at.desc())
+        .limit(500)
+        .all()
+    )
+    # Deduplicate by company+role, cap per source
+    seen = set()
+    source_counts: dict = {}
+    result = []
+    for j in jobs:
+        key = f"{(j.company or '').lower()}|{(j.role or '').lower()}"
+        if key in seen:
+            continue
+        src = (j.source or "").lower()[:30]
+        if source_counts.get(src, 0) >= 20:
+            continue
+        seen.add(key)
+        source_counts[src] = source_counts.get(src, 0) + 1
+        result.append({
+            "id": j.id,
+            "company": j.company,
+            "role": j.role,
+            "location": j.location or "",
+            "source": j.source or "",
+            "job_url": j.job_url or "",
+            "match_score": j.match_score,
+        })
+    return {"jobs": result, "count": len(result)}
 
 
 @app.get("/api/company-summary")
