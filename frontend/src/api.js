@@ -166,8 +166,9 @@ export const eventsApi = {
 }
 
 export const newsApi = {
-  getAll:  (params) => api.get('/news', { params }),
-  refresh: ()       => api.post('/news/refresh'),
+  getAll:        (params) => api.get('/news', { params }),
+  companyIntel:  ()       => api.get('/news/company-intel'),
+  refresh:       ()       => api.post('/news/refresh'),
 }
 
 export const nylasApi = {

@@ -7,7 +7,10 @@ import { newsApi } from '../api'
 import { timeAgo as _timeAgo } from '../utils/dates'
 
 // ── Topic filter config ───────────────────────────────────────────────────────
+import { Briefcase } from 'lucide-react'
+
 const TOPICS = [
+  { id: 'company_intel', label: 'Your Companies', icon: Briefcase, active: 'bg-violet-600 text-white border-violet-600', inactive: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50' },
   { id: 'all',         label: 'All',         icon: TrendingUp,  active: 'bg-navy-800 text-white border-navy-800',         inactive: 'bg-white text-navy-600 border-navy-200 hover:bg-navy-50' },
   { id: 'funding',     label: 'Funding',     icon: Sparkles,         active: 'bg-emerald-600 text-white border-emerald-600',   inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
   { id: 'hiring',      label: 'Hiring',      icon: Tag,         active: 'bg-sky-600 text-white border-sky-600',           inactive: 'bg-white text-sky-700 border-sky-200 hover:bg-sky-50' },
@@ -226,14 +229,19 @@ export default function News() {
   const [loading, setLoading]         = useState(true)
   const [refreshing, setRefreshing]   = useState(false)
   const [error, setError]             = useState(null)
-  const [activeTopic, setActiveTopic] = useState('all')
+  const [activeTopic, setActiveTopic] = useState('company_intel')
   const [fetchedAt, setFetchedAt]     = useState(null)
 
   const loadNews = useCallback(async (topic = 'all') => {
     setLoading(true)
     setError(null)
     try {
-      const res = await newsApi.getAll(topic !== 'all' ? { topic } : {})
+      let res
+      if (topic === 'company_intel') {
+        res = await newsApi.companyIntel()
+      } else {
+        res = await newsApi.getAll(topic !== 'all' ? { topic } : {})
+      }
       setArticles(res.data.articles || [])
       setTotal(res.data.total || 0)
       setFetchedAt(new Date())
@@ -270,7 +278,7 @@ export default function News() {
   }, [loadNews])
 
   useEffect(() => {
-    loadNews('all')
+    loadNews('company_intel')
   }, []) // eslint-disable-line
 
   const fetchedLabel = fetchedAt
@@ -290,7 +298,7 @@ export default function News() {
             <Newspaper size={20} className="text-violet-DEFAULT" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-navy-900">AI &amp; Startup News</h1>
+            <h1 className="text-xl font-bold text-navy-900">Company Intel</h1>
             <p className="text-sm text-navy-400 mt-0.5">
               Stay sharp on the latest developments before your interviews
             </p>

@@ -27,7 +27,7 @@ const NAV_ITEMS = [
   { to: '/coach',       label: 'Coach',         icon: GraduationCap },
   { to: '/calendar',    label: 'Calendar',      icon: CalendarDays },
   { to: '/events',      label: 'Events',        icon: MapPin },
-  { to: '/news',        label: 'News',          icon: Newspaper },
+  { to: '/news',        label: 'Company Intel',  icon: Newspaper },
 ]
 
 function Sidebar() {

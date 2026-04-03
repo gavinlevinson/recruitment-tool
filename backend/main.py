@@ -4236,6 +4236,51 @@ async def get_news(topic: str = "all"):
     return {"articles": articles, "total": len(articles)}
 
 
+@app.get("/api/news/company-intel")
+async def get_company_intel(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return news articles that mention companies in the user's tracker."""
+    import time as _time
+    # Get cached news
+    cache_age = (_time.time() - _news_cache["fetched_at"]) if _news_cache["fetched_at"] else 999
+    if cache_age < 7200 and _news_cache["data"]:
+        articles = _news_cache["data"]
+    else:
+        articles = await _fetch_news()
+        _news_cache["data"] = articles
+        _news_cache["fetched_at"] = _time.time()
+
+    # Get user's tracked company names
+    user_jobs = db.query(Job).filter(Job.user_id == current_user.id).all()
+    tracked_companies = set()
+    for j in user_jobs:
+        if j.company:
+            tracked_companies.add(j.company.lower().strip())
+
+    if not tracked_companies:
+        return {"articles": [], "total": 0, "tracked_companies": []}
+
+    # Match articles to tracked companies
+    matched = []
+    for article in articles:
+        title = (article.get("title") or "").lower()
+        desc = (article.get("description") or "").lower()
+        text = f"{title} {desc}"
+        for company in tracked_companies:
+            if company in text and len(company) > 2:
+                article_copy = {**article, "matched_company": company.title()}
+                matched.append(article_copy)
+                break
+
+    return {
+        "articles": matched,
+        "total": len(matched),
+        "tracked_companies": sorted([c.title() for c in tracked_companies]),
+    }
+
+
 @app.post("/api/news/refresh")
 async def refresh_news():
     _news_cache["fetched_at"] = None
