@@ -3131,6 +3131,88 @@ async def scrape_linkedin_top_startups() -> List[Dict]:
 
 # ─────────────────────────────────────────────
 # ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# ADDITIONAL VC PORTFOLIOS (Menlo, IVP, Khosla, Craft)
+# ─────────────────────────────────────────────
+
+async def scrape_menlo_ivp_khosla_craft() -> List[Dict]:
+    """
+    Scrapes portfolio pages from Menlo Ventures (207 cos with domains),
+    IVP (151 cos), Khosla Ventures (135 domains), and Craft Ventures (104 cos).
+    Runs ATS discovery on each.
+    """
+    jobs = []
+    all_companies: list[tuple[str, str, str]] = []  # (name, website, source_label)
+
+    VC_PAGES = [
+        ("https://www.menlovc.com/portfolio", "Menlo Ventures", "slug"),
+        ("https://www.ivp.com/portfolio/", "IVP", "slug"),
+        ("https://www.khoslaventures.com/portfolio", "Khosla Ventures", "domain"),
+        ("https://www.craftventures.com/portfolio", "Craft Ventures", "slug"),
+    ]
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
+            seen_domains: set = set()
+
+            for page_url, source_label, mode in VC_PAGES:
+                try:
+                    resp = await client.get(page_url, timeout=15.0)
+                    if resp.status_code != 200:
+                        print(f"[{source_label}] HTTP {resp.status_code}")
+                        continue
+                    html = resp.text
+
+                    if mode == "domain":
+                        # Extract external domains from href links
+                        domains = re.findall(r'href="https?://(?:www\.)?([a-z0-9-]+\.[a-z]{2,6})/?', html)
+                        firm_key = source_label.split()[0].lower()
+                        for domain in set(domains):
+                            if domain in seen_domains:
+                                continue
+                            if any(skip in domain for skip in [firm_key, 'linkedin', 'twitter', 'facebook', 'google', 'youtube', 'medium']):
+                                continue
+                            seen_domains.add(domain)
+                            name = domain.split('.')[0].replace('-', ' ').title()
+                            all_companies.append((name, f"https://{domain}", source_label))
+                    else:
+                        # Extract company slugs from /portfolio/{slug} or /companies/{slug}
+                        slugs = set(re.findall(r'/(?:portfolio|companies)/([a-z0-9-]+)', html))
+                        for slug in slugs:
+                            if slug in ('all', 'index', 'page', 'filter'):
+                                continue
+                            domain_guess = slug.replace('-', '') + '.com'
+                            if domain_guess in seen_domains:
+                                continue
+                            seen_domains.add(domain_guess)
+                            name = slug.replace('-', ' ').title()
+                            all_companies.append((name, f"https://{domain_guess}", source_label))
+
+                    print(f"[{source_label}] Found companies on portfolio page")
+                except Exception as e:
+                    print(f"[{source_label}] Error: {e}")
+
+            print(f"[VC Portfolios] {len(all_companies)} total companies from 4 firms")
+
+            if not all_companies:
+                return []
+
+            # ATS discovery
+            sem = asyncio.Semaphore(40)
+            tasks = [_ats_discover_jobs(name, website, label, client, sem, max_per_co=15)
+                     for name, website, label in all_companies]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, list):
+                    jobs.extend(r)
+
+    except Exception as e:
+        print(f"[VC Portfolios] Error: {e}")
+
+    print(f"[VC Portfolios] {len(jobs)} jobs from Menlo + IVP + Khosla + Craft")
+    return jobs
+
+
 # HARMONIC HOT 25 (Quarterly top startups by VC interest)
 # ─────────────────────────────────────────────
 
@@ -3863,6 +3945,7 @@ async def scrape_all_sources() -> List[Dict]:
         scrape_simplify_new_grad(),   # SimplifyJobs curated new-grad positions (GitHub JSON)
         scrape_ai_operators(),        # AI Operators Substack — BizOps/CoS at AI companies
         scrape_harmonic_hot25(),      # Harmonic Hot 25 — top startups by VC interest
+        scrape_menlo_ivp_khosla_craft(), # Menlo, IVP, Khosla, Craft portfolio → ATS discovery
         scrape_menlo_ventures(),      # Menlo Ventures portfolio (207 companies)
         scrape_ivp(),                 # IVP portfolio (151 companies)
         scrape_khosla_ventures(),     # Khosla Ventures portfolio (135 companies)
