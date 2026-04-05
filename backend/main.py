@@ -4249,21 +4249,17 @@ async def get_news(topic: str = "all"):
     return {"articles": articles, "total": len(articles)}
 
 
+# Per-company news cache for NewsAPI results
+_company_news_cache: dict = {}  # { "company_lower": {"articles": [], "fetched_at": float} }
+
 @app.get("/api/news/company-intel")
 async def get_company_intel(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return news articles that mention companies in the user's tracker."""
+    """Return news articles for companies in the user's tracker.
+    Uses NewsAPI.org when available, falls back to RSS matching."""
     import time as _time
-    # Get cached news
-    cache_age = (_time.time() - _news_cache["fetched_at"]) if _news_cache["fetched_at"] else 999
-    if cache_age < 7200 and _news_cache["data"]:
-        articles = _news_cache["data"]
-    else:
-        articles = await _fetch_news()
-        _news_cache["data"] = articles
-        _news_cache["fetched_at"] = _time.time()
 
     # Get user's tracked company names
     user_jobs = db.query(Job).filter(Job.user_id == current_user.id).all()
@@ -4275,23 +4271,77 @@ async def get_company_intel(
     if not tracked_companies:
         return {"articles": [], "total": 0, "tracked_companies": []}
 
-    # Match articles to tracked companies using word boundary matching
-    # Skip very short company names (< 4 chars) to avoid false positives
-    import re as _re
+    news_api_key = os.getenv("NEWS_API_KEY", "")
     matched = []
-    for article in articles:
-        title = (article.get("title") or "").lower()
-        desc = (article.get("description") or "").lower()
-        text = f"{title} {desc}"
-        for company in tracked_companies:
-            if len(company) < 4:
-                continue  # Skip "AI", "Exa", "Blee" etc. — too many false matches
-            # Word boundary match: company name must appear as a whole word
-            pattern = r'\b' + _re.escape(company) + r'\b'
-            if _re.search(pattern, text):
-                article_copy = {**article, "matched_company": company.title()}
-                matched.append(article_copy)
-                break
+
+    if news_api_key:
+        # Use NewsAPI for targeted company search (much better coverage)
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for company in list(tracked_companies)[:10]:  # Cap at 10 companies to avoid rate limits
+                if len(company) < 4:
+                    continue
+                cache_key = company
+                entry = _company_news_cache.get(cache_key)
+                cache_age = (_time.time() - entry["fetched_at"]) if entry and entry.get("fetched_at") else 999
+
+                if cache_age < 14400 and entry and entry.get("articles"):  # 4-hour cache
+                    for a in entry["articles"]:
+                        matched.append({**a, "matched_company": company.title()})
+                    continue
+
+                try:
+                    resp = await client.get(
+                        "https://newsapi.org/v2/everything",
+                        params={
+                            "q": f'"{company}"',
+                            "sortBy": "publishedAt",
+                            "pageSize": 5,
+                            "language": "en",
+                            "apiKey": news_api_key,
+                        },
+                        timeout=10.0,
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        articles_for_co = []
+                        for a in data.get("articles", []):
+                            article = {
+                                "title": a.get("title", ""),
+                                "description": a.get("description", ""),
+                                "url": a.get("url", ""),
+                                "image": a.get("urlToImage", ""),
+                                "source": a.get("source", {}).get("name", ""),
+                                "published": a.get("publishedAt", ""),
+                                "matched_company": company.title(),
+                            }
+                            articles_for_co.append(article)
+                            matched.append(article)
+                        _company_news_cache[cache_key] = {"articles": articles_for_co, "fetched_at": _time.time()}
+                except Exception as e:
+                    print(f"[NewsAPI] Error for {company}: {e}")
+    else:
+        # Fallback: match RSS feed articles to tracked companies
+        cache_age = (_time.time() - _news_cache["fetched_at"]) if _news_cache["fetched_at"] else 999
+        if cache_age < 7200 and _news_cache["data"]:
+            articles = _news_cache["data"]
+        else:
+            articles = await _fetch_news()
+            _news_cache["data"] = articles
+            _news_cache["fetched_at"] = _time.time()
+
+        import re as _re
+        for article in articles:
+            title = (article.get("title") or "").lower()
+            desc = (article.get("description") or "").lower()
+            text = f"{title} {desc}"
+            for company in tracked_companies:
+                if len(company) < 4:
+                    continue
+                pattern = r'\b' + _re.escape(company) + r'\b'
+                if _re.search(pattern, text):
+                    article_copy = {**article, "matched_company": company.title()}
+                    matched.append(article_copy)
+                    break
 
     return {
         "articles": matched,
