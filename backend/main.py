@@ -4262,14 +4262,20 @@ async def get_company_intel(
     if not tracked_companies:
         return {"articles": [], "total": 0, "tracked_companies": []}
 
-    # Match articles to tracked companies
+    # Match articles to tracked companies using word boundary matching
+    # Skip very short company names (< 4 chars) to avoid false positives
+    import re as _re
     matched = []
     for article in articles:
         title = (article.get("title") or "").lower()
         desc = (article.get("description") or "").lower()
         text = f"{title} {desc}"
         for company in tracked_companies:
-            if company in text and len(company) > 2:
+            if len(company) < 4:
+                continue  # Skip "AI", "Exa", "Blee" etc. — too many false matches
+            # Word boundary match: company name must appear as a whole word
+            pattern = r'\b' + _re.escape(company) + r'\b'
+            if _re.search(pattern, text):
                 article_copy = {**article, "matched_company": company.title()}
                 matched.append(article_copy)
                 break
