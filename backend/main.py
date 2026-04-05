@@ -4010,26 +4010,33 @@ _events_cache: dict = {}   # { location_key: {"data": [], "fetched_at": float} }
 async def get_events(location: str = "all", event_type: str = "all"):
     import time as _time
 
-    loc_key = (location or "all").strip().lower()
+    # Handle comma-separated multi-location (e.g., "NYC,Boston,Chicago")
+    locations = [l.strip() for l in (location or "all").split(",") if l.strip()]
+    if not locations:
+        locations = ["all"]
 
-    # Return cached data for this location if fresh (2 hours)
-    entry = _events_cache.get(loc_key)
-    cache_age = (_time.time() - entry["fetched_at"]) if entry and entry.get("fetched_at") else 999
-    if cache_age < 7200 and entry and entry.get("data") is not None:
-        data = entry["data"]
-    else:
-        data = await _fetch_events(location)
-        _events_cache[loc_key] = {"data": data, "fetched_at": _time.time()}
+    all_data = []
+    seen_ids = set()
+    for loc in locations:
+        loc_key = loc.lower()
+        entry = _events_cache.get(loc_key)
+        cache_age = (_time.time() - entry["fetched_at"]) if entry and entry.get("fetched_at") else 999
+        if cache_age < 7200 and entry and entry.get("data") is not None:
+            data = entry["data"]
+        else:
+            data = await _fetch_events(loc)
+            _events_cache[loc_key] = {"data": data, "fetched_at": _time.time()}
+        # Deduplicate by event URL or title
+        for e in data:
+            eid = e.get("url") or e.get("title", "")
+            if eid not in seen_ids:
+                seen_ids.add(eid)
+                all_data.append(e)
 
     # Apply event type filter
-    results = data
+    results = all_data
     if event_type != "all":
         results = [e for e in results if event_type.lower() in (e.get("event_type") or "").lower()]
-
-    if not data and not results:
-        # Return 503 only when no location was given and there are truly no results
-        # (i.e. scraping is broken) — for now just return empty gracefully
-        pass
 
     return {"events": results, "total": len(results)}
 

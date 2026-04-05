@@ -363,6 +363,7 @@ class EventsErrorBoundary extends Component {
 export default function Events() {
   const [locationInput, setLocationInput] = useState('')
   const [searchedLocation, setSearchedLocation] = useState('')  // what was actually searched
+  const [selectedLocations, setSelectedLocations] = useState([])  // multi-select quick locations
   const [eventType, setEventType]         = useState('all')
   const [events, setEvents]               = useState([])
   const [loading, setLoading]             = useState(false)
@@ -434,9 +435,14 @@ export default function Events() {
   }
 
   function handleQuickLocation(loc) {
-    setLocationInput(loc)
-    setSearchedLocation(loc)
-    fetchEvents(loc, eventType)
+    setSelectedLocations(prev => {
+      const next = prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc]
+      const combined = next.join(',')
+      setLocationInput(combined)
+      setSearchedLocation(combined)
+      fetchEvents(combined, eventType)
+      return next
+    })
   }
 
   function handleTypeChange(type) {
@@ -530,7 +536,7 @@ export default function Events() {
                 key={loc}
                 onClick={() => handleQuickLocation(loc)}
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors duration-150 ${
-                  searchedLocation === loc
+                  selectedLocations.includes(loc)
                     ? 'bg-violet-DEFAULT text-white border-violet-DEFAULT'
                     : 'bg-white text-navy-600 border-navy-200 hover:border-violet-DEFAULT hover:text-violet-DEFAULT'
                 }`}
