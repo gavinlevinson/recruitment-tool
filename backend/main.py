@@ -637,9 +637,9 @@ def get_jobs(
     status: Optional[str] = None, search: Optional[str] = None,
     current_user: Optional[User] = Depends(get_optional_user), db: Session = Depends(get_db),
 ):
-    q = db.query(Job)
-    if current_user:
-        q = q.filter(Job.user_id == current_user.id)
+    if not current_user:
+        return []
+    q = db.query(Job).filter(Job.user_id == current_user.id)
     if status and status != "All":
         q = q.filter(Job.status == status)
     if search:
@@ -765,9 +765,9 @@ def get_calendar_events(
     db: Session = Depends(get_db),
 ):
     """Return all calendar events derived from job deadlines, interview dates, reminders, and interview rounds."""
-    q = db.query(Job)
-    if current_user:
-        q = q.filter(Job.user_id == current_user.id)
+    if not current_user:
+        return []
+    q = db.query(Job).filter(Job.user_id == current_user.id)
     jobs = q.all()
 
     job_map = {j.id: j for j in jobs}
@@ -1266,10 +1266,9 @@ def get_contacts(job_id: Optional[int] = None, company: Optional[str] = None,
                  search: Optional[str] = None,
                  current_user: Optional[User] = Depends(get_optional_user),
                  db: Session = Depends(get_db)):
-    q = db.query(Contact)
-    # Filter to current user's contacts only
-    if current_user:
-        q = q.filter(or_(Contact.user_id == current_user.id, Contact.user_id == None))
+    if not current_user:
+        return []
+    q = db.query(Contact).filter(or_(Contact.user_id == current_user.id, Contact.user_id == None))
     if job_id:
         q = q.filter(Contact.job_id == job_id)
     if company:
@@ -2560,20 +2559,16 @@ def get_preferences(
     current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
-    if current_user:
-        prefs = db.query(UserPreferences).filter(UserPreferences.user_id == current_user.id).first()
-        if not prefs:
-            prefs = UserPreferences(user_id=current_user.id)
-            db.add(prefs)
-            db.commit()
-            db.refresh(prefs)
-    else:
-        prefs = db.query(UserPreferences).filter(UserPreferences.user_id == None).first()
-        if not prefs:
-            prefs = UserPreferences()
-            db.add(prefs)
-            db.commit()
-            db.refresh(prefs)
+    if not current_user:
+        return {"locations": [], "funding_stages": [], "employee_ranges": [], "min_score": 0,
+                "enabled_sources": None, "preferred_roles": None, "preferred_work_types": None,
+                "years_experience": None, "min_salary": None, "preferred_industries": None}
+    prefs = db.query(UserPreferences).filter(UserPreferences.user_id == current_user.id).first()
+    if not prefs:
+        prefs = UserPreferences(user_id=current_user.id)
+        db.add(prefs)
+        db.commit()
+        db.refresh(prefs)
     return {
         "locations": json.loads(prefs.locations) if prefs.locations else [],
         "funding_stages": json.loads(prefs.funding_stages) if prefs.funding_stages else [],
