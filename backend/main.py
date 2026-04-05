@@ -2341,15 +2341,24 @@ async def get_company_summary(company: str, description: str = ""):
         return {"summary": _company_summary_cache[cache_key], "cached": True}
 
     context = description[:1500] if description else ""
-    prompt = (
-        f"Based on the following job posting, write exactly 1-2 sentences describing what {company} does "
-        f"as a company — focus on their product or service and what industry they're in. "
-        f"Be concrete and specific (e.g. 'Ramp is a corporate card and spend management platform that helps businesses control costs.' "
-        f"or 'Anthropic is an AI safety company building large language models and AI assistants.'). "
-        f"Do NOT mention the job title, role, or any hiring details.\n\n"
-        f"Job posting context:\n{context}\n\n"
-        f"Company description (1-2 sentences, company-focused only):"
-    )
+    if context:
+        prompt = (
+            f"Based on the following job posting, write exactly 1-2 sentences describing what {company} does "
+            f"as a company — focus on their product or service and what industry they're in. "
+            f"Be concrete and specific (e.g. 'Ramp is a corporate card and spend management platform that helps businesses control costs.'). "
+            f"Do NOT mention the job title, role, or any hiring details.\n\n"
+            f"Job posting context:\n{context}\n\n"
+            f"Company description (1-2 sentences, company-focused only):"
+        )
+    else:
+        prompt = (
+            f"Write exactly 1-2 sentences describing what {company} does as a company. "
+            f"Focus on their product or service and what industry they're in. "
+            f"Be concrete and specific. If you don't know the company, write: "
+            f"'{company} is a company. Visit their website to learn more.' "
+            f"Do NOT ask questions. Just write the description.\n\n"
+            f"Company description (1-2 sentences):"
+        )
 
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.post(
