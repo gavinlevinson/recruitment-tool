@@ -258,7 +258,7 @@ export default function Register() {
                 <label className="block text-xs font-semibold text-navy-500 mb-0.5 uppercase tracking-wide">
                   Years of professional experience
                 </label>
-                <p className="text-xs text-navy-400 mb-3">Include internships, co-ops, and part-time roles</p>
+                <p className="text-xs text-navy-400 mb-3">Full-time professional experience only — internships and co-ops don't count here (they'll still help with coaching and skills matching)</p>
 
                 <div className="flex items-center gap-4">
                   {/* Stepper */}

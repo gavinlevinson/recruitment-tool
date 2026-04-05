@@ -178,6 +178,54 @@ function UploadCard({ fileType, label, hint, required, currentFilename, onUpload
   )
 }
 
+function EditableSkills({ skills, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [localSkills, setLocalSkills] = useState([...skills])
+  const [newSkill, setNewSkill] = useState('')
+
+  const addSkill = () => {
+    const s = newSkill.trim()
+    if (s && !localSkills.includes(s)) {
+      setLocalSkills(prev => [...prev, s])
+      setNewSkill('')
+    }
+  }
+  const removeSkill = (skill) => setLocalSkills(prev => prev.filter(s => s !== skill))
+  const save = () => { onSave(localSkills); setEditing(false) }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide">Skills Detected</p>
+        <button onClick={() => editing ? save() : setEditing(true)}
+          className="text-xs font-medium text-violet-600 hover:text-violet-800">
+          {editing ? 'Save' : 'Edit'}
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {(editing ? localSkills : skills.slice(0, 12)).map(skill => (
+          <span key={skill} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-white text-navy-700 border border-navy-200">
+            {skill}
+            {editing && (
+              <button onClick={() => removeSkill(skill)} className="text-navy-300 hover:text-red-500 ml-0.5">
+                <X size={10} />
+              </button>
+            )}
+          </span>
+        ))}
+      </div>
+      {editing && (
+        <div className="flex items-center gap-2 mt-2">
+          <input className="input text-xs py-1 flex-1" placeholder="Add a skill..."
+            value={newSkill} onChange={e => setNewSkill(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addSkill()} />
+          <button onClick={addSkill} className="text-xs text-violet-600 font-medium">Add</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DeleteAccountSection() {
   const { logout } = useAuth()
   const [confirm, setConfirm] = useState(false)
@@ -779,64 +827,38 @@ export default function Profile() {
         )}
       </div>
 
-      {/* Parsed profile preview */}
-      {profile && (profile.suggested_roles?.length > 0 || profile.skills?.length > 0) && (
+      {/* Parsed profile preview — editable */}
+      {profile && (profile.skills?.length > 0 || profile.school) && (
         <div className="card p-6 space-y-4" style={{ background: 'linear-gradient(135deg, #f5f0ff 0%, #e8f4ff 100%)', borderColor: '#c4b0e8' }}>
           <h2 className="text-base font-semibold text-navy-800 flex items-center gap-2">
             <Sparkles size={17} className="text-violet-DEFAULT" />
-            Detected from your resume
+            Extracted from your resume
           </h2>
 
-          {profile.school && (
+          {/* School — editable */}
+          <div>
+            <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide mb-1.5">University</p>
             <div className="flex items-center gap-2 text-sm text-navy-600">
               <GraduationCap size={15} className="text-violet-DEFAULT" />
-              <span>{profile.school}</span>
+              <span>{profile.school || 'Not detected'}</span>
               {profile.gpa && <span className="text-navy-400">· GPA {profile.gpa}</span>}
             </div>
-          )}
+            <p className="text-[10px] text-navy-400 mt-1">To change, update on your Account Information above</p>
+          </div>
 
-          {profile.suggested_locations?.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide mb-2">Target Locations</p>
-              <div className="flex flex-wrap gap-1.5">
-                {profile.suggested_locations.map(loc => (
-                  <span key={loc} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-700 border border-sky-200">
-                    <MapPin size={10} /> {loc}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {profile.suggested_roles?.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide mb-2">Target Roles Detected</p>
-              <div className="flex flex-wrap gap-1.5">
-                {profile.suggested_roles.slice(0, 8).map(role => (
-                  <span key={role} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700 border border-violet-200">
-                    <Briefcase size={10} /> {role}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
+          {/* Skills — editable with add/remove */}
           {profile.skills?.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide mb-2">Skills Detected</p>
-              <div className="flex flex-wrap gap-1.5">
-                {profile.skills.slice(0, 12).map(skill => (
-                  <span key={skill} className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-white text-navy-700 border border-navy-200">
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </div>
+            <EditableSkills skills={profile.skills} onSave={async (newSkills) => {
+              try {
+                await profileApi.updateParsed({ skills: newSkills })
+                setProfile(prev => ({ ...prev, skills: newSkills }))
+              } catch (e) { console.error('Failed to update skills:', e) }
+            }} />
           )}
 
           <p className="text-xs text-navy-400 pt-1 border-t border-navy-100">
-            These signals are used to personalize your job discovery scores and preferences.
-            Go to <strong className="text-navy-600">Job Discovery → Preferences</strong> to fine-tune them.
+            These signals are used to personalize your job discovery scores.
+            Go to <strong className="text-navy-600">Job Discovery → Preferences</strong> to set location and role filters.
           </p>
         </div>
       )}

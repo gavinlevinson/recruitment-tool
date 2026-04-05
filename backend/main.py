@@ -1846,10 +1846,16 @@ def get_discovered_jobs(
         if wt_conditions:
             q = q.filter(or_(*wt_conditions))
     if location_filter:
+        from resume_parser import COUNTRY_ALIASES
         loc_names = [l.strip() for l in location_filter.split(",")]
         loc_conditions = []
         for loc_name in loc_names:
             patterns = LOCATION_MAP.get(loc_name, [loc_name.lower()])
+            # Also check country aliases (US/USA/United States all match)
+            for canonical, aliases in COUNTRY_ALIASES.items():
+                if loc_name.lower() in aliases or loc_name.lower() == canonical:
+                    patterns = list(set(patterns + aliases + [canonical]))
+                    break
             for pattern in patterns:
                 loc_conditions.append(DiscoveredJob.location.ilike(f"%{pattern}%"))
         # Always include remote/anywhere jobs — users in any city want to see remote roles too

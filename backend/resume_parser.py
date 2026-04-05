@@ -48,17 +48,42 @@ SKILL_KEYWORDS = [
 ]
 
 LOCATION_MAP = {
-    "NYC": ["new york", "nyc", "manhattan", "brooklyn", "queens", "bronx"],
+    "NYC": ["new york", "nyc", "manhattan", "brooklyn", "queens", "bronx", "jersey city", "hoboken"],
     "SF": ["san francisco", "sf", "bay area", "palo alto", "menlo park",
-           "mountain view", "sunnyvale", "cupertino", "redwood city", "south bay"],
-    "Boston": ["boston", "cambridge", "ma", "massachusetts"],
-    "Chicago": ["chicago", "il", "illinois"],
-    "LA": ["los angeles", "la,", " la ", "santa monica", "culver city"],
-    "DC": ["washington dc", "washington, dc", "d.c.", "arlington", "bethesda"],
-    "Seattle": ["seattle", "bellevue", "redmond"],
+           "mountain view", "sunnyvale", "cupertino", "redwood city", "south bay", "oakland", "berkeley"],
+    "Boston": ["boston", "cambridge", "somerville", "ma", "massachusetts"],
+    "Chicago": ["chicago", "il", "illinois", "evanston"],
+    "LA": ["los angeles", "la,", " la ", "santa monica", "culver city", "pasadena", "burbank", "glendale"],
+    "DC": ["washington dc", "washington, dc", "d.c.", "arlington", "bethesda", "mclean", "reston", "tysons"],
+    "Seattle": ["seattle", "bellevue", "redmond", "kirkland"],
     "Austin": ["austin", "tx", "texas"],
-    "Remote": ["remote", "anywhere", "distributed", "fully remote"],
+    "Remote": ["remote", "anywhere", "distributed", "fully remote", "work from home"],
 }
+
+# Country normalization — map common variants to canonical names
+COUNTRY_ALIASES = {
+    "united states": ["us", "usa", "u.s.", "u.s.a.", "united states of america", "united states"],
+    "united kingdom": ["uk", "u.k.", "great britain", "england", "united kingdom"],
+    "canada": ["canada", "ca"],
+    "germany": ["germany", "deutschland"],
+    "france": ["france"],
+    "india": ["india"],
+    "australia": ["australia", "au"],
+    "singapore": ["singapore"],
+    "japan": ["japan"],
+    "israel": ["israel"],
+}
+
+def normalize_location(loc_str):
+    """Normalize country names in a location string."""
+    if not loc_str:
+        return loc_str
+    lower = loc_str.lower().strip()
+    for canonical, aliases in COUNTRY_ALIASES.items():
+        for alias in aliases:
+            if lower == alias or lower.endswith(f", {alias}") or lower.endswith(f" {alias}"):
+                return loc_str  # Already contains a valid country reference
+    return loc_str
 
 SCHOOL_NAMES = [
     "michigan", "umich", "university of michigan",
@@ -245,7 +270,7 @@ def compute_personal_score(
         role_score = 0
     score += role_score
 
-    # ── Location match (0-20 pts) ───────────────────────────────────────────────
+    # ── Location match (0-30 pts, with penalty for mismatch) ────────────────────
     loc_lower = (job_location or "").lower()
     is_remote = any(kw in loc_lower for kw in ["remote", "anywhere", "distributed", "fully remote"])
     is_hybrid = "hybrid" in loc_lower
@@ -255,18 +280,24 @@ def compute_personal_score(
     for user_loc in user_locations:
         patterns = LOCATION_MAP.get(user_loc, [user_loc.lower()])
         if any(p in loc_lower for p in patterns):
-            loc_score = 20
+            loc_score = 30
             matched_loc = user_loc
             break
 
     if loc_score == 0:
         user_prefers_remote = "Remote" in user_locations
         if is_remote:
-            loc_score = 20 if user_prefers_remote else 10
+            loc_score = 25 if user_prefers_remote else 15
             reasons.append("Remote role")
         elif is_hybrid:
-            loc_score = 10
+            loc_score = 15
             reasons.append("Hybrid role")
+        elif user_locations and loc_lower:
+            # User has location preferences but job doesn't match any — penalty
+            loc_score = -10
+            reasons.append("Location mismatch")
+        else:
+            loc_score = 10  # No location info — neutral
     else:
         reasons.append(f"Location match: {matched_loc}")
     score += loc_score
