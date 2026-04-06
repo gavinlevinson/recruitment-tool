@@ -44,9 +44,25 @@ const EMPTY_FORM = {
 }
 
 // ── Company Logo ──────────────────────────────────────────────────────────────
-function CompanyLogo({ company, size = 44 }) {
+function companyDomainFromUrl(jobUrl, companyName) {
+  if (jobUrl) {
+    try {
+      const url = new URL(jobUrl)
+      const host = url.hostname.toLowerCase().replace(/^www\./, '')
+      const parts = url.pathname.split('/').filter(Boolean)
+      const ATS = ['lever.co', 'greenhouse.io', 'ashbyhq.com', 'ashby.io', 'workable.com', 'boards.greenhouse.io', 'job-boards.greenhouse.io', 'job-boards.eu.greenhouse.io']
+      if (host === 'api.lever.co' && parts.length >= 3 && parts[0] === 'v0' && parts[1] === 'postings') return parts[2] + '.com'
+      if (host.endsWith('lever.co') && parts[0]?.length > 1) return parts[0] + '.com'
+      for (const ats of ATS) { if (host.endsWith(ats) || host === ats) { if (parts[0]?.length > 1) return parts[0] + '.com'; break } }
+      if (!host.includes('linkedin.com') && !host.includes('indeed.com')) return host
+    } catch {}
+  }
+  return (companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
+}
+
+function CompanyLogo({ company, jobUrl, size = 44 }) {
   const initials = (company || '?').split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
-  const domain = (company || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
+  const domain = companyDomainFromUrl(jobUrl, company)
   const src = `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=64`
   const [failed, setFailed] = useState(false)
 
@@ -712,7 +728,7 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToIn
       <div className="fixed inset-0 z-40 bg-navy-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <div className="fixed right-0 top-0 h-full w-full max-w-md z-50 bg-white shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-start gap-4 p-6 border-b border-navy-100">
-          <CompanyLogo company={job.company} size={52} />
+          <CompanyLogo company={job.company} jobUrl={job.job_url} size={52} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-navy-900 truncate">{job.company || 'Unknown'}</h2>
@@ -972,7 +988,7 @@ function KanbanCard({ job, highlighted, dimmed, onClick, onStar, onDragStart, on
 
       {/* Logo + company/role */}
       <div className={`flex items-center gap-2.5 ${!compact ? 'pr-5' : ''}`}>
-        <CompanyLogo company={job.company} size={compact ? 26 : 34} />
+        <CompanyLogo company={job.company} jobUrl={job.job_url} size={compact ? 26 : 34} />
         <div className="min-w-0 flex-1">
           <p className={`font-semibold text-navy-900 truncate group-hover:text-violet-700 transition-colors ${compact ? 'text-xs' : 'text-sm'}`}>
             {job.company || 'Unknown'}
@@ -2389,7 +2405,7 @@ function NetworkModal({ job, onClose }) {
 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-navy-100 shrink-0">
-          <CompanyLogo company={job.company} size={36} />
+          <CompanyLogo company={job.company} jobUrl={job.job_url} size={36} />
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-bold text-navy-900 truncate">{job.company}</h2>
             <p className="text-xs text-navy-400 truncate">{job.role}</p>
