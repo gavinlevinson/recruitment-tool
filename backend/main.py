@@ -2330,8 +2330,8 @@ def get_new_today_jobs(db: Session = Depends(get_db)):
 
 
 @app.get("/api/company-summary")
-async def get_company_summary(company: str, description: str = ""):
-    """Use Claude to generate a 1-2 sentence company summary from a job description. Cached per company."""
+async def get_company_summary(company: str, description: str = "", job_url: str = ""):
+    """Use Claude to generate a 1-2 sentence company summary. Fetches company website when no description."""
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=503, detail="Anthropic API key not configured")
 
@@ -2340,13 +2340,23 @@ async def get_company_summary(company: str, description: str = ""):
         return {"summary": _company_summary_cache[cache_key], "cached": True}
 
     context = description[:1500] if description else ""
+
+    # If no description, try to fetch the company's website for context
+    if not context:
+        try:
+            company_context = await _fetch_company_context(company, job_url)
+            if company_context:
+                context = company_context[:1500]
+        except Exception:
+            pass
+
     if context:
         prompt = (
-            f"Based on the following job posting, write exactly 1-2 sentences describing what {company} does "
+            f"Based on the following context about {company}, write exactly 1-2 sentences describing what they do "
             f"as a company — focus on their product or service and what industry they're in. "
             f"Be concrete and specific (e.g. 'Ramp is a corporate card and spend management platform that helps businesses control costs.'). "
-            f"Do NOT mention the job title, role, or any hiring details.\n\n"
-            f"Job posting context:\n{context}\n\n"
+            f"Do NOT mention any job titles, roles, or hiring details.\n\n"
+            f"Context:\n{context}\n\n"
             f"Company description (1-2 sentences, company-focused only):"
         )
     else:

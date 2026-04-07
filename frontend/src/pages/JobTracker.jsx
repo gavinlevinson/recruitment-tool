@@ -661,7 +661,7 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
 }
 
 // ── Detail Panel ──────────────────────────────────────────────────────────────
-function CompanyIntelSection({ company, description }) {
+function CompanyIntelSection({ company, description, jobUrl }) {
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(false)
 
@@ -671,7 +671,12 @@ function CompanyIntelSection({ company, description }) {
     setSummary(null)
     const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000')
     const token = localStorage.getItem('orion_token') || ''
-    fetch(`${baseUrl}/api/company-summary?company=${encodeURIComponent(company)}&description=${encodeURIComponent((description || '').substring(0, 500))}`, {
+    const params = new URLSearchParams({
+      company,
+      description: (description || '').substring(0, 500),
+      job_url: jobUrl || '',
+    })
+    fetch(`${baseUrl}/api/company-summary?${params}`, {
       headers: { 'Authorization': `Bearer ${token}` },
     })
       .then(r => r.json())
@@ -911,7 +916,7 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToIn
             </p>
           </div>
 
-          <CompanyIntelSection company={job.company} description={job.description || job.notes || ''} />
+          <CompanyIntelSection company={job.company} description={job.description || job.notes || ''} jobUrl={job.job_url || ''} />
         </div>
 
         <div className="p-6 border-t border-navy-100 space-y-2">
