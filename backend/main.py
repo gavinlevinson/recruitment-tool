@@ -2390,6 +2390,13 @@ async def get_company_summary(company: str, description: str = "", job_url: str 
             raise HTTPException(status_code=402, detail="Insufficient API credits")
         raise HTTPException(status_code=502, detail="Claude API error")
     summary = resp.json()["content"][0]["text"].strip()
+    # Don't cache unhelpful responses — let it retry with fresh context next time
+    bad_signals = ["i don't have", "i'm not familiar", "not familiar", "visit their website to learn more",
+                   "don't have reliable", "could you please share", "don't see the job posting"]
+    if any(s in summary.lower() for s in bad_signals):
+        # Try to construct a basic summary from the company name + domain
+        slug = company.strip().lower().replace(' ', '')
+        return {"summary": f"{company} is a company. Learn more at {slug}.com", "cached": False}
     _company_summary_cache[cache_key] = summary
     return {"summary": summary, "cached": False}
 
