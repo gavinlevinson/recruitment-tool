@@ -1962,7 +1962,18 @@ def get_discovered_jobs(
             )
             # Apply experience preference adjustment
             adjusted = max(1, p_score + _exp_adj(j.min_years_required))
-            d["match_score"] = adjusted
+            # Recency boost: jobs scraped recently get bumped up
+            if j.scraped_at:
+                hours_ago = (datetime.utcnow() - j.scraped_at).total_seconds() / 3600
+                if hours_ago <= 24:
+                    adjusted += 15  # Strong boost for last 24 hours
+                    p_reasons.append("New today (+15)")
+                elif hours_ago <= 72:
+                    adjusted += 8   # Moderate boost for last 3 days
+                    p_reasons.append("Recent (+8)")
+                elif hours_ago <= 168:
+                    adjusted += 3   # Small boost for last week
+            d["match_score"] = min(adjusted, 100)
             d["match_reasons"] = "; ".join(p_reasons) if p_reasons else ""
             scored.append(d)
         # Floor: strip score < 0 jobs only (hard-excluded roles saved before -1 convention)
