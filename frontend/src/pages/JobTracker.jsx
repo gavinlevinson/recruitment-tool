@@ -1295,14 +1295,18 @@ function scoreRelevance(person, selectedChips, userUniversity, enriched) {
     }
   }
 
-  // +20 if enriched data shows same university in headline / employment
+  // +30 if enriched data shows same university (check education, headline, employment)
   if (userUniversity && enriched) {
     const uni = userUniversity.toLowerCase()
+    const uniWords = uni.split(/\s+/).filter(w => w.length > 2)
     const haystack = [
       enriched.headline || '',
       ...(enriched.employment_history || []).map(e => `${e.organization_name || ''} ${e.description || ''}`),
+      ...(enriched.education || []).map(e => `${e.school_name || ''} ${e.degree || ''}`),
     ].join(' ').toLowerCase()
-    if (haystack.includes(uni)) score += 20
+    if (haystack.includes(uni) || (uniWords.length >= 2 && uniWords.every(w => haystack.includes(w)))) {
+      score += 30  // Strong alumni boost — sort these to the top
+    }
   }
 
   return score
@@ -1470,11 +1474,17 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
   const uniMatches   = (id) => {
     if (!user?.university || !enriched[id]) return false
     const uni = user.university.toLowerCase()
+    const profile = enriched[id]
+    // Check headline, employment history, AND education history
     const hay = [
-      enriched[id].headline || '',
-      ...(enriched[id].employment_history || []).map(e => e.organization_name || ''),
+      profile.headline || '',
+      ...(profile.employment_history || []).map(e => `${e.organization_name || ''} ${e.description || ''}`),
+      ...(profile.education || []).map(e => `${e.school_name || ''} ${e.degree || ''} ${e.raw_address || ''}`),
+      profile.organization?.name || '',
     ].join(' ').toLowerCase()
-    return hay.includes(uni)
+    // Check for university name and common abbreviations
+    const uniWords = uni.split(/\s+/).filter(w => w.length > 2)
+    return hay.includes(uni) || (uniWords.length >= 2 && uniWords.every(w => hay.includes(w)))
   }
 
   return (
@@ -1620,8 +1630,8 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
                             {displayName}
                           </p>
                           {uniMatch && (
-                            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-100 text-sky-700 border border-sky-200 shrink-0">
-                              <GraduationCap size={8} /> Same school
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                              <GraduationCap size={10} /> {user?.university || 'Alumni'}
                             </span>
                           )}
                           {person._score > 0 && !uniMatch && (
