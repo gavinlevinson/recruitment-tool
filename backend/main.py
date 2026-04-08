@@ -2286,14 +2286,9 @@ def get_scrape_status(db: Session = Depends(get_db)):
 
 @app.get("/api/discovered-jobs/new-today")
 def get_new_today_jobs(db: Session = Depends(get_db)):
-    """Return jobs from the most recent scrape batch. Stays visible until the next scrape runs."""
+    """Return only jobs scraped in the last 24 hours. Refreshes daily."""
     from datetime import timedelta
-    # Find the latest scraped_at timestamp
-    latest = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
-    if not latest or not latest.scraped_at:
-        return {"jobs": [], "count": 0}
-    # Get all jobs from the last 24 hours of scraping
-    cutoff = latest.scraped_at - timedelta(hours=24)
+    cutoff = datetime.utcnow() - timedelta(hours=24)
     jobs = (
         db.query(DiscoveredJob)
         .filter(
@@ -3457,16 +3452,12 @@ def get_all_stats(
     accepted     = status_counts.get("Accepted", 0)
     rejected     = status_counts.get("Rejected", 0)
 
-    # New jobs from the most recent scrape batch (matches Discovery page)
-    latest_job = db.query(DiscoveredJob).order_by(DiscoveredJob.scraped_at.desc()).first()
-    if latest_job and latest_job.scraped_at:
-        scrape_cutoff = latest_job.scraped_at - timedelta(hours=24)
-        new_today = db.query(DiscoveredJob).filter(
-            DiscoveredJob.is_active == True,
-            DiscoveredJob.scraped_at >= scrape_cutoff,
-        ).count()
-    else:
-        new_today = 0
+    # New jobs posted in last 24 hours (by posted_date, not scraped_at)
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    new_today = db.query(DiscoveredJob).filter(
+        DiscoveredJob.is_active == True,
+        DiscoveredJob.scraped_at >= datetime.utcnow() - timedelta(hours=24),
+    ).count()
 
     # Total undiscovered (not yet added)
     total_undiscovered = db.query(DiscoveredJob).filter(
