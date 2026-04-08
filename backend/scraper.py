@@ -2771,11 +2771,13 @@ async def _ats_discover_jobs(name: str, website: str, source_label: str,
                     f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
                 )
                 if r.status_code == 200:
-                    for j in r.json().get("jobPostings", []):
+                    ashby_data = r.json()
+                    ashby_jobs = ashby_data.get("jobPostings") or ashby_data.get("jobs") or []
+                    for j in ashby_jobs:
                         if len(found) >= max_per_co: break
                         jb = _make_vc_job(
                             name, j.get("title", ""),
-                            j.get("location", "") or "",
+                            j.get("location", j.get("locationName", "")) or "",
                             (j.get("jobPostingUrls") or {}).get("externalUrl", "")
                             or f"https://jobs.ashbyhq.com/{slug}/{j.get('id', '')}",
                             source_label,
