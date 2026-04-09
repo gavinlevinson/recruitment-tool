@@ -11,13 +11,18 @@ api.interceptors.request.use(config => {
   return config
 })
 
-// On 401, clear token (don't redirect here — let AuthContext handle it)
+// On 401, clear token ONLY if it matches what's currently stored.
+// This prevents a race where an old /auth/me 401 wipes a freshly-set token from login.
 api.interceptors.response.use(
   res => res,
   err => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('orion_token')
-      localStorage.removeItem('orion_user')
+      const sentToken = err.config?.headers?.Authorization?.replace('Bearer ', '')
+      const currentToken = localStorage.getItem('orion_token')
+      if (sentToken && sentToken === currentToken) {
+        localStorage.removeItem('orion_token')
+        localStorage.removeItem('orion_user')
+      }
     }
     return Promise.reject(err)
   }

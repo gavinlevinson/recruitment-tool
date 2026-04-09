@@ -12,6 +12,7 @@ export function AuthProvider({ children }) {
   // On mount, verify stored token
   useEffect(() => {
     if (!token) { setLoading(false); return }
+    const tokenAtStart = token
     authApi.me()
       .then(res => {
         setUser(res.data)
@@ -22,7 +23,13 @@ export function AuthProvider({ children }) {
           graduation_year: res.data.graduation_year,
         })
       })
-      .catch(() => { localStorage.removeItem('orion_token'); setToken(null) })
+      .catch(() => {
+        // Only wipe if the token hasn't changed (i.e., login didn't succeed in the meantime)
+        if (localStorage.getItem('orion_token') === tokenAtStart) {
+          localStorage.removeItem('orion_token')
+          setToken(null)
+        }
+      })
       .finally(() => setLoading(false))
   }, []) // eslint-disable-line
 
