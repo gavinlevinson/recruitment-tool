@@ -1433,9 +1433,9 @@ function NewTodayGrouped({ jobs, onAdd }) {
                 <NewTodayLogo company={g.company} jobUrl={g.jobUrl} />
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
                   <p className="text-sm font-semibold text-navy-900 truncate leading-tight">{g.company}</p>
+                  <NewTodayInfoButton company={g.company} description={g.description} />
                 </div>
               </button>
-              <NewTodayInfoButton company={g.company} description={g.description} />
               <span className="shrink-0 flex items-center justify-center min-w-[22px] h-[22px] rounded-full bg-sky-500 text-white text-[10px] font-bold">
                 {g.jobs.length}
               </span>
