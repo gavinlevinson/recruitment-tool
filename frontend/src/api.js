@@ -168,6 +168,7 @@ export const eventsApi = {
 export const newsApi = {
   getAll:        (params) => api.get('/news', { params }),
   companyIntel:  ()       => api.get('/news/company-intel'),
+  companyNews:   (company, jobUrl) => api.get('/company-news', { params: { company, job_url: jobUrl || '' } }),
   refresh:       ()       => api.post('/news/refresh'),
 }
 

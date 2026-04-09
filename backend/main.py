@@ -644,7 +644,40 @@ def get_jobs(
         q = q.filter(Job.status == status)
     if search:
         q = q.filter(or_(Job.company.ilike(f"%{search}%"), Job.role.ilike(f"%{search}%")))
-    return [job_to_dict(j) for j in q.order_by(Job.created_at.desc()).all()]
+    jobs = q.order_by(Job.created_at.desc()).all()
+
+    # Enrich with DiscoveredJob data (funding, employees, industry) per company
+    # Build a company → enrichment map so all jobs at the same company get the same data
+    discovered_ids = [j.discovered_job_id for j in jobs if j.discovered_job_id]
+    enrichment_map = {}  # company_lower → {funding_stage, employee_count, industry, ...}
+    if discovered_ids:
+        disc_jobs = db.query(DiscoveredJob).filter(DiscoveredJob.id.in_(discovered_ids)).all()
+        for dj in disc_jobs:
+            key = (dj.company or "").lower().strip()
+            if key not in enrichment_map or not enrichment_map[key].get("funding_stage"):
+                enrichment_map[key] = {
+                    "funding_stage": dj.funding_stage,
+                    "employee_count": dj.employee_count,
+                    "industry": dj.industry,
+                    "funding_amount": getattr(dj, "funding_amount", None),
+                    "funding_date": getattr(dj, "funding_date", None),
+                    "description": (dj.description or "")[:500],
+                }
+
+    result = []
+    for j in jobs:
+        d = job_to_dict(j)
+        # Attach enrichment data — same for all jobs at the same company
+        key = (j.company or "").lower().strip()
+        enrichment = enrichment_map.get(key, {})
+        d["funding_stage"] = enrichment.get("funding_stage")
+        d["employee_count"] = enrichment.get("employee_count")
+        d["industry"] = enrichment.get("industry")
+        d["funding_amount"] = enrichment.get("funding_amount")
+        d["funding_date"] = enrichment.get("funding_date")
+        d["description"] = enrichment.get("description", "")
+        result.append(d)
+    return result
 
 @app.post("/api/jobs")
 def create_job(
@@ -2405,6 +2438,79 @@ async def get_company_summary(company: str, description: str = "", job_url: str 
         return {"summary": f"{company} is a company. Learn more at {slug}.com", "cached": False}
     _company_summary_cache[cache_key] = summary
     return {"summary": summary, "cached": False}
+
+
+# Per-company news cache
+_company_news_cache_v2: dict = {}  # { "company_lower": {"articles": [], "fetched_at": float} }
+
+@app.get("/api/company-news")
+async def get_company_news(company: str, job_url: str = ""):
+    """Return recent news articles for a specific company. Uses NewsAPI with domain precision."""
+    import time as _time
+
+    cache_key = company.strip().lower()
+    entry = _company_news_cache_v2.get(cache_key)
+    cache_age = (_time.time() - entry["fetched_at"]) if entry and entry.get("fetched_at") else 999
+    if cache_age < 14400 and entry and entry.get("articles") is not None:
+        return {"articles": entry["articles"], "company": company}
+
+    news_api_key = os.getenv("NEWS_API_KEY", "")
+    articles = []
+
+    if news_api_key and len(company.strip()) >= 3:
+        # Extract domain from job_url for precise matching
+        domain = ""
+        if job_url:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(job_url)
+                host = parsed.netloc.lower().replace("www.", "")
+                ats_hosts = ["lever.co", "greenhouse.io", "ashbyhq.com", "workable.com"]
+                if any(ats in host for ats in ats_hosts):
+                    slug = parsed.path.split("/")[1] if len(parsed.path.split("/")) > 1 else ""
+                    if slug:
+                        domain = slug + ".com"
+                elif "linkedin.com" not in host and "indeed.com" not in host:
+                    domain = host
+            except Exception:
+                pass
+        if not domain:
+            domain = company.strip().lower().replace(" ", "") + ".com"
+
+        # Build precise query: "Company" for known names, "Company" AND "domain" for small ones
+        query = f'"{company}"'
+        if domain and len(company) < 15:
+            query = f'"{company}" OR "{domain.split(".")[0]}"'
+
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                resp = await client.get(
+                    "https://newsapi.org/v2/everything",
+                    params={
+                        "q": query,
+                        "sortBy": "publishedAt",
+                        "pageSize": 5,
+                        "language": "en",
+                        "apiKey": news_api_key,
+                    },
+                    timeout=10.0,
+                )
+                if resp.status_code == 200:
+                    for a in resp.json().get("articles", []):
+                        articles.append({
+                            "title": a.get("title", ""),
+                            "description": a.get("description", ""),
+                            "url": a.get("url", ""),
+                            "image": a.get("urlToImage", ""),
+                            "source": a.get("source", {}).get("name", ""),
+                            "published": a.get("publishedAt", ""),
+                        })
+        except Exception as e:
+            print(f"[CompanyNews] Error for {company}: {e}")
+
+    _company_news_cache_v2[cache_key] = {"articles": articles, "fetched_at": _time.time()}
+    return {"articles": articles, "company": company}
+
 
 def discovered_to_dict(j, user_tracked_ids=None):
     # Per-user added_to_tracker: check if this user has a Job with this discovered_job_id

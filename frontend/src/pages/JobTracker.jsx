@@ -8,7 +8,7 @@ import {
   Linkedin, Copy, Sparkles, GraduationCap, Loader2, Send, Paperclip,
   ClipboardList, Save, PlusCircle,
 } from 'lucide-react'
-import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi, interviewRoundsApi, googleDocsApi, calendarApi, coachApi } from '../api'
+import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi, interviewRoundsApi, googleDocsApi, calendarApi, coachApi, newsApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -661,20 +661,24 @@ function InterviewRoundsSection({ jobId, jobStatus, onMoveToInterviewing, onRoun
 }
 
 // ── Detail Panel ──────────────────────────────────────────────────────────────
-function CompanyIntelSection({ company, description, jobUrl }) {
+function CompanyIntelSection({ job }) {
+  const company = job.company
   const [summary, setSummary] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [articles, setArticles] = useState([])
+  const [loadingSummary, setLoadingSummary] = useState(false)
+  const [loadingNews, setLoadingNews] = useState(false)
 
   useEffect(() => {
     if (!company) return
-    setLoading(true)
+    // Fetch company summary
+    setLoadingSummary(true)
     setSummary(null)
     const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000')
     const token = localStorage.getItem('orion_token') || ''
     const params = new URLSearchParams({
       company,
-      description: (description || '').substring(0, 500),
-      job_url: jobUrl || '',
+      description: (job.description || job.notes || '').substring(0, 500),
+      job_url: job.job_url || '',
     })
     fetch(`${baseUrl}/api/company-summary?${params}`, {
       headers: { 'Authorization': `Bearer ${token}` },
@@ -682,24 +686,87 @@ function CompanyIntelSection({ company, description, jobUrl }) {
       .then(r => r.json())
       .then(data => setSummary(data.summary || null))
       .catch(() => {})
-      .finally(() => setLoading(false))
+      .finally(() => setLoadingSummary(false))
+
+    // Fetch company news
+    setLoadingNews(true)
+    setArticles([])
+    newsApi.companyNews(company, job.job_url || '')
+      .then(res => setArticles(res.data?.articles || []))
+      .catch(() => {})
+      .finally(() => setLoadingNews(false))
   }, [company])
 
+  const hasFacts = job.employee_count || job.funding_stage || job.industry
+
   return (
-    <div className="border-t border-navy-100 pt-5">
-      <div className="flex items-center gap-2 mb-3">
+    <div className="border-t border-navy-100 pt-5 space-y-4">
+      <div className="flex items-center gap-2">
         <Building2 size={14} className="text-violet-500" />
         <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide">Company Intel</p>
       </div>
-      {loading ? (
-        <p className="text-xs text-navy-400 italic">Generating company summary...</p>
+
+      {/* Key Facts */}
+      {hasFacts && (
+        <div className="flex flex-wrap gap-1.5">
+          {job.industry && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+              {job.industry}
+            </span>
+          )}
+          {job.employee_count && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+              {job.employee_count} employees
+            </span>
+          )}
+          {job.funding_stage && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
+              {job.funding_stage}
+            </span>
+          )}
+          {job.funding_amount && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
+              Raised {job.funding_amount}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Company Summary */}
+      {loadingSummary ? (
+        <p className="text-xs text-navy-400 italic">Loading company info...</p>
       ) : summary ? (
         <div className="bg-violet-50 border border-violet-200 rounded-xl p-3">
           <p className="text-sm text-navy-700 leading-relaxed">{summary}</p>
         </div>
-      ) : (
-        <p className="text-xs text-navy-300 italic">No company info available</p>
-      )}
+      ) : null}
+
+      {/* News Articles */}
+      <div>
+        <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide mb-2">Recent News</p>
+        {loadingNews ? (
+          <p className="text-xs text-navy-400 italic">Searching for news...</p>
+        ) : articles.length > 0 ? (
+          <div className="space-y-2">
+            {articles.slice(0, 5).map((a, i) => (
+              <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+                className="block bg-white border border-navy-100 rounded-lg p-2.5 hover:border-violet-300 hover:bg-violet-50/30 transition-colors">
+                <p className="text-xs font-medium text-navy-800 leading-snug line-clamp-2">{a.title}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] text-violet-600 font-medium">{a.source}</span>
+                  {a.published && (
+                    <span className="text-[10px] text-navy-400">
+                      {new Date(a.published).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                  )}
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-navy-300 italic">No recent news found for {company}</p>
+        )}
+      </div>
     </div>
   )
 }
@@ -916,7 +983,7 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToIn
             </p>
           </div>
 
-          <CompanyIntelSection company={job.company} description={job.description || job.notes || ''} jobUrl={job.job_url || ''} />
+          <CompanyIntelSection job={job} />
         </div>
 
         <div className="p-6 border-t border-navy-100 space-y-2">
