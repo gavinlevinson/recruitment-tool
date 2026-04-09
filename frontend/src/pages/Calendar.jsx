@@ -424,7 +424,7 @@ function UpcomingSidebar({ events, onEventClick, loadError, googleConnected }) {
     .reverse()
 
   return (
-    <aside className="w-64 shrink-0 bg-white border border-navy-100 rounded-2xl p-4 flex flex-col gap-4 h-full overflow-y-auto">
+    <aside className="w-full md:w-64 shrink-0 bg-white border border-navy-100 rounded-2xl p-4 flex flex-col gap-4 h-full overflow-y-auto">
       <h3 className="text-xs font-semibold text-navy-400 uppercase tracking-wide">Upcoming</h3>
 
       {loadError && (
@@ -778,14 +778,14 @@ export default function Calendar() {
     <CalendarErrorBoundary>
     <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
       {/* Top bar */}
-      <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-navy-100 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 md:px-6 py-3 md:py-4 bg-white border-b border-navy-100 shrink-0">
         <div className="flex items-center gap-3">
           <CalendarDays size={20} className="text-violet-600" />
           <h1 className="text-lg font-bold text-navy-900">Calendar</h1>
           {loading && <RefreshCw size={14} className="text-navy-300 animate-spin" />}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-2">
           {/* Navigation */}
           <button onClick={prev} className="p-1.5 rounded-lg text-navy-500 hover:bg-navy-100 transition-colors">
             <ChevronLeft size={18} />
@@ -820,23 +820,23 @@ export default function Calendar() {
           </div>
         </div>
 
-        <div className="w-32 flex justify-end">
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 transition-colors"
-          >
-            <Plus size={13} /> Add Event
-          </button>
-        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 transition-colors"
+        >
+          <Plus size={13} /> Add Event
+        </button>
       </div>
 
       {/* Body */}
-      <div className="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
-        {/* Sidebar */}
-        <UpcomingSidebar events={events} onEventClick={setSelected} loadError={loadError} googleConnected={googleConnected} />
+      <div className="flex-1 flex gap-4 p-3 md:p-4 min-h-0 overflow-hidden">
+        {/* Sidebar — full width on mobile, fixed width on desktop */}
+        <div className="flex-1 md:flex-none md:w-64">
+          <UpcomingSidebar events={events} onEventClick={setSelected} loadError={loadError} googleConnected={googleConnected} />
+        </div>
 
-        {/* Calendar grid */}
-        <div className="flex-1 bg-white border border-navy-100 rounded-2xl overflow-hidden flex flex-col min-h-0">
+        {/* Calendar grid — hidden on mobile */}
+        <div className="hidden md:flex flex-1 bg-white border border-navy-100 rounded-2xl overflow-hidden flex-col min-h-0">
           {loading && events.length === 0 ? (
             <div className="flex-1 flex items-center justify-center gap-3 text-navy-400">
               <RefreshCw size={18} className="text-violet-400 animate-spin" />

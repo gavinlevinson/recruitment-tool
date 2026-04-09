@@ -701,7 +701,7 @@ function DetailPanel({ job, onClose, onEdit, onDelete, onViewNetwork, onMoveToIn
   return (
     <>
       <div className="fixed inset-0 z-40 bg-navy-900/20 backdrop-blur-[1px]" onClick={onClose} />
-      <div className="fixed right-0 top-0 h-full w-full max-w-md z-50 bg-white shadow-2xl flex flex-col overflow-hidden">
+      <div className="fixed right-0 top-0 h-full w-full max-w-full md:max-w-md z-50 bg-white shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-start gap-4 p-6 border-b border-navy-100">
           <CompanyLogo company={job.company} jobUrl={job.job_url} size={52} />
           <div className="flex-1 min-w-0">
@@ -2849,6 +2849,9 @@ export default function JobTracker() {
   const [acceptedOpen, setAcceptedOpen] = useState(true)
   const [rejectedOpen, setRejectedOpen] = useState(false)
 
+  // Mobile tab for kanban replacement
+  const [mobileTab, setMobileTab] = useState('Not Applied')
+
   // UI
   const [modalOpen, setModalOpen]     = useState(false)
   const [editJob, setEditJob]         = useState(null)
@@ -3050,7 +3053,27 @@ export default function JobTracker() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <JobTrackerErrorBoundary>
-    <div className="flex flex-col h-screen overflow-hidden" style={{ maxWidth: 'calc(100vw - 14rem)' }}>
+    <div className="flex flex-col h-screen overflow-hidden tracker-desktop-width">
+    {/* Mobile status tabs — visible only below md */}
+    <div className="flex md:hidden overflow-x-auto border-b border-navy-100 bg-white shrink-0 px-2 pt-1 -mb-px" style={{ WebkitOverflowScrolling: 'touch' }}>
+      {STATUS_OPTIONS.map(s => {
+        const cnt = byStatus(s).length
+        const cfg = COL_CONFIG[s]
+        return (
+          <button
+            key={s}
+            onClick={() => setMobileTab(s)}
+            className={`whitespace-nowrap px-3 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              mobileTab === s
+                ? `${cfg.label} border-current`
+                : 'text-navy-400 border-transparent hover:text-navy-600'
+            }`}
+          >
+            {s.split(' ').pop()} <span className="opacity-60">({cnt})</span>
+          </button>
+        )
+      })}
+    </div>
 
       {/* Header + filters */}
       <div className="px-6 pt-5 pb-3 space-y-3 shrink-0 border-b border-navy-100 bg-white">
@@ -3070,7 +3093,7 @@ export default function JobTracker() {
         </div>
 
         {/* Filter chips + search */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-nowrap md:flex-wrap items-center gap-2 overflow-x-auto md:overflow-visible pb-1 md:pb-0">
           {/* Priority chip */}
           <button
             onClick={() => setPriorityActive(v => !v)}
@@ -3105,10 +3128,10 @@ export default function JobTracker() {
           ))}
 
           {/* Search — pushed to right */}
-          <div className="ml-auto relative">
+          <div className="ml-auto relative shrink-0">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
             <input
-              className="input pl-8 w-52 text-xs py-1.5 h-8"
+              className="input pl-8 w-36 md:w-52 text-xs py-1.5 h-8"
               placeholder="Search company, role…"
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -3135,35 +3158,45 @@ export default function JobTracker() {
           <button onClick={fetchJobs} className="btn-secondary"><RefreshCw size={14} /> Retry</button>
         </div>
       ) : (
-        <div className="flex flex-1 gap-3 p-4 overflow-x-auto overflow-y-hidden min-h-0 min-w-0">
-          {/* 3 Kanban columns */}
-          {KANBAN_COLS.map(status => (
-            <KanbanColumn
-              key={status}
-              status={status}
-              cards={byStatus(status)}
-              isHighlighted={isHighlighted}
-              anyFilterActive={anyFilterActive}
-              isDragOver={dragOverColumn === status}
-              onDragOver={makeDragOver(status)}
-              onDragLeave={makeDragLeave(status)}
-              onDrop={makeDrop(status)}
-              onCardDragStart={handleCardDragStart}
-              onCardDragEnd={handleCardDragEnd}
-              onCardClick={setSelectedJob}
-              onStar={handleStar}
-            />
-          ))}
+        <>
+          {/* ── Mobile: single scrollable column for selected tab ── */}
+          <div className="flex-1 md:hidden overflow-y-auto p-3 space-y-2 min-h-0">
+            {byStatus(mobileTab).length === 0 ? (
+              <p className="text-center text-navy-300 text-sm py-12">No jobs in {mobileTab}</p>
+            ) : byStatus(mobileTab).map(job => (
+              <div
+                key={job.id}
+                onClick={() => setSelectedJob(job)}
+                className={`bg-white rounded-xl border border-navy-100 p-3 flex items-center gap-3 active:bg-navy-50 transition-colors ${
+                  !isHighlighted(job) && anyFilterActive ? 'opacity-40' : ''
+                }`}
+              >
+                <CompanyLogo company={job.company} jobUrl={job.job_url} size={40} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-navy-900 truncate">{job.company}</p>
+                  <p className="text-xs text-navy-500 truncate">{job.role}</p>
+                  {job.location && <p className="text-[10px] text-navy-400 truncate mt-0.5">{job.location}</p>}
+                </div>
+                <div className="shrink-0 flex flex-col items-end gap-1">
+                  {job.starred && <Star size={14} className="text-amber-400 fill-amber-400" />}
+                  {job.folder && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-600 border border-violet-200">{job.folder}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
 
-          {/* Right side panel — Accepted + Rejected */}
-          <div className="w-36 shrink-0 flex flex-col gap-3 overflow-y-auto min-h-0">
-            {['Accepted', 'Rejected'].map(status => (
-              <AccordionDropZone
+          {/* ── Desktop: existing kanban board ── */}
+          <div className="hidden md:flex flex-1 gap-3 p-4 overflow-x-auto overflow-y-hidden min-h-0 min-w-0">
+            {/* 3 Kanban columns */}
+            {KANBAN_COLS.map(status => (
+              <KanbanColumn
                 key={status}
                 status={status}
                 cards={byStatus(status)}
-                isOpen={status === 'Accepted' ? acceptedOpen : rejectedOpen}
-                onToggle={() => status === 'Accepted' ? setAcceptedOpen(v => !v) : setRejectedOpen(v => !v)}
+                isHighlighted={isHighlighted}
+                anyFilterActive={anyFilterActive}
                 isDragOver={dragOverColumn === status}
                 onDragOver={makeDragOver(status)}
                 onDragLeave={makeDragLeave(status)}
@@ -3174,8 +3207,29 @@ export default function JobTracker() {
                 onStar={handleStar}
               />
             ))}
+
+            {/* Right side panel — Accepted + Rejected */}
+            <div className="w-36 shrink-0 flex flex-col gap-3 overflow-y-auto min-h-0">
+              {['Accepted', 'Rejected'].map(status => (
+                <AccordionDropZone
+                  key={status}
+                  status={status}
+                  cards={byStatus(status)}
+                  isOpen={status === 'Accepted' ? acceptedOpen : rejectedOpen}
+                  onToggle={() => status === 'Accepted' ? setAcceptedOpen(v => !v) : setRejectedOpen(v => !v)}
+                  isDragOver={dragOverColumn === status}
+                  onDragOver={makeDragOver(status)}
+                  onDragLeave={makeDragLeave(status)}
+                  onDrop={makeDrop(status)}
+                  onCardDragStart={handleCardDragStart}
+                  onCardDragEnd={handleCardDragEnd}
+                  onCardClick={setSelectedJob}
+                  onStar={handleStar}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Detail panel */}

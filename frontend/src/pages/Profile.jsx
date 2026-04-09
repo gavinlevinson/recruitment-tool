@@ -479,7 +479,7 @@ export default function Profile() {
 
   return (
     <ProfileErrorBoundary>
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-3 md:p-6 max-w-3xl mx-auto space-y-4 md:space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>

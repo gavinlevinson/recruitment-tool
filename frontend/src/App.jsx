@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import {
-  LayoutDashboard, Briefcase, Search, Loader2, User, LogOut, CalendarDays, GraduationCap, MapPin, Newspaper,
+  LayoutDashboard, Briefcase, Search, Loader2, User, LogOut, CalendarDays, GraduationCap, MapPin, Newspaper, Menu, X,
 } from 'lucide-react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Dashboard    from './pages/Dashboard'
@@ -29,11 +30,22 @@ const NAV_ITEMS = [
   { to: '/events',      label: 'Events',        icon: MapPin },
 ]
 
-function Sidebar() {
+function Sidebar({ mobileOpen, onClose }) {
   const { user, logout } = useAuth()
+  const location = useLocation()
+
+  // Close mobile nav on route change
+  const prevPath = location.pathname
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-56 bg-navy-900 flex flex-col z-30 shadow-matte-lg">
+    <>
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div className="fixed inset-0 bg-navy-900/50 z-40 md:hidden" onClick={onClose} />
+      )}
+      <aside className={`fixed left-0 top-0 h-screen w-56 bg-navy-900 flex flex-col z-50 shadow-matte-lg
+        transition-transform duration-200 ease-in-out
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
       {/* Logo */}
       <div className="px-4 pt-6 pb-2">
         <OrionMark className="w-24 h-24" light />
@@ -94,12 +106,19 @@ function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   )
 }
 
 function ProtectedLayout({ children }) {
   const { user, loading } = useAuth()
   const location = useLocation()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
+  // Close mobile nav on route change
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [location.pathname])
 
   if (loading) {
     return (
@@ -118,8 +137,17 @@ function ProtectedLayout({ children }) {
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <Sidebar />
-      <main className="flex-1 ml-56 min-h-screen">
+      <Sidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
+
+      {/* Mobile header bar with hamburger */}
+      <div className="fixed top-0 left-0 right-0 h-14 bg-navy-900 flex md:hidden items-center px-4 z-30">
+        <button onClick={() => setMobileNavOpen(true)} className="p-2 text-white">
+          <Menu size={22} />
+        </button>
+        <span className="text-white font-bold text-sm ml-2">Orion</span>
+      </div>
+
+      <main className="flex-1 ml-0 md:ml-56 min-h-screen pt-14 md:pt-0">
         {children}
       </main>
       <HelpAgent />

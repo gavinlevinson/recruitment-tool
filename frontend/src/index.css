@@ -119,3 +119,8 @@ body {
   .match-low    { @apply bg-slate-100 text-slate-500 border border-slate-200; }
 
 }
+
+/* ── Responsive: Job Tracker desktop width constraint ── */
+@media (min-width: 768px) {
+  .tracker-desktop-width { max-width: calc(100vw - 14rem); }
+}

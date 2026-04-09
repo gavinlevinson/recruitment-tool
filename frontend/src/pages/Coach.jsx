@@ -1195,7 +1195,7 @@ export default function Coach() {
 
   return (
     <CoachErrorBoundary>
-    <div className="p-6 lg:p-8 max-w-4xl mx-auto">
+    <div className="p-3 md:p-6 lg:p-8 max-w-4xl mx-auto">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-1">
@@ -1210,7 +1210,7 @@ export default function Coach() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 bg-navy-50 rounded-xl p-1 mb-8 w-fit">
+      <div className="flex items-center gap-1 bg-navy-50 rounded-xl p-1 mb-8 w-full md:w-fit overflow-x-auto">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}

@@ -2445,7 +2445,7 @@ _company_news_cache_v2: dict = {}  # { "company_lower": {"articles": [], "fetche
 
 @app.get("/api/company-news")
 async def get_company_news(company: str, job_url: str = ""):
-    """Return recent news articles for a specific company. Uses NewsAPI with domain precision."""
+    """Return recent news articles for a specific company. Uses Newsdata.io (free commercial use)."""
     import time as _time
 
     cache_key = company.strip().lower()
@@ -2454,56 +2454,33 @@ async def get_company_news(company: str, job_url: str = ""):
     if cache_age < 14400 and entry and entry.get("articles") is not None:
         return {"articles": entry["articles"], "company": company}
 
-    news_api_key = os.getenv("NEWS_API_KEY", "")
+    newsdata_key = os.getenv("NEWSDATA_API_KEY", "")
     articles = []
 
-    if news_api_key and len(company.strip()) >= 3:
-        # Extract domain from job_url for precise matching
-        domain = ""
-        if job_url:
-            try:
-                from urllib.parse import urlparse
-                parsed = urlparse(job_url)
-                host = parsed.netloc.lower().replace("www.", "")
-                ats_hosts = ["lever.co", "greenhouse.io", "ashbyhq.com", "workable.com"]
-                if any(ats in host for ats in ats_hosts):
-                    slug = parsed.path.split("/")[1] if len(parsed.path.split("/")) > 1 else ""
-                    if slug:
-                        domain = slug + ".com"
-                elif "linkedin.com" not in host and "indeed.com" not in host:
-                    domain = host
-            except Exception:
-                pass
-        if not domain:
-            domain = company.strip().lower().replace(" ", "") + ".com"
-
-        # Build precise query: "Company" for known names, "Company" AND "domain" for small ones
-        query = f'"{company}"'
-        if domain and len(company) < 15:
-            query = f'"{company}" OR "{domain.split(".")[0]}"'
-
+    if newsdata_key and len(company.strip()) >= 3:
+        query = company.strip()
         try:
             async with httpx.AsyncClient(timeout=12.0) as client:
                 resp = await client.get(
-                    "https://newsapi.org/v2/everything",
+                    "https://newsdata.io/api/1/latest",
                     params={
+                        "apikey": newsdata_key,
                         "q": query,
-                        "sortBy": "publishedAt",
-                        "pageSize": 5,
                         "language": "en",
-                        "apiKey": news_api_key,
+                        "size": 5,
                     },
                     timeout=10.0,
                 )
                 if resp.status_code == 200:
-                    for a in resp.json().get("articles", []):
+                    data = resp.json()
+                    for a in data.get("results", []):
                         articles.append({
                             "title": a.get("title", ""),
                             "description": a.get("description", ""),
-                            "url": a.get("url", ""),
-                            "image": a.get("urlToImage", ""),
-                            "source": a.get("source", {}).get("name", ""),
-                            "published": a.get("publishedAt", ""),
+                            "url": a.get("link", ""),
+                            "image": a.get("image_url", ""),
+                            "source": (a.get("source_name") or a.get("source_id") or ""),
+                            "published": a.get("pubDate", ""),
                         })
         except Exception as e:
             print(f"[CompanyNews] Error for {company}: {e}")
@@ -4426,11 +4403,11 @@ async def get_company_intel(
     if not tracked_companies:
         return {"articles": [], "total": 0, "tracked_companies": []}
 
-    news_api_key = os.getenv("NEWS_API_KEY", "")
+    newsdata_key = os.getenv("NEWSDATA_API_KEY", "")
     matched = []
 
-    if news_api_key:
-        # Use NewsAPI for targeted company search (much better coverage)
+    if newsdata_key:
+        # Use Newsdata.io for targeted company search (free commercial use)
         async with httpx.AsyncClient(timeout=15.0) as client:
             for company in list(tracked_companies)[:10]:  # Cap at 10 companies to avoid rate limits
                 if len(company) < 4:
@@ -4446,34 +4423,33 @@ async def get_company_intel(
 
                 try:
                     resp = await client.get(
-                        "https://newsapi.org/v2/everything",
+                        "https://newsdata.io/api/1/latest",
                         params={
-                            "q": f'"{company}"',
-                            "sortBy": "publishedAt",
-                            "pageSize": 5,
+                            "apikey": newsdata_key,
+                            "q": company,
                             "language": "en",
-                            "apiKey": news_api_key,
+                            "size": 5,
                         },
                         timeout=10.0,
                     )
                     if resp.status_code == 200:
                         data = resp.json()
                         articles_for_co = []
-                        for a in data.get("articles", []):
+                        for a in data.get("results", []):
                             article = {
                                 "title": a.get("title", ""),
                                 "description": a.get("description", ""),
-                                "url": a.get("url", ""),
-                                "image": a.get("urlToImage", ""),
-                                "source": a.get("source", {}).get("name", ""),
-                                "published": a.get("publishedAt", ""),
+                                "url": a.get("link", ""),
+                                "image": a.get("image_url", ""),
+                                "source": (a.get("source_name") or a.get("source_id") or ""),
+                                "published": a.get("pubDate", ""),
                                 "matched_company": company.title(),
                             }
                             articles_for_co.append(article)
                             matched.append(article)
                         _company_news_cache[cache_key] = {"articles": articles_for_co, "fetched_at": _time.time()}
                 except Exception as e:
-                    print(f"[NewsAPI] Error for {company}: {e}")
+                    print(f"[Newsdata] Error for {company}: {e}")
     else:
         # Fallback: match RSS feed articles to tracked companies
         cache_age = (_time.time() - _news_cache["fetched_at"]) if _news_cache["fetched_at"] else 999

@@ -820,7 +820,7 @@ export default function Dashboard() {
   const panels = D ? buildPanels(D) : []
 
   return (
-    <div className="p-6 space-y-6 max-w-screen-xl mx-auto">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-screen-xl mx-auto">
 
       {/* Greeting */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">

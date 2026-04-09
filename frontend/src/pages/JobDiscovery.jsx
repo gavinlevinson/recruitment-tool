@@ -2027,7 +2027,7 @@ export default function JobDiscovery() {
   const lastScraped = status?.last_scraped || status?.last_run
 
   return (
-    <div className="p-6 space-y-5 max-w-screen-xl mx-auto">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-5 max-w-screen-xl mx-auto">
       {/* Onboarding slideshow — first time only */}
       <OnboardingErrorBoundary>
         {showOnboarding && <OnboardingSlideshow onClose={closeOnboarding} />}
@@ -2062,13 +2062,13 @@ export default function JobDiscovery() {
                 {lastScraped ? formatDateTime(lastScraped) : 'Never'}
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-navy-400 mr-1">Sources:</span>
+            <div className="flex flex-nowrap md:flex-wrap items-center gap-1.5 overflow-x-auto md:overflow-visible pb-1 md:pb-0">
+              <span className="text-xs text-navy-400 mr-1 shrink-0">Sources:</span>
               {(preferences?.enabled_sources == null
                 ? ALL_SOURCE_BADGES
                 : ALL_SOURCE_BADGES.filter(b => (preferences.enabled_sources || []).includes(b.id))
               ).map(s => (
-                <span key={s.label} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${s.classes}`}>{s.label}</span>
+                <span key={s.label} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${s.classes}`}>{s.label}</span>
               ))}
             </div>
           </div>
@@ -2190,7 +2190,7 @@ export default function JobDiscovery() {
           </div>
 
           {/* Row 2: role filter chips (multi-select) */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-nowrap md:flex-wrap items-center gap-1.5 overflow-x-auto md:overflow-visible pb-1 md:pb-0">
             <span className="text-xs text-navy-400 mr-1">Role:</span>
             {Object.keys(ROLE_CHIP_KEYWORDS).map(role => (
               <button
