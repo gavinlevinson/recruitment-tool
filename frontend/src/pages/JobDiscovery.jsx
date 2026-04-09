@@ -417,7 +417,9 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
     setBlurbError(null)
     try {
       const res = await discoveredApi.companySummary(job.company, job.description)
-      const summary = res.data?.summary || ''
+      // Handle both new structured format and legacy string format
+      const data = res.data
+      const summary = data?.intel?.one_liner || data?.summary || ''
       _companySummaryCache[cacheKey] = summary
       setCompanyBlurb(summary)
     } catch {
@@ -1332,146 +1334,106 @@ function PreferencesPanel({ open, onClose, preferences, onSave }) {
 }
 
 // ── New Today Row ─────────────────────────────────────────────────────────────
-function NewTodayRow({ job, onAdd }) {
-  const [expanded, setExpanded] = useState(false)
-  const [logoLevel2, setLogoLevel2] = useState(0)
-  const isAdded = job.added_to_tracker
+// ── New Today: Company Logo (shared) ─────────────────────────────────────────
+function NewTodayLogo({ company, jobUrl, size = 28 }) {
+  const [level, setLevel] = useState(0)
+  const src = level === 0 ? companyLogoUrl(jobUrl, company) : companyFaviconUrl(jobUrl, company)
+  if (level >= 2) {
+    return (
+      <div className="rounded-md bg-sky-100 flex items-center justify-center shrink-0 text-xs font-bold text-sky-500"
+        style={{ width: size, height: size }}>
+        {(company || '?')[0].toUpperCase()}
+      </div>
+    )
+  }
+  return (
+    <img src={src} alt={company} onError={() => setLevel(p => p + 1)}
+      className="rounded-md object-contain shrink-0 border border-sky-100 bg-white p-0.5"
+      style={{ width: size, height: size }} />
+  )
+}
 
-  const sourceMeta = getSourceMeta(job.source)
-  const blurb = extractCompanyBlurb(job.description)
-  const genericUrl = isGenericCareerUrl(job.job_url)
-  const logoSrc2 = logoLevel2 === 0 ? companyLogoUrl(job.job_url, job.company) : companyFaviconUrl(job.job_url, job.company)
-  const logoFailed2 = logoLevel2 >= 2
+// ── New Today: Grouped by Company ────────────────────────────────────────────
+function NewTodayGrouped({ jobs, onAdd }) {
+  const [expandedCompany, setExpandedCompany] = useState(null)
+
+  // Group jobs by company
+  const groups = []
+  const seen = {}
+  for (const job of jobs) {
+    const key = (job.company || 'Unknown').toLowerCase()
+    if (!seen[key]) {
+      seen[key] = { company: job.company, jobUrl: job.job_url, jobs: [] }
+      groups.push(seen[key])
+    }
+    seen[key].jobs.push(job)
+  }
+  // Sort by count descending
+  groups.sort((a, b) => b.jobs.length - a.jobs.length)
 
   return (
-    <div className="transition-colors hover:bg-sky-50/70">
-      {/* Compact top row — always visible */}
-      <div className="flex items-center gap-3 px-4 py-2.5">
-        {/* Logo */}
-        {!logoFailed2 ? (
-          <img
-            src={logoSrc2}
-            alt={job.company}
-            onError={() => setLogoLevel2(prev => prev + 1)}
-            className="w-7 h-7 rounded-md object-contain shrink-0 border border-sky-100 bg-white p-0.5"
-          />
-        ) : (
-          <div className="w-7 h-7 rounded-md bg-sky-100 flex items-center justify-center shrink-0 text-xs font-bold text-sky-500">
-            {(job.company || '?')[0].toUpperCase()}
-          </div>
-        )}
+    <div className="divide-y divide-sky-100">
+      {groups.map(g => {
+        const isOpen = expandedCompany === g.company
+        return (
+          <div key={g.company}>
+            {/* Company row */}
+            <button
+              onClick={() => setExpandedCompany(isOpen ? null : g.company)}
+              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-sky-50/70 transition-colors text-left"
+            >
+              <NewTodayLogo company={g.company} jobUrl={g.jobUrl} />
+              <span className="flex-1 min-w-0 text-sm font-semibold text-navy-900 truncate">{g.company}</span>
+              <span className="shrink-0 flex items-center justify-center min-w-[22px] h-[22px] rounded-full bg-sky-500 text-white text-[10px] font-bold">
+                {g.jobs.length}
+              </span>
+              {isOpen ? <ChevronUp size={14} className="text-sky-500 shrink-0" /> : <ChevronDown size={14} className="text-sky-500 shrink-0" />}
+            </button>
 
-        {/* Company + role */}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-navy-900 truncate leading-tight">{job.company}</p>
-          <p className="text-xs text-navy-500 truncate leading-tight">{job.role}</p>
-        </div>
-
-        {/* Source badge — hidden on small screens */}
-        <span className={`shrink-0 hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${sourceMeta.classes}`}>
-          {sourceMeta.label}
-        </span>
-
-        {/* Learn More toggle */}
-        <button
-          onClick={() => setExpanded(v => !v)}
-          className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg border border-sky-300 text-sky-700 text-xs font-medium hover:bg-sky-100 transition-colors"
-        >
-          {expanded ? 'Less' : 'Learn More'}
-          {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-        </button>
-
-        {/* Add / Added */}
-        {isAdded ? (
-          <span className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200">
-            <Check size={11} /> Added
-          </span>
-        ) : (
-          <button
-            onClick={() => onAdd(job)}
-            className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700 transition-colors"
-          >
-            + Add
-          </button>
-        )}
-      </div>
-
-      {/* Expanded detail panel */}
-      {expanded && (
-        <div className="mx-4 mb-3 rounded-lg border border-sky-200 bg-white px-3 py-2.5 space-y-2">
-          {/* Location + work type */}
-          {job.location && (
-            <div className="flex items-center gap-1.5 text-xs text-navy-500">
-              <MapPin size={11} className="text-navy-400 shrink-0" />
-              <span>{job.location}</span>
-            </div>
-          )}
-
-          {/* Company blurb from job description */}
-          {blurb ? (
-            <p className="text-xs text-navy-600 leading-relaxed">{blurb}</p>
-          ) : (
-            <p className="text-xs text-navy-400 italic">No description available for this role.</p>
-          )}
-
-          {/* Funding / employees / salary if available */}
-          {(job.funding_stage || job.employee_count || job.salary_range || job.recently_funded) && (
-            <div className="flex flex-wrap gap-1.5">
-              {job.salary_range && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  {job.salary_range}
-                </span>
-              )}
-              {job.funding_stage && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
-                  {job.funding_stage}
-                </span>
-              )}
-              {job.recently_funded && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
-                  {job.funding_amount ? `Raised ${job.funding_amount}` : 'Recently Funded'}
-                </span>
-              )}
-              {job.employee_count && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                  {job.employee_count} employees
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 pt-1 border-t border-sky-100">
-            {job.job_url ? (
-              <div className="flex flex-col gap-0.5">
-                <a
-                  href={job.job_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-navy-200 text-navy-700 text-xs font-medium hover:bg-navy-50 transition-colors"
-                >
-                  <ExternalLink size={11} /> View Job Posting
-                </a>
-                {genericUrl && (
-                  <span className="text-[10px] text-amber-500 flex items-center gap-0.5">
-                    <AlertCircle size={9} /> General careers page
-                  </span>
-                )}
+            {/* Expanded: list of jobs at this company */}
+            {isOpen && (
+              <div className="bg-white border-t border-sky-100">
+                {g.jobs.map(job => {
+                  const sourceMeta = getSourceMeta(job.source)
+                  const isAdded = job.added_to_tracker
+                  return (
+                    <div key={job.id} className="flex items-center gap-3 px-6 py-2 hover:bg-sky-50/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-navy-800 truncate">{job.role}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {job.location && <span className="text-[10px] text-navy-400 truncate">{job.location}</span>}
+                          <span className={`hidden sm:inline-flex items-center px-1.5 py-0 rounded-full text-[9px] font-medium border ${sourceMeta.classes}`}>
+                            {sourceMeta.label}
+                          </span>
+                        </div>
+                      </div>
+                      {job.job_url && (
+                        <a href={job.job_url} target="_blank" rel="noopener noreferrer"
+                          className="shrink-0 p-1.5 rounded-lg text-navy-400 hover:text-navy-700 hover:bg-navy-50 transition-colors"
+                          title="View posting">
+                          <ExternalLink size={12} />
+                        </a>
+                      )}
+                      {isAdded ? (
+                        <span className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 text-[10px] font-semibold border border-emerald-200">
+                          <Check size={10} /> Added
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => onAdd(job)}
+                          className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-sky-600 text-white text-[10px] font-semibold hover:bg-sky-700 transition-colors"
+                        >
+                          + Add
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
-            ) : (
-              <span className="text-xs text-navy-400 italic">No direct link available</span>
-            )}
-            {!isAdded && (
-              <button
-                onClick={() => onAdd(job)}
-                className="ml-auto flex items-center gap-1 px-3 py-1 rounded-lg bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700 transition-colors"
-              >
-                <Check size={11} /> Add to Tracker
-              </button>
             )}
           </div>
-        </div>
-      )}
+        )
+      })}
     </div>
   )
 }
@@ -2122,16 +2084,10 @@ export default function JobDiscovery() {
             </button>
           </div>
 
-          {/* Expanded job list */}
+          {/* Expanded: grouped by company */}
           {newTodayExpanded && (
-            <div className="border-t border-sky-200 divide-y divide-sky-100 max-h-96 overflow-y-auto">
-              {newTodayJobs.map(job => (
-                <NewTodayRow
-                  key={job.id}
-                  job={job}
-                  onAdd={handleAddToTracker}
-                />
-              ))}
+            <div className="border-t border-sky-200 max-h-96 overflow-y-auto">
+              <NewTodayGrouped jobs={newTodayJobs} onAdd={handleAddToTracker} />
             </div>
           )}
         </div>
