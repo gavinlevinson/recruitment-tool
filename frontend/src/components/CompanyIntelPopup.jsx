@@ -2,32 +2,35 @@ import { useState, useEffect } from 'react'
 import { X, Building2, Globe, Linkedin, ExternalLink } from 'lucide-react'
 import { newsApi } from '../api'
 
+// Shared ATS domain extraction — mirrors JobTracker/Discovery logic
+const ATS_HOSTS = ['lever.co', 'greenhouse.io', 'ashbyhq.com', 'ashby.io', 'workable.com', 'boards.greenhouse.io', 'job-boards.greenhouse.io', 'job-boards.eu.greenhouse.io']
+
+function companyDomainFromUrl(jobUrl, companyName) {
+  if (jobUrl) {
+    try {
+      const url = new URL(jobUrl)
+      const host = url.hostname.toLowerCase().replace(/^www\./, '')
+      const parts = url.pathname.split('/').filter(Boolean)
+      if (host === 'api.lever.co' && parts.length >= 3 && parts[0] === 'v0' && parts[1] === 'postings') return parts[2] + '.com'
+      if (host.endsWith('lever.co') && parts[0]?.length > 1) return parts[0] + '.com'
+      for (const ats of ATS_HOSTS) { if (host.endsWith(ats) || host === ats) { if (parts[0]?.length > 1) return parts[0] + '.com'; break } }
+      if (!host.includes('linkedin.com') && !host.includes('indeed.com') && !host.includes('simplify.jobs')) return host
+    } catch {}
+  }
+  return (companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
+}
+
 export default function CompanyIntelPopup({ company, jobUrl, description, onClose }) {
   const [summary, setSummary] = useState(null)
   const [articles, setArticles] = useState([])
   const [loadingSummary, setLoadingSummary] = useState(true)
   const [loadingNews, setLoadingNews] = useState(true)
 
-  // Derive domain
-  const companyDomain = (() => {
-    if (jobUrl) {
-      try {
-        const url = new URL(jobUrl)
-        const host = url.hostname.toLowerCase().replace(/^www\./, '')
-        const ats = ['lever.co', 'greenhouse.io', 'ashbyhq.com', 'workable.com']
-        for (const a of ats) {
-          if (host.includes(a)) {
-            const slug = url.pathname.split('/').filter(Boolean)[0]
-            return slug ? slug + '.com' : null
-          }
-        }
-        if (!host.includes('linkedin.com') && !host.includes('indeed.com')) return host
-      } catch {}
-    }
-    return (company || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
-  })()
+  // Derive domain using the same logic as JobTracker/Discovery
+  const companyDomain = companyDomainFromUrl(jobUrl, company)
 
-  const linkedinUrl = `https://www.linkedin.com/company/${(company || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-')}`
+  // LinkedIn: search instead of guessing the slug (slug guessing is unreliable)
+  const linkedinUrl = `https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(company || '')}`
 
   useEffect(() => {
     if (!company) return
