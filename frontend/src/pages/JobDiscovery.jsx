@@ -1353,6 +1353,50 @@ function NewTodayLogo({ company, jobUrl, size = 28 }) {
   )
 }
 
+// ── New Today: Inline company blurb (i) button ──────────────────────────────
+function NewTodayInfoButton({ company, description }) {
+  const [show, setShow] = useState(false)
+  const [blurb, setBlurb] = useState(() => _companySummaryCache[company?.toLowerCase()] || null)
+  const [loading, setLoading] = useState(false)
+
+  const handleClick = async (e) => {
+    e.stopPropagation()
+    const next = !show
+    setShow(next)
+    if (!next) return
+    const cacheKey = (company || '').toLowerCase()
+    if (_companySummaryCache[cacheKey]) { setBlurb(_companySummaryCache[cacheKey]); return }
+    setLoading(true)
+    try {
+      const res = await discoveredApi.companySummary(company, description)
+      const summary = res.data?.intel?.one_liner || res.data?.summary || ''
+      _companySummaryCache[cacheKey] = summary
+      setBlurb(summary)
+    } catch { setBlurb(null) }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <>
+      <button onClick={handleClick} title="About this company"
+        className="shrink-0 text-navy-300 hover:text-violet-500 transition-colors">
+        <Info size={13} />
+      </button>
+      {show && (
+        <div className="w-full px-4 pb-2" onClick={e => e.stopPropagation()}>
+          <div className="bg-violet-50 border border-violet-100 rounded-lg px-3 py-2 text-xs text-navy-600 leading-relaxed">
+            {loading ? (
+              <span className="flex items-center gap-1.5 text-navy-400">
+                <Loader2 size={11} className="animate-spin" /> Generating company summary...
+              </span>
+            ) : blurb || 'No description available.'}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 // ── New Today: Grouped by Company ────────────────────────────────────────────
 function NewTodayGrouped({ jobs, onAdd }) {
   const [expandedCompany, setExpandedCompany] = useState(null)
@@ -1363,11 +1407,11 @@ function NewTodayGrouped({ jobs, onAdd }) {
   for (const job of jobs) {
     const key = (job.company || 'Unknown').toLowerCase()
     if (!seen[key]) {
-      seen[key] = { company: job.company, jobUrl: job.job_url, jobs: [], blurb: null }
+      seen[key] = { company: job.company, jobUrl: job.job_url, jobs: [], description: null }
       groups.push(seen[key])
     }
-    if (!seen[key].blurb && job.description) {
-      seen[key].blurb = extractCompanyBlurb(job.description)
+    if (!seen[key].description && job.description) {
+      seen[key].description = job.description
     }
     seen[key].jobs.push(job)
   }
@@ -1381,20 +1425,24 @@ function NewTodayGrouped({ jobs, onAdd }) {
         return (
           <div key={g.company}>
             {/* Company row */}
-            <button
-              onClick={() => setExpandedCompany(isOpen ? null : g.company)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-sky-50/70 transition-colors text-left"
-            >
-              <NewTodayLogo company={g.company} jobUrl={g.jobUrl} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-navy-900 truncate leading-tight">{g.company}</p>
-                {g.blurb && <p className="text-[11px] text-navy-400 truncate leading-tight mt-0.5">{g.blurb}</p>}
-              </div>
+            <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 hover:bg-sky-50/70 transition-colors">
+              <button
+                onClick={() => setExpandedCompany(isOpen ? null : g.company)}
+                className="flex items-center gap-3 flex-1 min-w-0 text-left"
+              >
+                <NewTodayLogo company={g.company} jobUrl={g.jobUrl} />
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-navy-900 truncate leading-tight">{g.company}</p>
+                </div>
+              </button>
+              <NewTodayInfoButton company={g.company} description={g.description} />
               <span className="shrink-0 flex items-center justify-center min-w-[22px] h-[22px] rounded-full bg-sky-500 text-white text-[10px] font-bold">
                 {g.jobs.length}
               </span>
-              {isOpen ? <ChevronUp size={14} className="text-sky-500 shrink-0" /> : <ChevronDown size={14} className="text-sky-500 shrink-0" />}
-            </button>
+              <button onClick={() => setExpandedCompany(isOpen ? null : g.company)} className="shrink-0">
+                {isOpen ? <ChevronUp size={14} className="text-sky-500" /> : <ChevronDown size={14} className="text-sky-500" />}
+              </button>
+            </div>
 
             {/* Expanded: list of jobs at this company */}
             {isOpen && (
