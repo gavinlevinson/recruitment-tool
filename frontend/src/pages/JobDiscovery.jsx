@@ -1363,8 +1363,11 @@ function NewTodayGrouped({ jobs, onAdd }) {
   for (const job of jobs) {
     const key = (job.company || 'Unknown').toLowerCase()
     if (!seen[key]) {
-      seen[key] = { company: job.company, jobUrl: job.job_url, jobs: [] }
+      seen[key] = { company: job.company, jobUrl: job.job_url, jobs: [], blurb: null }
       groups.push(seen[key])
+    }
+    if (!seen[key].blurb && job.description) {
+      seen[key].blurb = extractCompanyBlurb(job.description)
     }
     seen[key].jobs.push(job)
   }
@@ -1383,7 +1386,10 @@ function NewTodayGrouped({ jobs, onAdd }) {
               className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-sky-50/70 transition-colors text-left"
             >
               <NewTodayLogo company={g.company} jobUrl={g.jobUrl} />
-              <span className="flex-1 min-w-0 text-sm font-semibold text-navy-900 truncate">{g.company}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-navy-900 truncate leading-tight">{g.company}</p>
+                {g.blurb && <p className="text-[11px] text-navy-400 truncate leading-tight mt-0.5">{g.blurb}</p>}
+              </div>
               <span className="shrink-0 flex items-center justify-center min-w-[22px] h-[22px] rounded-full bg-sky-500 text-white text-[10px] font-bold">
                 {g.jobs.length}
               </span>
