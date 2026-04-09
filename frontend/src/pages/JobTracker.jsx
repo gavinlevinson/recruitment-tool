@@ -1338,7 +1338,7 @@ const TITLE_CHIPS = [
   { label: 'Revenue / Sales', keywords: ['VP Sales', 'Head of Sales', 'Business Development', 'Account Executive', 'Revenue'] },
   { label: 'Engineering',     keywords: ['VP Engineering', 'Engineering Manager', 'Head of Engineering', 'CTO', 'Software Engineer'] },
   { label: 'Founders / Exec', keywords: ['Founder', 'CEO', 'COO', 'President', 'Chief Operating Officer'] },
-  { label: 'Recruiting',      keywords: ['Recruiter', 'Head of Talent', 'Talent Acquisition', 'People Operations'] },
+  { label: 'Recruiting',      keywords: ['Recruiter', 'Recruiting', 'Head of Talent', 'Talent Acquisition', 'Talent Lead', 'Talent Partner', 'Talent Manager', 'People Operations', 'People Partner', 'HR', 'Human Resources', 'University Recruiter', 'Campus Recruiter', 'Sourcer', 'Recruiting Coordinator'] },
 ]
 const SENIORITY_OPTS = [
   { label: 'Manager+',  values: ['manager', 'director', 'vp', 'c_suite', 'founder', 'partner'] },
