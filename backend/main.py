@@ -2391,21 +2391,27 @@ async def get_company_summary(company: str, description: str = "", job_url: str 
 
     if context:
         prompt = (
-            f"Based on the following context about {company}, write exactly 1-2 sentences describing what they do "
-            f"as a company — focus on their product or service and what industry they're in. "
-            f"Be concrete and specific (e.g. 'Ramp is a corporate card and spend management platform that helps businesses control costs.'). "
-            f"Do NOT mention any job titles, roles, or hiring details.\n\n"
+            f"Based on the following context about {company}, write 3-5 bullet points summarizing the company. "
+            f"Each bullet should start with '• ' and be on its own line. Cover:\n"
+            f"- What the company does (product/service)\n"
+            f"- Industry or sector\n"
+            f"- Stage or size if known (startup, public, Series B, etc.)\n"
+            f"- Notable customers, investors, or achievements if known\n"
+            f"Be concrete and specific. Do NOT mention any job titles, roles, or hiring details.\n\n"
             f"Context:\n{context}\n\n"
-            f"Company description (1-2 sentences, company-focused only):"
+            f"Company summary (bullet points only):"
         )
     else:
         prompt = (
-            f"Write exactly 1-2 sentences describing what {company} does as a company. "
-            f"Focus on their product or service and what industry they're in. "
+            f"Write 3-5 bullet points describing what {company} does as a company. "
+            f"Each bullet should start with '• ' and be on its own line. Cover:\n"
+            f"- What the company does (product/service)\n"
+            f"- Industry or sector\n"
+            f"- Any notable facts\n"
             f"Be concrete and specific. If you don't know the company, write: "
-            f"'{company} is a company. Visit their website to learn more.' "
-            f"Do NOT ask questions. Just write the description.\n\n"
-            f"Company description (1-2 sentences):"
+            f"'• {company} is a company. Visit their website to learn more.' "
+            f"Do NOT ask questions. Just write the bullets.\n\n"
+            f"Company summary (bullet points only):"
         )
 
     async with httpx.AsyncClient(timeout=20) as client:
@@ -2418,7 +2424,7 @@ async def get_company_summary(company: str, description: str = "", job_url: str 
             },
             json={
                 "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 120,
+                "max_tokens": 250,
                 "messages": [{"role": "user", "content": prompt}],
             },
         )

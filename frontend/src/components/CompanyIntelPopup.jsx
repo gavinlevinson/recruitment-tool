@@ -93,7 +93,7 @@ export default function CompanyIntelPopup({ company, jobUrl, description, onClos
             ) : summary ? (
               <div>
                 <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide mb-1">About</p>
-                <p className="text-sm text-navy-700 leading-relaxed">{summary}</p>
+                <div className="text-sm text-navy-700 leading-relaxed whitespace-pre-line">{summary}</div>
               </div>
             ) : null}
 

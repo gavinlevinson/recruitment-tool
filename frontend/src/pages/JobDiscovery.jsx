@@ -587,13 +587,23 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
         )
       })()}
 
-      {/* Company Intel button */}
-      <button
-        onClick={(e) => { e.stopPropagation(); if (typeof onShowCompanyJobs === 'function') onShowCompanyJobs(job) }}
-        className="w-full text-left text-xs text-violet-600 hover:text-violet-800 font-medium pt-1 border-t border-navy-50 hover:underline transition-colors flex items-center gap-1"
-      >
-        <Building2 size={10} /> Company Intel
-      </button>
+      {/* See other jobs at company + Company Intel */}
+      <div className="flex items-center gap-3 pt-1 border-t border-navy-50">
+        {(job.other_jobs_count || 0) > 0 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); if (typeof onShowCompanyJobs === 'function') onShowCompanyJobs(job, 'jobs') }}
+            className="text-xs text-sky-600 hover:text-sky-800 font-medium hover:underline transition-colors"
+          >
+            See {job.other_jobs_count} other job{job.other_jobs_count === 1 ? '' : 's'} at {job.company}
+          </button>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); if (typeof onShowCompanyJobs === 'function') onShowCompanyJobs(job, 'intel') }}
+          className="text-xs text-violet-600 hover:text-violet-800 font-medium hover:underline transition-colors flex items-center gap-1 ml-auto"
+        >
+          <Building2 size={10} /> Company Intel
+        </button>
+      </div>
     </div>
   )
 }
@@ -1665,6 +1675,7 @@ export default function JobDiscovery() {
 
   // Company jobs popup
   const [companyPopup, setCompanyPopup] = useState(null) // job object for Company Intel popup
+  const [companyJobsModal, setCompanyJobsModal] = useState(null) // company name for "other jobs" modal
   const lastFilterParams = useRef({})
 
   // Multi-job prompt
@@ -2300,7 +2311,7 @@ export default function JobDiscovery() {
                 job={job}
                 onAddToTracker={handleAddToTracker}
                 onDismiss={handleDismiss}
-                onShowCompanyJobs={(job) => setCompanyPopup(job)}
+                onShowCompanyJobs={(job, type) => type === 'intel' ? setCompanyPopup(job) : setCompanyJobsModal(job.company)}
               />
             ))}
           </div>
@@ -2320,13 +2331,24 @@ export default function JobDiscovery() {
         onSave={handleSavePreferences}
       />
 
-      {/* Company Jobs Popup */}
+      {/* Company Intel Popup */}
       {companyPopup && (
         <CompanyIntelPopup
           company={companyPopup.company}
           jobUrl={companyPopup.job_url || ''}
           description={companyPopup.description || ''}
           onClose={() => setCompanyPopup(null)}
+        />
+      )}
+
+      {/* Other Jobs at Company Modal */}
+      {companyJobsModal && (
+        <CompanyJobsModal
+          company={companyJobsModal}
+          filterParams={lastFilterParams.current}
+          onClose={() => setCompanyJobsModal(null)}
+          onAddToTracker={handleAddToTracker}
+          onDismiss={handleDismiss}
         />
       )}
 
