@@ -3673,6 +3673,7 @@ async def coach_cover_letter(
     if not cover_letter:
         raise HTTPException(status_code=400, detail="No cover letter text provided")
 
+    adapt_template = payload.get("adapt_template", False)
     job_id = payload.get("job_id")
     job_description = payload.get("job_description", "")
     company_name = payload.get("company", "")
@@ -3710,6 +3711,31 @@ async def coach_cover_letter(
         context_parts.append(f"Key skills: {', '.join(skills[:20])}")
     if roles:
         context_parts.append(f"Target roles: {', '.join(roles[:8])}")
+
+    # Template adaptation mode: rewrite the letter for a new company/role
+    if adapt_template:
+        adapt_prompt = f"""You are adapting a cover letter template for a new job application.
+
+The user has a saved cover letter template. Your job is to rewrite it for {company_name or 'the target company'} while keeping the letter's structure, tone, and personal stories EXACTLY the same. Only change:
+- Company name and any references to the previous company
+- Role/position title
+- Company-specific details (what the company does, why the applicant is interested)
+- Location references if applicable
+
+Keep EVERYTHING else identical: the applicant's experiences, stories, achievements, writing style, and overall narrative arc. Do NOT add new content or remove existing content. Do NOT change the tone.
+
+{chr(10).join(context_parts) if context_parts else ''}
+
+Original cover letter template:
+{cover_letter[:3500]}
+
+Return ONLY this JSON:
+{{
+  "adapted_letter": "<the full rewritten cover letter adapted for {company_name}>",
+  "changes_made": ["<brief description of each change made>"]
+}}"""
+        result = await _call_claude_json_async(adapt_prompt, max_tokens=3000)
+        return result
 
     prompt = f"""You are a senior career coach reviewing a cover letter for {company_name or 'this company'}. Read the entire letter first to understand the argument and narrative arc before giving feedback. A cover letter is a story, not a list — your feedback must reflect that.
 

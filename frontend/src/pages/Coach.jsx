@@ -749,6 +749,8 @@ function CoverLetterCoach({ trackerJobs }) {
       .catch(() => {})
   }, [])
 
+  const [generating, setGenerating] = useState(false)
+
   const handleSelectTemplate = (id) => {
     setSelectedTemplateId(id)
     if (id) {
@@ -756,6 +758,32 @@ function CoverLetterCoach({ trackerJobs }) {
       if (tpl) setCoverLetter(tpl.content)
     }
     setResult(null)
+  }
+
+  const generateFromTemplate = async () => {
+    const tpl = templates.find(t => String(t.id) === String(selectedTemplateId))
+    if (!tpl || !selectedJob) return
+    setGenerating(true)
+    setError(null)
+    try {
+      const res = await coachApi.coverLetter({
+        cover_letter: tpl.content,
+        job_id: selectedJob.id,
+        job_description: jobDesc,
+        company: selectedJob.company,
+        job_url: selectedJob.job_url,
+        adapt_template: true,
+      })
+      // The backend returns the adapted letter in the result
+      if (res.data?.adapted_letter) {
+        setCoverLetter(res.data.adapted_letter)
+      }
+      setResult(res.data)
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Failed to generate from template.')
+    } finally {
+      setGenerating(false)
+    }
   }
 
   const saveAsTemplate = async () => {
@@ -841,6 +869,12 @@ function CoverLetterCoach({ trackerJobs }) {
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
+            {selectedTemplateId && selectedJob && (
+              <button onClick={generateFromTemplate} disabled={generating}
+                className="text-xs font-medium text-white bg-violet-600 hover:bg-violet-500 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                {generating ? 'Adapting...' : `Adapt for ${selectedJob.company}`}
+              </button>
+            )}
             {selectedTemplateId && (
               <button onClick={() => deleteTemplate(Number(selectedTemplateId))}
                 className="text-xs text-red-400 hover:text-red-600 px-1" title="Delete template">

@@ -1360,7 +1360,12 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
   const toggleChip = (label) =>
     setSelectedChips(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label])
 
-  const companyFavicon = (name) => {
+  const companyLogo = (name) => {
+    // Use Clearbit logo API — better at resolving company names to logos
+    const domain = (name || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
+    return `https://logo.clearbit.com/${domain}`
+  }
+  const companyFaviconFallback = (name) => {
     const domain = (name || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
     return `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=64`
   }
@@ -1543,8 +1548,17 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
               {orgOptions.map((o, i) => (
                 <button key={i} onClick={() => setSelectedOrg(o)}
                   className="w-full flex items-center gap-3 p-3 rounded-xl border border-navy-200 hover:border-violet-400 hover:bg-violet-50/50 transition-all text-left">
-                  <img src={companyFavicon(o.name)} alt="" className="w-8 h-8 rounded-md object-contain bg-white border border-navy-100"
-                    onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }} />
+                  <img src={companyLogo(o.name)} alt="" className="w-8 h-8 rounded-md object-contain bg-white border border-navy-100"
+                    onError={e => {
+                      // Try Google favicon as fallback
+                      if (!e.target.dataset.tried) {
+                        e.target.dataset.tried = '1'
+                        e.target.src = companyFaviconFallback(o.name)
+                      } else {
+                        e.target.style.display = 'none'
+                        e.target.nextSibling.style.display = 'flex'
+                      }
+                    }} />
                   <div className="w-8 h-8 rounded-md bg-violet-100 text-violet-700 font-bold items-center justify-center text-xs" style={{ display: 'none' }}>
                     {(o.name?.[0] || '?').toUpperCase()}
                   </div>
