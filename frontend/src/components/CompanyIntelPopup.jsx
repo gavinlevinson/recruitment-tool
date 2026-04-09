@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Building2, Globe, Linkedin, ExternalLink } from 'lucide-react'
+import { X, Building2, Globe, Linkedin, Loader2 } from 'lucide-react'
 import { newsApi } from '../api'
 
 // Shared ATS domain extraction — mirrors JobTracker/Discovery logic
@@ -20,22 +20,30 @@ function companyDomainFromUrl(jobUrl, companyName) {
   return (companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
 }
 
+// Data row helper
+function DataRow({ label, value }) {
+  if (!value) return null
+  return (
+    <div className="flex items-start gap-2 py-1">
+      <span className="text-xs font-semibold text-navy-500 w-28 shrink-0">{label}</span>
+      <span className="text-xs text-navy-800 flex-1">{value}</span>
+    </div>
+  )
+}
+
 export default function CompanyIntelPopup({ company, jobUrl, description, onClose }) {
-  const [summary, setSummary] = useState(null)
+  const [intel, setIntel] = useState(null)
   const [articles, setArticles] = useState([])
-  const [loadingSummary, setLoadingSummary] = useState(true)
+  const [loadingIntel, setLoadingIntel] = useState(true)
   const [loadingNews, setLoadingNews] = useState(true)
 
-  // Derive domain using the same logic as JobTracker/Discovery
   const companyDomain = companyDomainFromUrl(jobUrl, company)
-
-  // LinkedIn: search instead of guessing the slug (slug guessing is unreliable)
   const linkedinUrl = `https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(company || '')}`
 
   useEffect(() => {
     if (!company) return
 
-    // Fetch summary
+    // Fetch structured intel
     const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000')
     const token = localStorage.getItem('orion_token') || ''
     const params = new URLSearchParams({
@@ -47,9 +55,9 @@ export default function CompanyIntelPopup({ company, jobUrl, description, onClos
       headers: { 'Authorization': `Bearer ${token}` },
     })
       .then(r => r.json())
-      .then(data => setSummary(data.summary || null))
+      .then(data => setIntel(data.intel || data.summary || null))
       .catch(() => {})
-      .finally(() => setLoadingSummary(false))
+      .finally(() => setLoadingIntel(false))
 
     // Fetch news
     newsApi.companyNews(company, jobUrl || '')
@@ -58,16 +66,8 @@ export default function CompanyIntelPopup({ company, jobUrl, description, onClos
       .finally(() => setLoadingNews(false))
   }, [company])
 
-  // Extract tech stack from description
-  const techStack = (() => {
-    const desc = (description || '').toLowerCase()
-    const techs = [
-      'Python', 'JavaScript', 'TypeScript', 'React', 'Node.js', 'AWS', 'GCP', 'Azure',
-      'Kubernetes', 'Docker', 'PostgreSQL', 'MongoDB', 'Redis', 'GraphQL',
-      'Go', 'Rust', 'Java', 'SQL', 'Tableau', 'Salesforce', 'Figma',
-    ]
-    return techs.filter(t => desc.includes(t.toLowerCase())).slice(0, 6)
-  })()
+  // Handle legacy string summaries (from cache) vs new structured intel
+  const isStructured = intel && typeof intel === 'object'
 
   return (
     <>
@@ -90,48 +90,81 @@ export default function CompanyIntelPopup({ company, jobUrl, description, onClos
           {/* Content */}
           <div className="px-5 py-4 space-y-4">
 
-            {/* About */}
-            {loadingSummary ? (
-              <p className="text-xs text-navy-400 italic">Loading...</p>
-            ) : summary ? (
-              <div>
-                <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide mb-1">About</p>
-                <div className="text-sm text-navy-700 leading-relaxed whitespace-pre-line">{summary}</div>
-              </div>
-            ) : null}
-
-            {/* Quick Links */}
+            {/* Quick Links — always visible */}
             <div className="flex items-center gap-4">
               {companyDomain && (
                 <a href={`https://${companyDomain}`} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1">
-                  <Globe size={11} /> Website
+                  className="text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1 font-medium">
+                  <Globe size={12} /> Website
                 </a>
               )}
               <a href={linkedinUrl} target="_blank" rel="noopener noreferrer"
-                className="text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1">
-                <Linkedin size={11} /> LinkedIn
+                className="text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1 font-medium">
+                <Linkedin size={12} /> LinkedIn
               </a>
-              {jobUrl && (
-                <a href={jobUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1">
-                  <ExternalLink size={11} /> Job Posting
-                </a>
-              )}
             </div>
 
-            {/* Tech Stack */}
-            {techStack.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide mb-1">Tech Stack</p>
-                <div className="flex flex-wrap gap-1">
-                  {techStack.map(t => (
-                    <span key={t} className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-navy-50 text-navy-600 border border-navy-100">
-                      {t}
-                    </span>
-                  ))}
-                </div>
+            {/* Structured Intel */}
+            {loadingIntel ? (
+              <div className="flex items-center gap-2 py-4 text-navy-400">
+                <Loader2 size={14} className="animate-spin" />
+                <span className="text-xs">Loading company intel...</span>
               </div>
+            ) : isStructured ? (
+              <div className="divide-y divide-navy-50">
+                {/* One-liner */}
+                {intel.one_liner && (
+                  <p className="text-sm text-navy-700 leading-relaxed pb-3">{intel.one_liner}</p>
+                )}
+
+                {/* Key facts */}
+                <div className="py-2">
+                  <DataRow label="Industry" value={intel.industry} />
+                  <DataRow label="Employee Count" value={intel.employee_count} />
+                  <DataRow label="Founded" value={intel.founded} />
+                  <DataRow label="HQ" value={intel.hq_location} />
+                  <DataRow label="CEO / Founder" value={intel.ceo} />
+                  <DataRow label="Total Raised" value={intel.total_raised} />
+                </div>
+
+                {/* Funding rounds */}
+                {intel.funding_rounds && intel.funding_rounds.length > 0 && (
+                  <div className="py-2">
+                    <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide mb-1.5">Fundraising</p>
+                    <ul className="space-y-1.5">
+                      {intel.funding_rounds.map((r, i) => (
+                        <li key={i} className="text-xs text-navy-700 leading-snug">
+                          <span className="font-semibold">{r.round}</span>
+                          {r.amount && <span>: {r.amount}</span>}
+                          {r.investors && <span className="text-navy-500"> from {r.investors}</span>}
+                          {r.date && <span className="text-navy-400"> ({r.date})</span>}
+                          {r.valuation && <span className="text-navy-500"> &rarr; {r.valuation} valuation</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Notable facts */}
+                {intel.notable_facts && intel.notable_facts.length > 0 && (
+                  <div className="py-2">
+                    <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide mb-1.5">Notable</p>
+                    <ul className="space-y-1">
+                      {intel.notable_facts.map((fact, i) => (
+                        <li key={i} className="text-xs text-navy-600 leading-snug flex items-start gap-1.5">
+                          <span className="text-navy-300 mt-0.5 shrink-0">•</span>
+                          {fact}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : intel && typeof intel === 'string' ? (
+              // Legacy fallback: plain text summary
+              <div className="text-sm text-navy-700 leading-relaxed whitespace-pre-line">{intel}</div>
+            ) : (
+              <p className="text-xs text-navy-300 italic">No company data available</p>
             )}
 
             {/* News */}

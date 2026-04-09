@@ -2370,51 +2370,56 @@ def get_new_today_jobs(db: Session = Depends(get_db)):
 
 @app.get("/api/company-summary")
 async def get_company_summary(company: str, description: str = "", job_url: str = ""):
-    """Use Claude to generate a 1-2 sentence company summary. Fetches company website when no description."""
+    """Use Claude to extract structured company intel (employee count, founded, funding, CEO, etc.)."""
+    import json as _json
+
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=503, detail="Anthropic API key not configured")
 
     cache_key = company.strip().lower()
     if cache_key in _company_summary_cache:
-        return {"summary": _company_summary_cache[cache_key], "cached": True}
+        return _company_summary_cache[cache_key]
 
-    context = description[:1500] if description else ""
+    context = description[:2000] if description else ""
 
     # If no description, try to fetch the company's website for context
     if not context:
         try:
             company_context = await _fetch_company_context(company, job_url)
             if company_context:
-                context = company_context[:1500]
+                context = company_context[:2000]
         except Exception:
             pass
 
+    prompt = (
+        f"You are a business research assistant. Extract structured factual data about {company}.\n"
+        f"Return ONLY valid JSON with these fields (use null for unknown values):\n"
+        f'{{\n'
+        f'  "one_liner": "One sentence: what the company does",\n'
+        f'  "industry": "Industry or sector",\n'
+        f'  "employee_count": "Number or range like 50-100",\n'
+        f'  "founded": "Month and year, e.g. February 2022",\n'
+        f'  "hq_location": "City, State or City, Country",\n'
+        f'  "ceo": "CEO or founder name",\n'
+        f'  "funding_rounds": [\n'
+        f'    {{"round": "Series A", "amount": "$30M", "investors": "Sequoia, A*", "date": "December 2023", "valuation": "$120M"}}\n'
+        f'  ],\n'
+        f'  "total_raised": "$110M",\n'
+        f'  "notable_facts": ["One short fact", "Another short fact"]\n'
+        f'}}\n\n'
+        f"Rules:\n"
+        f"- Only include data you are confident about. Use null for anything uncertain.\n"
+        f"- Do NOT mention job postings, roles, or hiring.\n"
+        f"- funding_rounds should be an array of objects, newest first. Omit if unknown.\n"
+        f"- notable_facts: 1-3 short facts (customers, awards, product milestones). Omit if none.\n"
+        f"- Return ONLY the JSON object, no markdown fences, no explanation.\n"
+    )
     if context:
-        prompt = (
-            f"Based on the following context about {company}, write 3-5 bullet points summarizing the company. "
-            f"Each bullet should start with '• ' and be on its own line. Cover:\n"
-            f"- What the company does (product/service)\n"
-            f"- Industry or sector\n"
-            f"- Stage or size if known (startup, public, Series B, etc.)\n"
-            f"- Notable customers, investors, or achievements if known\n"
-            f"Be concrete and specific. Do NOT mention any job titles, roles, or hiring details.\n\n"
-            f"Context:\n{context}\n\n"
-            f"Company summary (bullet points only):"
-        )
+        prompt += f"\nContext about {company}:\n{context}\n\nJSON:"
     else:
-        prompt = (
-            f"Write 3-5 bullet points describing what {company} does as a company. "
-            f"Each bullet should start with '• ' and be on its own line. Cover:\n"
-            f"- What the company does (product/service)\n"
-            f"- Industry or sector\n"
-            f"- Any notable facts\n"
-            f"Be concrete and specific. If you don't know the company, write: "
-            f"'• {company} is a company. Visit their website to learn more.' "
-            f"Do NOT ask questions. Just write the bullets.\n\n"
-            f"Company summary (bullet points only):"
-        )
+        prompt += f"\nJSON for {company}:"
 
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=25) as client:
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -2424,7 +2429,7 @@ async def get_company_summary(company: str, description: str = "", job_url: str 
             },
             json={
                 "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 250,
+                "max_tokens": 500,
                 "messages": [{"role": "user", "content": prompt}],
             },
         )
@@ -2434,16 +2439,23 @@ async def get_company_summary(company: str, description: str = "", job_url: str 
         if "credit" in msg.lower() or "balance" in msg.lower():
             raise HTTPException(status_code=402, detail="Insufficient API credits")
         raise HTTPException(status_code=502, detail="Claude API error")
-    summary = resp.json()["content"][0]["text"].strip()
-    # Don't cache unhelpful responses — let it retry with fresh context next time
-    bad_signals = ["i don't have", "i'm not familiar", "not familiar", "visit their website to learn more",
-                   "don't have reliable", "could you please share", "don't see the job posting"]
-    if any(s in summary.lower() for s in bad_signals):
-        # Try to construct a basic summary from the company name + domain
-        slug = company.strip().lower().replace(' ', '')
-        return {"summary": f"{company} is a company. Learn more at {slug}.com", "cached": False}
-    _company_summary_cache[cache_key] = summary
-    return {"summary": summary, "cached": False}
+
+    raw = resp.json()["content"][0]["text"].strip()
+    # Strip markdown fences if present
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+    try:
+        data = _json.loads(raw)
+    except _json.JSONDecodeError:
+        # Fallback: return minimal data
+        data = {"one_liner": f"{company} is a company.", "industry": None, "employee_count": None,
+                "founded": None, "hq_location": None, "ceo": None, "funding_rounds": [],
+                "total_raised": None, "notable_facts": []}
+
+    result = {"intel": data, "company": company, "cached": False}
+    _company_summary_cache[cache_key] = {**result, "cached": True}
+    return result
 
 
 # Per-company news cache
