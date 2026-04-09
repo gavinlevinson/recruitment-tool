@@ -2369,8 +2369,10 @@ def get_new_today_jobs(db: Session = Depends(get_db)):
 
 
 @app.get("/api/company-summary")
-async def get_company_summary(company: str, description: str = "", job_url: str = ""):
-    """Use Claude to extract structured company intel (employee count, founded, funding, CEO, etc.)."""
+async def get_company_summary(company: str, description: str = "", job_url: str = "",
+                              db: Session = Depends(get_db)):
+    """Use Claude to extract structured company intel (employee count, founded, funding, CEO, etc.).
+    Enriches context with: website scrape, news articles, and DB metadata."""
     import json as _json
 
     if not ANTHROPIC_API_KEY:
@@ -2380,16 +2382,53 @@ async def get_company_summary(company: str, description: str = "", job_url: str 
     if cache_key in _company_summary_cache:
         return _company_summary_cache[cache_key]
 
-    context = description[:2000] if description else ""
+    # ── Gather all available context ──────────────────────────────────────
+    context_parts = []
 
-    # If no description, try to fetch the company's website for context
-    if not context:
-        try:
-            company_context = await _fetch_company_context(company, job_url)
-            if company_context:
-                context = company_context[:2000]
-        except Exception:
-            pass
+    # 1. Job description (may mention company details)
+    if description:
+        context_parts.append(f"Job description excerpt:\n{description[:1000]}")
+
+    # 2. Company website content
+    try:
+        website_text = await _fetch_company_context(company, job_url)
+        if website_text:
+            context_parts.append(f"Company website content:\n{website_text[:3000]}")
+    except Exception:
+        pass
+
+    # 3. Database metadata from DiscoveredJob records
+    try:
+        db_jobs = db.query(DiscoveredJob).filter(
+            DiscoveredJob.company.ilike(company.strip())
+        ).limit(5).all()
+        if db_jobs:
+            db_facts = []
+            for dj in db_jobs:
+                if dj.funding_stage: db_facts.append(f"Funding stage: {dj.funding_stage}")
+                if dj.employee_count: db_facts.append(f"Employee count: {dj.employee_count}")
+                if dj.industry: db_facts.append(f"Industry: {dj.industry}")
+                if dj.funding_amount: db_facts.append(f"Recent funding: {dj.funding_amount}")
+                if dj.recently_funded: db_facts.append("Recently funded (confirmed)")
+            if db_facts:
+                context_parts.append(f"Known facts from our database:\n" + "\n".join(set(db_facts)))
+    except Exception:
+        pass
+
+    # 4. Recent news articles (from Newsdata.io or Google News RSS)
+    try:
+        news_resp = await get_company_news(company, job_url)
+        news_articles = news_resp.get("articles", [])
+        if news_articles:
+            news_text = "\n".join(
+                f"- {a['title']} ({a.get('source', 'Unknown')}, {a.get('published', 'recent')})"
+                for a in news_articles[:5] if a.get('title')
+            )
+            context_parts.append(f"Recent news articles about {company}:\n{news_text}")
+    except Exception:
+        pass
+
+    context = "\n\n".join(context_parts)
 
     prompt = (
         f"You are a business research assistant. Extract structured factual data about {company}.\n"
@@ -2411,11 +2450,11 @@ async def get_company_summary(company: str, description: str = "", job_url: str 
         f"- Only include data you are confident about. Use null for anything uncertain.\n"
         f"- Do NOT mention job postings, roles, or hiring.\n"
         f"- funding_rounds should be an array of objects, newest first. Omit if unknown.\n"
-        f"- notable_facts: 1-3 short facts (customers, awards, product milestones). Omit if none.\n"
+        f"- notable_facts: 1-3 short facts (major customers, recent product launches, awards, IPO plans). Use the news articles for fresh facts.\n"
         f"- Return ONLY the JSON object, no markdown fences, no explanation.\n"
     )
     if context:
-        prompt += f"\nContext about {company}:\n{context}\n\nJSON:"
+        prompt += f"\nAll available context about {company}:\n{context}\n\nJSON:"
     else:
         prompt += f"\nJSON for {company}:"
 
@@ -2475,6 +2514,7 @@ async def get_company_news(company: str, job_url: str = ""):
     newsdata_key = os.getenv("NEWSDATA_API_KEY", "")
     articles = []
 
+    # Try Newsdata.io first
     if newsdata_key and len(company.strip()) >= 3:
         query = company.strip()
         try:
@@ -2489,9 +2529,12 @@ async def get_company_news(company: str, job_url: str = ""):
                     },
                     timeout=10.0,
                 )
+                print(f"[CompanyNews] Newsdata.io status={resp.status_code} for '{company}'")
                 if resp.status_code == 200:
                     data = resp.json()
-                    for a in data.get("results", []):
+                    if data.get("status") != "success":
+                        print(f"[CompanyNews] Newsdata.io error: {data.get('results', {})}")
+                    for a in (data.get("results") or []):
                         articles.append({
                             "title": a.get("title", ""),
                             "description": a.get("description", ""),
@@ -2500,8 +2543,39 @@ async def get_company_news(company: str, job_url: str = ""):
                             "source": (a.get("source_name") or a.get("source_id") or ""),
                             "published": a.get("pubDate", ""),
                         })
+                else:
+                    print(f"[CompanyNews] Newsdata.io non-200: {resp.text[:300]}")
         except Exception as e:
-            print(f"[CompanyNews] Error for {company}: {e}")
+            print(f"[CompanyNews] Newsdata.io error for {company}: {e}")
+
+    # Fallback: Google News RSS (free, no key needed)
+    if not articles and len(company.strip()) >= 3:
+        try:
+            from urllib.parse import quote
+            rss_url = f"https://news.google.com/rss/search?q={quote(company.strip())}&hl=en-US&gl=US&ceid=US:en"
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                resp = await client.get(rss_url, timeout=8.0)
+                if resp.status_code == 200:
+                    import re
+                    items = re.findall(r'<item>(.*?)</item>', resp.text, re.DOTALL)
+                    for item_xml in items[:5]:
+                        title_m = re.search(r'<title>(.*?)</title>', item_xml)
+                        link_m = re.search(r'<link/>(.*?)(?:<|\s)', item_xml)
+                        if not link_m:
+                            link_m = re.search(r'<link>(.*?)</link>', item_xml)
+                        source_m = re.search(r'<source[^>]*>(.*?)</source>', item_xml)
+                        pub_m = re.search(r'<pubDate>(.*?)</pubDate>', item_xml)
+                        if title_m:
+                            articles.append({
+                                "title": title_m.group(1).strip(),
+                                "description": "",
+                                "url": (link_m.group(1).strip() if link_m else ""),
+                                "image": "",
+                                "source": (source_m.group(1).strip() if source_m else "Google News"),
+                                "published": (pub_m.group(1).strip() if pub_m else ""),
+                            })
+        except Exception as e:
+            print(f"[CompanyNews] Google RSS fallback error for {company}: {e}")
 
     _company_news_cache_v2[cache_key] = {"articles": articles, "fetched_at": _time.time()}
     return {"articles": articles, "company": company}
@@ -3603,8 +3677,19 @@ ATS_DOMAINS = {
     "news.ycombinator.com", "jobs.lever.co", "boards.greenhouse.io",
 }
 
+def _clean_html(html: str) -> str:
+    """Strip scripts, styles, nav, footer, and HTML tags to get clean text."""
+    html = _re2.sub(r'<script[^>]*>.*?</script>', ' ', html, flags=_re2.DOTALL | _re2.IGNORECASE)
+    html = _re2.sub(r'<style[^>]*>.*?</style>', ' ', html, flags=_re2.DOTALL | _re2.IGNORECASE)
+    html = _re2.sub(r'<nav[^>]*>.*?</nav>', ' ', html, flags=_re2.DOTALL | _re2.IGNORECASE)
+    html = _re2.sub(r'<footer[^>]*>.*?</footer>', ' ', html, flags=_re2.DOTALL | _re2.IGNORECASE)
+    html = _re2.sub(r'<header[^>]*>.*?</header>', ' ', html, flags=_re2.DOTALL | _re2.IGNORECASE)
+    html = _re2.sub(r'<[^>]+>', ' ', html)
+    html = _re2.sub(r'\s+', ' ', html).strip()
+    return html
+
 async def _fetch_company_context(company_name: str, job_url: str = "") -> str:
-    """Fetch company homepage text for AI context. Returns up to 2500 chars of cleaned text."""
+    """Fetch company homepage + /about + /team pages for AI context. Returns combined cleaned text."""
     domain = ""
     if job_url:
         try:
@@ -3621,20 +3706,34 @@ async def _fetch_company_context(company_name: str, job_url: str = "") -> str:
         slug = _re2.sub(r'[^a-z0-9]', '', company_name.lower())
         domain = f"https://www.{slug}.com"
 
+    pages_to_try = [
+        domain,                     # Homepage
+        f"{domain}/about",          # About page
+        f"{domain}/about-us",       # Alternate about
+        f"{domain}/company",        # Company page
+        f"{domain}/team",           # Team page (for CEO/founders)
+    ]
+
+    combined = []
     try:
-        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
-            resp = await client.get(domain, headers={"User-Agent": "Mozilla/5.0"})
-            if resp.status_code == 200:
-                html = resp.text
-                # Strip scripts, styles, tags
-                html = _re2.sub(r'<script[^>]*>.*?</script>', ' ', html, flags=_re2.DOTALL | _re2.IGNORECASE)
-                html = _re2.sub(r'<style[^>]*>.*?</style>', ' ', html, flags=_re2.DOTALL | _re2.IGNORECASE)
-                html = _re2.sub(r'<[^>]+>', ' ', html)
-                html = _re2.sub(r'\s+', ' ', html).strip()
-                return html[:2500]
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
+            for page_url in pages_to_try:
+                try:
+                    resp = await client.get(page_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=6.0)
+                    if resp.status_code == 200 and 'text/html' in resp.headers.get('content-type', ''):
+                        text = _clean_html(resp.text)
+                        if len(text) > 100:  # Skip near-empty pages
+                            label = page_url.replace(domain, '').strip('/') or 'homepage'
+                            combined.append(f"[{label}]: {text[:1500]}")
+                except Exception:
+                    continue
+                # Stop if we have enough context
+                if sum(len(p) for p in combined) > 4000:
+                    break
     except Exception:
         pass
-    return ""
+
+    return "\n\n".join(combined)[:5000]
 
 
 def _call_claude_json(prompt: str, system: str, max_tokens: int = 2000) -> dict:
