@@ -5,12 +5,13 @@ import {
   Info, X, ChevronLeft, ChevronRight, SlidersHorizontal,
   Settings, Save, MapPin, AlertCircle, Loader2, Sparkles,
   User, Briefcase, Calendar, Mic, ArrowRight, Upload, Mail, FileText,
-  Globe, TrendingUp,
+  Globe, TrendingUp, Building2,
 } from 'lucide-react'
 import { discoveredApi, preferencesApi, profileApi } from '../api'
 import { formatDate, formatDateTime } from '../utils/dates'
 import { useAuth } from '../context/AuthContext'
 import OrionMark from '../components/OrionMark'
+import CompanyIntelPopup from '../components/CompanyIntelPopup'
 
 // ── Source badge metadata ─────────────────────────────────────────────────────
 const SOURCE_META = [
@@ -586,15 +587,13 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
         )
       })()}
 
-      {/* Other jobs at this company */}
-      {job.other_jobs_count > 0 && onShowCompanyJobs && (
-        <button
-          onClick={() => onShowCompanyJobs(job.company, job.other_jobs_count)}
-          className="w-full text-left text-xs text-violet-600 hover:text-violet-800 font-medium pt-1 border-t border-navy-50 hover:underline transition-colors"
-        >
-          See {job.other_jobs_count} other {job.other_jobs_count === 1 ? 'job' : 'jobs'} at {job.company} →
-        </button>
-      )}
+      {/* Company Intel button */}
+      <button
+        onClick={(e) => { e.stopPropagation(); if (typeof onShowCompanyJobs === 'function') onShowCompanyJobs(job) }}
+        className="w-full text-left text-xs text-violet-600 hover:text-violet-800 font-medium pt-1 border-t border-navy-50 hover:underline transition-colors flex items-center gap-1"
+      >
+        <Building2 size={10} /> Company Intel
+      </button>
     </div>
   )
 }
@@ -1665,7 +1664,7 @@ export default function JobDiscovery() {
   const [prefsPanelOpen, setPrefsPanelOpen] = useState(false)
 
   // Company jobs popup
-  const [companyPopup, setCompanyPopup] = useState(null) // { company, otherCount }
+  const [companyPopup, setCompanyPopup] = useState(null) // job object for Company Intel popup
   const lastFilterParams = useRef({})
 
   // Multi-job prompt
@@ -2301,7 +2300,7 @@ export default function JobDiscovery() {
                 job={job}
                 onAddToTracker={handleAddToTracker}
                 onDismiss={handleDismiss}
-                onShowCompanyJobs={(company, count) => setCompanyPopup({ company, otherCount: count })}
+                onShowCompanyJobs={(job) => setCompanyPopup(job)}
               />
             ))}
           </div>
@@ -2323,12 +2322,11 @@ export default function JobDiscovery() {
 
       {/* Company Jobs Popup */}
       {companyPopup && (
-        <CompanyJobsModal
+        <CompanyIntelPopup
           company={companyPopup.company}
-          filterParams={lastFilterParams.current}
+          jobUrl={companyPopup.job_url || ''}
+          description={companyPopup.description || ''}
           onClose={() => setCompanyPopup(null)}
-          onAddToTracker={handleAddToTracker}
-          onDismiss={handleDismiss}
         />
       )}
 
