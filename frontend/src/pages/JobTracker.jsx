@@ -6,7 +6,7 @@ import {
   Calendar, Calendar as CalendarIcon, DollarSign, User, FileText, Building2,
   Link2, AlertCircle, Folder, Star, Users, Mail,
   Linkedin, Copy, Sparkles, GraduationCap, Loader2, Send, Paperclip,
-  ClipboardList, Save, PlusCircle,
+  ClipboardList, Save, PlusCircle, Globe,
 } from 'lucide-react'
 import { jobsApi, contactsApi, networkingApi, emailTemplatesApi, nylasApi, interviewRoundsApi, googleDocsApi, calendarApi, coachApi, newsApi } from '../api'
 import { useAuth } from '../context/AuthContext'
@@ -668,9 +668,52 @@ function CompanyIntelSection({ job }) {
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [loadingNews, setLoadingNews] = useState(false)
 
+  // Derive company domain and links
+  const companyDomain = (() => {
+    if (job.job_url) {
+      try {
+        const url = new URL(job.job_url)
+        const host = url.hostname.toLowerCase().replace(/^www\./, '')
+        const ats = ['lever.co', 'greenhouse.io', 'ashbyhq.com', 'workable.com']
+        for (const a of ats) {
+          if (host.includes(a)) {
+            const slug = url.pathname.split('/').filter(Boolean)[0]
+            return slug ? slug + '.com' : null
+          }
+        }
+        if (!host.includes('linkedin.com') && !host.includes('indeed.com')) return host
+      } catch {}
+    }
+    return (company || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
+  })()
+
+  const linkedinUrl = `https://www.linkedin.com/company/${(company || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-')}`
+
+  // Company stage signal
+  const stageSignal = (() => {
+    const emp = job.employee_count
+    const fund = job.funding_stage
+    if (emp === '1-50' || fund === 'Seed') return { label: 'Early-stage', color: 'bg-amber-50 text-amber-700 border-amber-200' }
+    if (emp === '50-200' || fund === 'Series A' || fund === 'Series B') return { label: 'Growth', color: 'bg-sky-50 text-sky-700 border-sky-200' }
+    if (emp === '200-500' || fund === 'Series C+') return { label: 'Scale-up', color: 'bg-violet-50 text-violet-700 border-violet-200' }
+    if (emp === '500+') return { label: 'Enterprise', color: 'bg-navy-50 text-navy-700 border-navy-200' }
+    return null
+  })()
+
+  // Extract tech stack from description
+  const techStack = (() => {
+    const desc = (job.description || '').toLowerCase()
+    const techs = [
+      'Python', 'JavaScript', 'TypeScript', 'React', 'Node.js', 'AWS', 'GCP', 'Azure',
+      'Kubernetes', 'Docker', 'PostgreSQL', 'MongoDB', 'Redis', 'GraphQL', 'REST API',
+      'Terraform', 'Go', 'Rust', 'Java', 'Scala', 'Spark', 'Snowflake', 'dbt',
+      'Figma', 'SQL', 'Tableau', 'Looker', 'Salesforce', 'HubSpot',
+    ]
+    return techs.filter(t => desc.includes(t.toLowerCase())).slice(0, 6)
+  })()
+
   useEffect(() => {
     if (!company) return
-    // Fetch company summary
     setLoadingSummary(true)
     setSummary(null)
     const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000')
@@ -688,7 +731,6 @@ function CompanyIntelSection({ job }) {
       .catch(() => {})
       .finally(() => setLoadingSummary(false))
 
-    // Fetch company news
     setLoadingNews(true)
     setArticles([])
     newsApi.companyNews(company, job.job_url || '')
@@ -697,8 +739,6 @@ function CompanyIntelSection({ job }) {
       .finally(() => setLoadingNews(false))
   }, [company])
 
-  const hasFacts = job.employee_count || job.funding_stage || job.industry
-
   return (
     <div className="border-t border-navy-100 pt-5 space-y-4">
       <div className="flex items-center gap-2">
@@ -706,67 +746,96 @@ function CompanyIntelSection({ job }) {
         <p className="text-xs font-semibold text-navy-500 uppercase tracking-wide">Company Intel</p>
       </div>
 
-      {/* Key Facts */}
-      {hasFacts && (
-        <div className="flex flex-wrap gap-1.5">
-          {job.industry && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
-              {job.industry}
-            </span>
-          )}
-          {job.employee_count && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-              {job.employee_count} employees
-            </span>
-          )}
-          {job.funding_stage && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
-              {job.funding_stage}
-            </span>
-          )}
-          {job.funding_amount && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
-              Raised {job.funding_amount}
-            </span>
-          )}
-        </div>
-      )}
-
       {/* Company Summary */}
       {loadingSummary ? (
         <p className="text-xs text-navy-400 italic">Loading company info...</p>
       ) : summary ? (
-        <div className="bg-violet-50 border border-violet-200 rounded-xl p-3">
-          <p className="text-sm text-navy-700 leading-relaxed">{summary}</p>
-        </div>
+        <p className="text-sm text-navy-700 leading-relaxed">{summary}</p>
       ) : null}
 
-      {/* News Articles */}
-      <div>
-        <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide mb-2">Recent News</p>
-        {loadingNews ? (
-          <p className="text-xs text-navy-400 italic">Searching for news...</p>
-        ) : articles.length > 0 ? (
-          <div className="space-y-2">
-            {articles.slice(0, 5).map((a, i) => (
-              <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
-                className="block bg-white border border-navy-100 rounded-lg p-2.5 hover:border-violet-300 hover:bg-violet-50/30 transition-colors">
-                <p className="text-xs font-medium text-navy-800 leading-snug line-clamp-2">{a.title}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] text-violet-600 font-medium">{a.source}</span>
-                  {a.published && (
-                    <span className="text-[10px] text-navy-400">
-                      {new Date(a.published).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </span>
-                  )}
-                </div>
-              </a>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-navy-300 italic">No recent news found for {company}</p>
+      {/* Quick Links */}
+      <div className="flex items-center gap-3">
+        {companyDomain && (
+          <a href={`https://${companyDomain}`} target="_blank" rel="noopener noreferrer"
+            className="text-[10px] text-sky-600 hover:text-sky-800 flex items-center gap-1">
+            <Globe size={10} /> {companyDomain}
+          </a>
+        )}
+        <a href={linkedinUrl} target="_blank" rel="noopener noreferrer"
+          className="text-[10px] text-sky-600 hover:text-sky-800 flex items-center gap-1">
+          <Linkedin size={10} /> LinkedIn
+        </a>
+      </div>
+
+      {/* Key Facts — compact badges */}
+      <div className="flex flex-wrap gap-1.5">
+        {stageSignal && (
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${stageSignal.color}`}>
+            {stageSignal.label}
+          </span>
+        )}
+        {job.industry && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+            {job.industry}
+          </span>
+        )}
+        {job.employee_count && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+            {job.employee_count} employees
+          </span>
+        )}
+        {job.funding_stage && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
+            {job.funding_stage}
+          </span>
+        )}
+        {job.funding_amount && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
+            Raised {job.funding_amount}
+          </span>
         )}
       </div>
+
+      {/* Tech Stack */}
+      {techStack.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide mb-1.5">Tech Stack</p>
+          <div className="flex flex-wrap gap-1">
+            {techStack.map(t => (
+              <span key={t} className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-navy-50 text-navy-600 border border-navy-100">
+                {t}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* News Articles */}
+      {(loadingNews || articles.length > 0) && (
+        <div>
+          <p className="text-[10px] font-semibold text-navy-400 uppercase tracking-wide mb-1.5">Recent News</p>
+          {loadingNews ? (
+            <p className="text-xs text-navy-400 italic">Searching...</p>
+          ) : (
+            <div className="space-y-1.5">
+              {articles.slice(0, 4).map((a, i) => (
+                <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+                  className="block bg-white border border-navy-100 rounded-lg px-2.5 py-2 hover:border-violet-300 transition-colors">
+                  <p className="text-[11px] font-medium text-navy-800 leading-snug line-clamp-2">{a.title}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[9px] text-violet-600 font-medium">{a.source}</span>
+                    {a.published && (
+                      <span className="text-[9px] text-navy-400">
+                        {new Date(a.published).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
