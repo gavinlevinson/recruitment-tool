@@ -2384,6 +2384,87 @@ async def get_company_summary(company: str, description: str = "", job_url: str 
 
     # ── Gather all available context ──────────────────────────────────────
     context_parts = []
+    apollo_data = {}  # Ground-truth data from Apollo org enrichment
+
+    # 0. Apollo Organization Enrichment — most accurate structured data
+    apollo_key = os.getenv("APOLLO_API_KEY", "")
+    if apollo_key:
+        try:
+            # Derive domain from job_url or company name
+            _apollo_domain = ""
+            if job_url:
+                try:
+                    from urllib.parse import urlparse as _urlparse
+                    _h = _urlparse(job_url).netloc.lower().replace("www.", "")
+                    _ats_list = ["lever.co", "greenhouse.io", "ashbyhq.com", "ashby.io", "workable.com"]
+                    if any(a in _h for a in _ats_list):
+                        _slug = _urlparse(job_url).path.split("/")[1] if len(_urlparse(job_url).path.split("/")) > 1 else ""
+                        if _slug:
+                            _apollo_domain = _slug + ".com"
+                    elif "linkedin.com" not in _h and "indeed.com" not in _h:
+                        _apollo_domain = _h
+                except Exception:
+                    pass
+            if not _apollo_domain:
+                import re as _re_apollo
+                _apollo_domain = _re_apollo.sub(r'[^a-z0-9]', '', company.strip().lower()) + ".com"
+
+            async with httpx.AsyncClient(timeout=10.0) as _ac:
+                _apollo_resp = await _ac.get(
+                    "https://api.apollo.io/api/v1/organizations/enrich",
+                    params={"domain": _apollo_domain, "api_key": apollo_key},
+                    timeout=8.0,
+                )
+                if _apollo_resp.status_code == 200:
+                    _org = _apollo_resp.json().get("organization") or {}
+                    if _org.get("name"):
+                        apollo_data = {
+                            "employee_count": _org.get("estimated_num_employees"),
+                            "founded_year": _org.get("founded_year"),
+                            "industry": _org.get("industry"),
+                            "hq_city": _org.get("city"),
+                            "hq_state": _org.get("state"),
+                            "hq_country": _org.get("country"),
+                            "linkedin_url": _org.get("linkedin_url"),
+                            "total_funding": _org.get("total_funding"),
+                            "total_funding_printed": _org.get("total_funding_printed"),
+                            "latest_funding_round_date": _org.get("latest_funding_round_date"),
+                            "latest_funding_stage": _org.get("latest_funding_stage"),
+                            "latest_funding_amount": _org.get("latest_funding_amount"),
+                            "short_description": _org.get("short_description"),
+                            "annual_revenue_printed": _org.get("annual_revenue_printed"),
+                            "technologies": _org.get("current_technologies", []),
+                        }
+                        # Add Apollo data as high-confidence context for Claude
+                        apollo_context_lines = [f"Apollo.io verified data for {company}:"]
+                        if apollo_data["employee_count"]:
+                            apollo_context_lines.append(f"  Employee count: {apollo_data['employee_count']}")
+                        if apollo_data["founded_year"]:
+                            apollo_context_lines.append(f"  Founded: {apollo_data['founded_year']}")
+                        if apollo_data["industry"]:
+                            apollo_context_lines.append(f"  Industry: {apollo_data['industry']}")
+                        if apollo_data["hq_city"]:
+                            hq = apollo_data["hq_city"]
+                            if apollo_data["hq_state"]:
+                                hq += f", {apollo_data['hq_state']}"
+                            apollo_context_lines.append(f"  HQ: {hq}")
+                        if apollo_data["total_funding_printed"]:
+                            apollo_context_lines.append(f"  Total funding: {apollo_data['total_funding_printed']}")
+                        if apollo_data["latest_funding_stage"]:
+                            apollo_context_lines.append(f"  Latest round: {apollo_data['latest_funding_stage']}")
+                        if apollo_data["annual_revenue_printed"]:
+                            apollo_context_lines.append(f"  Annual revenue: {apollo_data['annual_revenue_printed']}")
+                        if apollo_data["short_description"]:
+                            apollo_context_lines.append(f"  Description: {apollo_data['short_description']}")
+                        if len(apollo_context_lines) > 1:
+                            context_parts.append("\n".join(apollo_context_lines))
+                        print(f"[CompanyIntel] Apollo enrichment found {company}: {apollo_data.get('employee_count')} employees")
+                    else:
+                        print(f"[CompanyIntel] Apollo returned no org for domain={_apollo_domain}")
+                else:
+                    print(f"[CompanyIntel] Apollo status={_apollo_resp.status_code} for {_apollo_domain}")
+        except Exception as e:
+            print(f"[CompanyIntel] Apollo error for {company}: {e}")
 
     # 1. Job description (may mention company details)
     if description:
@@ -2406,7 +2487,8 @@ async def get_company_summary(company: str, description: str = "", job_url: str 
             db_facts = []
             for dj in db_jobs:
                 if dj.funding_stage: db_facts.append(f"Funding stage: {dj.funding_stage}")
-                if dj.employee_count: db_facts.append(f"Employee count: {dj.employee_count}")
+                if not apollo_data.get("employee_count") and dj.employee_count:
+                    db_facts.append(f"Employee count: {dj.employee_count}")
                 if dj.industry: db_facts.append(f"Industry: {dj.industry}")
                 if dj.funding_amount: db_facts.append(f"Recent funding: {dj.funding_amount}")
                 if dj.recently_funded: db_facts.append("Recently funded (confirmed)")
@@ -2491,6 +2573,36 @@ async def get_company_summary(company: str, description: str = "", job_url: str 
         data = {"one_liner": f"{company} is a company.", "industry": None, "employee_count": None,
                 "founded": None, "hq_location": None, "ceo": None, "funding_rounds": [],
                 "total_raised": None, "notable_facts": []}
+
+    # ── Override Claude's guesses with Apollo ground-truth data ────────
+    if apollo_data:
+        if apollo_data.get("employee_count"):
+            data["employee_count"] = f"{apollo_data['employee_count']:,}"
+        if apollo_data.get("founded_year"):
+            data["founded"] = str(apollo_data["founded_year"])
+        if apollo_data.get("industry"):
+            data["industry"] = apollo_data["industry"]
+        if apollo_data.get("hq_city"):
+            hq = apollo_data["hq_city"]
+            if apollo_data.get("hq_state"):
+                hq += f", {apollo_data['hq_state']}"
+            data["hq_location"] = hq
+        if apollo_data.get("total_funding_printed"):
+            data["total_raised"] = apollo_data["total_funding_printed"]
+        if apollo_data.get("latest_funding_stage") and not data.get("funding_rounds"):
+            # If Claude didn't find rounds but Apollo has latest stage info
+            round_info = {"round": apollo_data["latest_funding_stage"]}
+            if apollo_data.get("latest_funding_amount"):
+                round_info["amount"] = f"${apollo_data['latest_funding_amount']:,.0f}" if isinstance(apollo_data["latest_funding_amount"], (int, float)) else str(apollo_data["latest_funding_amount"])
+            if apollo_data.get("latest_funding_round_date"):
+                round_info["date"] = apollo_data["latest_funding_round_date"]
+            data["funding_rounds"] = [round_info]
+        if apollo_data.get("short_description") and (not data.get("one_liner") or data["one_liner"] == f"{company} is a company."):
+            data["one_liner"] = apollo_data["short_description"]
+        if apollo_data.get("linkedin_url"):
+            data["linkedin_url"] = apollo_data["linkedin_url"]
+        if apollo_data.get("annual_revenue_printed"):
+            data["annual_revenue"] = apollo_data["annual_revenue_printed"]
 
     result = {"intel": data, "company": company, "cached": False}
     _company_summary_cache[cache_key] = {**result, "cached": True}

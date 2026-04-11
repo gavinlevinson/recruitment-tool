@@ -98,7 +98,7 @@ export default function CompanyIntelPopup({ company, jobUrl, description, onClos
                   <Globe size={12} /> Website
                 </a>
               )}
-              <a href={linkedinUrl} target="_blank" rel="noopener noreferrer"
+              <a href={(isStructured && intel.linkedin_url) || linkedinUrl} target="_blank" rel="noopener noreferrer"
                 className="text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1 font-medium">
                 <Linkedin size={12} /> LinkedIn
               </a>
@@ -125,6 +125,7 @@ export default function CompanyIntelPopup({ company, jobUrl, description, onClos
                   <DataRow label="HQ" value={intel.hq_location} />
                   <DataRow label="CEO / Founder" value={intel.ceo} />
                   <DataRow label="Total Raised" value={intel.total_raised} />
+                  <DataRow label="Revenue" value={intel.annual_revenue} />
                 </div>
 
                 {/* Funding rounds */}
