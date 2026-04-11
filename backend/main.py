@@ -1898,8 +1898,8 @@ def get_discovered_jobs(
             q = q.filter(or_(*loc_conditions))
 
     # Years of experience filter — hard cutoff (what can be seen at all)
-    # 0+: 0-3 yrs   1-2: 0-5 yrs   3-5: 0-10 yrs   5-10/10+: everything
-    _exp_hard_max = {"0+": 3, "1-2": 5, "3-5": 10}
+    # 0+: 0-2 yrs   1-2: 0-4 yrs   3-5: 0-8 yrs   5-10/10+: everything
+    _exp_hard_max = {"0+": 2, "1-2": 4, "3-5": 8}
     if years_experience and years_experience in _exp_hard_max:
         user_max = _exp_hard_max[years_experience]
         q = q.filter(or_(
@@ -1971,8 +1971,8 @@ def get_discovered_jobs(
 
     # Experience preference: penalty per year OVER the preferred ceiling
     # Jobs still appear (hard cutoff above) but rank lower if they overshoot
-    _exp_pref_ceiling = {"0+": 1, "1-2": 2, "3-5": 5, "5-10": 10, "10+": None}
-    _exp_pref_penalty = {"0+": 15, "1-2": 10, "3-5": 5,  "5-10": 3,  "10+": 0}
+    _exp_pref_ceiling = {"0+": 0, "1-2": 2, "3-5": 5, "5-10": 10, "10+": None}
+    _exp_pref_penalty = {"0+": 25, "1-2": 12, "3-5": 5,  "5-10": 3,  "10+": 0}
 
     def _exp_adj(min_yrs_req) -> float:
         if min_yrs_req is None or not years_experience:
