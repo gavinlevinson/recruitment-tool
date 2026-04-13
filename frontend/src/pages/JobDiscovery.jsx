@@ -347,6 +347,30 @@ function companyDomainFromUrl(jobUrl, companyName) {
   return (companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
 }
 
+// Generate multiple logo URLs to try — .com, .ai, .io, .co variants for ATS slugs
+function companyLogoUrls(jobUrl, companyName) {
+  const primary = companyDomainFromUrl(jobUrl, companyName)
+  const urls = [
+    `https://logo.clearbit.com/${primary}`,
+  ]
+  // If domain was guessed from ATS slug (ends with .com), also try common startup TLDs
+  if (primary.endsWith('.com')) {
+    const slug = primary.replace('.com', '')
+    for (const tld of ['.ai', '.io', '.co']) {
+      urls.push(`https://logo.clearbit.com/${slug}${tld}`)
+    }
+  }
+  // Google favicon as final image fallback
+  urls.push(`https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${primary}&size=64`)
+  if (primary.endsWith('.com')) {
+    const slug = primary.replace('.com', '')
+    for (const tld of ['.ai', '.io', '.co']) {
+      urls.push(`https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${slug}${tld}&size=64`)
+    }
+  }
+  return urls
+}
+
 function companyLogoUrl(jobUrl, companyName) {
   return `https://logo.clearbit.com/${companyDomainFromUrl(jobUrl, companyName)}`
 }
@@ -386,10 +410,11 @@ function JobCard({ job, onAddToTracker, onDismiss, onShowCompanyJobs }) {
   const isAdded = job.added_to_tracker
   const sourceMeta = getSourceMeta(job.source)
 
-  // Logo: Clearbit → Google favicon → colored initial
-  const [logoLevel, setLogoLevel] = useState(0) // 0=clearbit, 1=google, 2=initial
-  const logoSrc = logoLevel === 0 ? companyLogoUrl(job.job_url, job.company) : companyFaviconUrl(job.job_url, job.company)
-  const logoFailed = logoLevel >= 2
+  // Logo: try Clearbit .com → .ai → .io → .co → Google favicon variants → initial
+  const logoUrls = companyLogoUrls(job.job_url, job.company)
+  const [logoLevel, setLogoLevel] = useState(0)
+  const logoSrc = logoUrls[logoLevel]
+  const logoFailed = logoLevel >= logoUrls.length
 
   // Company description popup — AI-generated, lazily fetched, cached per company
   const [showDesc, setShowDesc] = useState(false)
@@ -1336,9 +1361,10 @@ function PreferencesPanel({ open, onClose, preferences, onSave }) {
 // ── New Today Row ─────────────────────────────────────────────────────────────
 // ── New Today: Company Logo (shared) ─────────────────────────────────────────
 function NewTodayLogo({ company, jobUrl, size = 28 }) {
+  const urls = companyLogoUrls(jobUrl, company)
   const [level, setLevel] = useState(0)
-  const src = level === 0 ? companyLogoUrl(jobUrl, company) : companyFaviconUrl(jobUrl, company)
-  if (level >= 2) {
+  const src = urls[level]
+  if (level >= urls.length) {
     return (
       <div className="rounded-md bg-sky-100 flex items-center justify-center shrink-0 text-xs font-bold text-sky-500"
         style={{ width: size, height: size }}>
@@ -1861,7 +1887,7 @@ export default function JobDiscovery() {
   // Fetch on any param change
   useEffect(() => {
     fetchJobs()
-  }, [page, sortBy, debouncedSearch, roleFilter, hideAdded, preferences]) // eslint-disable-line
+  }, [fetchJobs]) // eslint-disable-line
 
   // Fetch new-today jobs once on mount
   useEffect(() => {
