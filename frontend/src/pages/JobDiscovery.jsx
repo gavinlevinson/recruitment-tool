@@ -1923,6 +1923,11 @@ export default function JobDiscovery() {
       setToast({ folder, role: job.role })
       setTimeout(() => setToast(null), 3500)
 
+      // Mark as added in new-today list (so it shows "Added" badge)
+      setNewTodayJobs(prev => prev.map(j =>
+        j.id === job.id ? { ...j, added_to_tracker: true } : j
+      ))
+
       if (opts.skipPrompt) {
         // From popup — decrement count on main list entry for this company
         setJobs(prev => prev.map(j =>
@@ -1935,6 +1940,11 @@ export default function JobDiscovery() {
         setJobs(prev => prev.filter(j => j.id !== job.id))
         setTotal(prev => prev - 1)
       }
+
+      // Also mark as added on the main grid
+      setJobs(prev => prev.map(j =>
+        j.id === job.id ? { ...j, added_to_tracker: true } : j
+      ))
     } catch (err) {
       console.error('Failed to add to tracker:', err)
     }

@@ -138,6 +138,29 @@ def _cleanup_orphaned_data():
                 "UPDATE jobs SET user_id = :uid WHERE user_id IS NULL"
             ), {"uid": first_id})
 
+        # Deduplicate tracker jobs: keep only the oldest per (user_id, discovered_job_id)
+        try:
+            from sqlalchemy import text as _text2
+            dupes = db.execute(_text(
+                "SELECT user_id, discovered_job_id, COUNT(*) as cnt "
+                "FROM jobs WHERE discovered_job_id IS NOT NULL "
+                "GROUP BY user_id, discovered_job_id HAVING COUNT(*) > 1"
+            )).fetchall()
+            removed = 0
+            for row in dupes:
+                uid, djid = row[0], row[1]
+                # Keep the oldest (lowest id), delete the rest
+                all_ids = db.execute(_text(
+                    "SELECT id FROM jobs WHERE user_id = :uid AND discovered_job_id = :djid ORDER BY id"
+                ), {"uid": uid, "djid": djid}).fetchall()
+                for extra in all_ids[1:]:  # skip first (oldest)
+                    db.execute(_text("DELETE FROM jobs WHERE id = :jid"), {"jid": extra[0]})
+                    removed += 1
+            if removed:
+                print(f"[Cleanup] Removed {removed} duplicate tracker jobs")
+        except Exception as e2:
+            print(f"[Cleanup] Dedup error: {e2}")
+
         db.commit()
         print("[Cleanup] Done")
     except Exception as e:
@@ -2130,6 +2153,15 @@ def add_discovered_to_tracker(
     discovered = db.query(DiscoveredJob).filter(DiscoveredJob.id == job_id).first()
     if not discovered:
         raise HTTPException(status_code=404, detail="Not found")
+    # Prevent duplicates: check if this user already has this discovered job in their tracker
+    if current_user:
+        existing = db.query(Job).filter(
+            Job.user_id == current_user.id,
+            Job.discovered_job_id == discovered.id,
+        ).first()
+        if existing:
+            folder = existing.folder or classify_role(discovered.role or "", discovered.description or "")
+            return {"ok": True, "job_id": existing.id, "folder": folder, "already_added": True}
     folder = classify_role(discovered.role or "", discovered.description or "")
     new_job = Job(
         company=discovered.company, role=discovered.role,
@@ -2329,8 +2361,11 @@ def get_scrape_status(db: Session = Depends(get_db)):
 
 
 @app.get("/api/discovered-jobs/new-today")
-def get_new_today_jobs(db: Session = Depends(get_db)):
-    """Return only jobs scraped in the last 24 hours. Refreshes daily."""
+def get_new_today_jobs(
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """Return only jobs scraped in the last 24 hours with per-user added_to_tracker status."""
     from datetime import timedelta
     cutoff = datetime.utcnow() - timedelta(hours=24)
     jobs = (
@@ -2343,6 +2378,16 @@ def get_new_today_jobs(db: Session = Depends(get_db)):
         .limit(500)
         .all()
     )
+
+    # Build per-user tracked set
+    user_tracked_ids = set()
+    if current_user:
+        tracked = db.query(Job.discovered_job_id).filter(
+            Job.user_id == current_user.id,
+            Job.discovered_job_id != None,
+        ).all()
+        user_tracked_ids = {r[0] for r in tracked}
+
     # Deduplicate by company+role, cap per source
     seen = set()
     source_counts: dict = {}
@@ -2364,6 +2409,8 @@ def get_new_today_jobs(db: Session = Depends(get_db)):
             "source": j.source or "",
             "job_url": j.job_url or "",
             "match_score": j.match_score,
+            "description": (j.description or "")[:500],
+            "added_to_tracker": j.id in user_tracked_ids,
         })
     return {"jobs": result, "count": len(result)}
 
