@@ -1333,7 +1333,18 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
   const [selectedOrg, setSelectedOrg]     = useState(null)
   const [orgLoading, setOrgLoading]       = useState(false)
 
-  const existingSet = new Set(existingContacts.map(c => (c.name || '').toLowerCase().trim()))
+  // Track ALL user contacts (across all jobs) by name and LinkedIn URL for dedup
+  const [allUserContacts, setAllUserContacts] = useState([])
+  useEffect(() => {
+    contactsApi.getAll()
+      .then(res => setAllUserContacts(res.data || []))
+      .catch(() => {})
+  }, [])
+
+  // Rebuild dedup sets when contacts change (local job contacts + all user contacts)
+  const allContacts = [...existingContacts, ...allUserContacts]
+  const existingNames = new Set(allContacts.map(c => (c.name || '').toLowerCase().trim()).filter(Boolean))
+  const existingLinkedins = new Set(allContacts.map(c => (c.linkedin_url || '').toLowerCase().replace(/\/+$/, '').trim()).filter(Boolean))
 
   const toggleChip = (label) =>
     setSelectedChips(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label])
@@ -1445,6 +1456,8 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
         outreach_status: 'Not Contacted',
       })
       setAdding(prev => ({ ...prev, [id]: 'done' }))
+      // Refresh all-user contacts so dedup works across jobs
+      contactsApi.getAll().then(res => setAllUserContacts(res.data || [])).catch(() => {})
       await onAdded()
     } catch {
       setAdding(prev => ({ ...prev, [id]: 'error' }))
@@ -1452,7 +1465,14 @@ function ApolloDiscoverTab({ job, existingContacts, onAdded }) {
   }
 
   const addState     = (id) => adding[id]
-  const isAdded      = (p) => addState(p.apollo_id) === 'done' || existingSet.has((enriched[p.apollo_id]?.name || p.name || '').toLowerCase().trim())
+  const isAdded = (p) => {
+    if (addState(p.apollo_id) === 'done') return true
+    const name = (enriched[p.apollo_id]?.name || p.name || '').toLowerCase().trim()
+    if (name && existingNames.has(name)) return true
+    const li = (enriched[p.apollo_id]?.linkedin_url || p.linkedin_url || '').toLowerCase().replace(/\/+$/, '').trim()
+    if (li && existingLinkedins.has(li)) return true
+    return false
+  }
   const isPending    = (p) => addState(p.apollo_id) === 'loading'
   const uniMatches   = (id) => {
     if (!user?.university || !enriched[id]) return false
